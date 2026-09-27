@@ -5,20 +5,27 @@ import { nelthaiStartEditJob } from '@/lib/imagine/nelthai'
 export const maxDuration = 60
 
 /**
- * V3 image-to-image via source URL (no re-upload needed — the client
- * passes the fbcdn URL from the attachment upload).
+ * V3 image-to-image via source URLs (no re-upload needed — the client
+ * passes fbcdn URLs). Accepts one `imageUrl` or several `imageUrls`
+ * (multi-image fusion), forwarded as repeated multipart fields.
  */
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as {
     imageUrl?: unknown
+    imageUrls?: unknown
     prompt?: unknown
     aspectRatio?: unknown
   } | null
 
-  const imageUrl = typeof body?.imageUrl === 'string' ? body.imageUrl : ''
+  const collect = (v: unknown): string[] =>
+    typeof v === 'string' && /^https?:\/\//.test(v) ? [v] : []
+  const imageUrls = [
+    ...(Array.isArray(body?.imageUrls) ? body.imageUrls.flatMap(collect) : []),
+    ...collect(body?.imageUrl)
+  ]
   const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : ''
 
-  if (!/^https?:\/\//.test(imageUrl)) {
+  if (imageUrls.length === 0) {
     return NextResponse.json(
       { error: 'Image source requise.' },
       { status: 400 }
@@ -38,7 +45,7 @@ export async function POST(req: Request) {
     // Variations locked to 1 for edits; ratio already baked into `prompt`
     // by the client.
     const { jobId } = await nelthaiStartEditJob({
-      imageUrl,
+      imageUrls,
       prompt
     })
     return NextResponse.json({ success: true, jobId })

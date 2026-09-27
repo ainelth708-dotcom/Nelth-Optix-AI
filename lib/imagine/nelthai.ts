@@ -63,14 +63,26 @@ export async function nelthaiStartImageJob(prompt: string): Promise<{
 }
 
 export async function nelthaiStartEditJob(input: {
-  imageUrl: string
+  imageUrl?: string
+  imageUrls?: string[]
   prompt: string
 }): Promise<{ jobId: string }> {
   // NOTE: this endpoint ONLY accepts multipart/form-data (JSON is
-  // rejected with "multipart/form-data attendu").
+  // rejected with "multipart/form-data attendu"). Multiple sources are
+  // supported: repeated `image_url` fields, one comma-joined field, or
+  // `file` parts mixed with `image_url`.
+  const urls = [
+    ...(input.imageUrls ?? []).filter(
+      u => typeof u === 'string' && /^https?:\/\//.test(u)
+    ),
+    ...(input.imageUrl && /^https?:\/\//.test(input.imageUrl)
+      ? [input.imageUrl]
+      : [])
+  ]
+  if (urls.length === 0) throw new Error('Image source requise.')
   const form = new FormData()
   form.append('prompt', input.prompt)
-  form.append('image_url', input.imageUrl)
+  for (const u of urls) form.append('image_url', u)
   form.append('mode', 'instant')
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 30000)

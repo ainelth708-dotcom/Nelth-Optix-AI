@@ -281,20 +281,6 @@ export function ImageEditor({ src, title, onClose, onSave }: ImageEditorProps) {
     }
   }
 
-  // Display caps from the loaded natural size (recomputed every render
-  // once ready): landscape 900×500, portrait 420×500, square 500×500.
-  // Viewport-relative (100vw/100dvh are always definite, unlike container
-  // percentages which resolve circularly and let the image blow up).
-  const nat = baseRef.current
-  const [capW, capH] =
-    nat && nat.naturalWidth && nat.naturalHeight
-      ? nat.naturalWidth > nat.naturalHeight
-        ? [1280, 720]
-        : nat.naturalWidth < nat.naturalHeight
-          ? [600, 750]
-          : [750, 750]
-      : [1280, 720]
-
   if (!mounted) return null
   return createPortal(
     <div
@@ -384,23 +370,21 @@ export function ImageEditor({ src, title, onClose, onSave }: ImageEditorProps) {
         <p className="px-4 pb-2 text-center text-sm text-red-400">{error}</p>
       )}
 
-      {/* Center image — follows the source ratio, fit to the area
-          (never zoomed/cropped/stretched), flex-centered with dark
-          margins all around. Absolute viewport caps (not container
-          percentages, which resolve circularly and let the image blow
-          up): landscape 900×500, portrait 420×500, square 500×500. */}
+      {/* Center viewer — FIXED stable box (same ratio as the backing
+          store, so bitmap:box is 1:1 with no distortion), clamped to the
+          viewport width AND to the available flex area height (never
+          clipped by overflow). Canvas contain-fills it exactly. */}
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-4 pt-5 md:px-10">
         <div
           className="relative flex items-center justify-center"
           style={{
             aspectRatio: `${dims[0]} / ${dims[1]}`,
-            width: `min(${capW}px, calc(100vw - 64px))`,
-            maxHeight: `min(${capH}px, calc(100dvh - 240px))`
+            width: 'min(900px, calc(100vw - 120px))',
+            maxHeight: '100%'
           }}
         >
           <canvas
             ref={canvasRef}
-            style={{ width: '75%', height: 'auto' }}
             onPointerDown={e => {
               if (!ready) return
               const p = toRelative(e)
@@ -456,7 +440,7 @@ export function ImageEditor({ src, title, onClose, onSave }: ImageEditorProps) {
               repaint()
             }}
             className={cn(
-              'relative block touch-none',
+              'absolute inset-0 h-full w-full touch-none',
               tool === 'draw' ? 'cursor-crosshair' : 'cursor-text'
             )}
           />
