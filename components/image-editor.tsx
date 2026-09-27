@@ -376,7 +376,7 @@ export function ImageEditor({ src, title, onClose, onSave }: ImageEditorProps) {
           clipped by overflow). Canvas contain-fills it exactly. */}
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-4 pt-5 md:px-10">
         <div
-          className="relative flex items-center justify-center"
+          className="relative flex items-center justify-center overflow-hidden rounded-[40px]"
           style={{
             aspectRatio: `${dims[0]} / ${dims[1]}`,
             width: 'min(900px, calc(100vw - 120px))',
