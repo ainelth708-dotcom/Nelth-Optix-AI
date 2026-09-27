@@ -17,6 +17,7 @@ import {
 import { ArrowUp, X } from 'lucide-react'
 
 import { buildV3Prompt } from '@/lib/imagine/v3prompt'
+import { compressImageForUpload } from '@/lib/upload/compress-image'
 import {
   isAndroidDevice,
   pickSingleImageViaPhotoPicker
@@ -51,6 +52,8 @@ export interface StudioAttachment {
   name: string
   previewUrl: string
   status: 'uploading' | 'ready' | 'error'
+  /** Visible sub-step while uploading: compression first, then send. */
+  stage?: 'compress' | 'upload'
   error?: string
   /** Original file kept in memory so a failed upload can be retried. */
   file?: File
@@ -341,7 +344,9 @@ function AttachmentBar({
         </p>
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
           {attachment.status === 'uploading'
-            ? 'Envoi…'
+            ? attachment.stage === 'upload'
+              ? 'Envoi…'
+              : 'Compression…'
             : attachment.status === 'ready'
               ? 'Prête — variations fixées à 1'
               : (attachment.error ?? 'Échec de l’envoi.')}
@@ -1188,52 +1193,9 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     return URL.createObjectURL(blob)
   }
 
-  const MAX_IMAGE_BYTES = 3 * 1024 * 1024
-
-  // Downscale hero photos client-side so the upload stays small and fast:
-  // files ≤800Ko go through untouched, bigger ones are resized (max 1600px,
-  // JPEG 0.82). Without this, phone photos blow past the serverless body
-  // limit (HTTP 413) or stall the 4-account upload past its timeout.
-  const prepareImageForUpload = (file: File): Promise<{ base64: string }> =>
-    new Promise((resolve, reject) => {
-      const fail = () => reject(new Error('Lecture impossible.'))
-      if (file.size <= 800 * 1024) {
-        const reader = new FileReader()
-        reader.onload = () => {
-          const result = typeof reader.result === 'string' ? reader.result : ''
-          const comma = result.indexOf(',')
-          resolve({ base64: comma >= 0 ? result.slice(comma + 1) : result })
-        }
-        reader.onerror = fail
-        reader.readAsDataURL(file)
-        return
-      }
-      const url = URL.createObjectURL(file)
-      const img = new Image()
-      img.onload = () => {
-        URL.revokeObjectURL(url)
-        const scale = Math.min(1, 1600 / Math.max(img.width, img.height)) || 1
-        const w = Math.max(1, Math.round(img.width * scale))
-        const h = Math.max(1, Math.round(img.height * scale))
-        const canvas = document.createElement('canvas')
-        canvas.width = w
-        canvas.height = h
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          fail()
-          return
-        }
-        ctx.drawImage(img, 0, 0, w, h)
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.82)
-        const comma = dataUrl.indexOf(',')
-        resolve({ base64: comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl })
-      }
-      img.onerror = () => {
-        URL.revokeObjectURL(url)
-        fail()
-      }
-      img.src = url
-    })
+  // Hard input cap (OOM safety only): the compressor below shrinks
+  // everything else to a sub-Mo payload, so big phone photos are welcome.
+  const MAX_IMAGE_BYTES = 25 * 1024 * 1024
 
   const handleRemoveAttachment = () => {
     setAttachment(prev => {
@@ -1266,7 +1228,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         name: file.name,
         previewUrl: URL.createObjectURL(file),
         status: 'error',
-        error: 'Image trop lourde (max 3 Mo).'
+        error: 'Image trop lourde (max 25 Mo).'
       })
       return
     }
@@ -1275,12 +1237,16 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       name: file.name,
       previewUrl: URL.createObjectURL(file),
       status: 'uploading',
+      stage: 'compress',
       file
     })
     try {
-      const { base64 } = await prepareImageForUpload(file)
+      const pressed = await compressImageForUpload(file)
+      setAttachment(prev =>
+        prev && prev.id === id ? { ...prev, stage: 'upload' } : prev
+      )
       const res = await fetchImagineApi('/api/imagine/upload', {
-        imageBase64: base64,
+        imageBase64: pressed.base64,
         filename: file.name
       })
       const json = (await res.json().catch(() => null)) as {
