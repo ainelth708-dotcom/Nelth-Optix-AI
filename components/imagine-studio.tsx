@@ -515,13 +515,14 @@ function StylePresetGrid({
 
 // ---------------------------------------------------------------------------
 // Preset card modal: click a card → centered modal with the preset's
-// official artwork at its ORIGINAL ratio (fully visible, never cropped
-// or zoomed; videos autoplay muted in an infinite loop), the card's
-// official prompt (collapsed with "Voir plus" / "Moins" when long),
-// then per-category actions — edit cards: "Sélectionner une photo"
-// (the picked photo becomes the transformation source) + "Annuler";
-// image/video-gen cards: "Envoyer" + "Annuler". Premium dark/blurred
-// backdrop, compact rounded card, light + dark mode.
+// official artwork fully visible (fixed viewer height + contain: never
+// cropped or zoomed, and the modal never jumps when the media loads),
+// videos autoplay muted in an infinite loop, the card's official prompt
+// (collapsed with "Voir plus" / "Moins" when long), then per-category
+// actions — edit cards: "Sélectionner une photo" (the picked photo
+// becomes the transformation source) + "Annuler"; image/video-gen
+// cards: "Envoyer" + "Annuler". Premium dark/blurred backdrop, compact
+// rounded card, light + dark mode.
 // ---------------------------------------------------------------------------
 
 const PROMPT_COLLAPSED_CHARS = 140
@@ -547,9 +548,6 @@ function StylePreviewCard({
 
   const photoInputRef = useRef<HTMLInputElement>(null)
   const [showFullPrompt, setShowFullPrompt] = useState(false)
-  // Natural media size: the viewer box adopts its exact ratio so the
-  // artwork is fully visible with no crop, zoom or distortion.
-  const [mediaNat, setMediaNat] = useState<[number, number] | null>(null)
   const isLongPrompt = preset.prompt.length > PROMPT_COLLAPSED_CHARS
   const promptText =
     !isLongPrompt || showFullPrompt
@@ -562,110 +560,90 @@ function StylePreviewCard({
       aria-modal="true"
       aria-label={preset.label}
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/60 p-4 backdrop-blur-lg"
+      className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/60 backdrop-blur-lg"
     >
-      <div
-        onClick={e => e.stopPropagation()}
-        className="my-auto w-[400px] max-w-[calc(100%-2rem)] rounded-[24px] bg-white p-4 text-neutral-800 shadow-[0_24px_90px_rgba(0,0,0,0.55)] dark:bg-[#202020] dark:text-neutral-200"
-      >
+      <div className="flex min-h-full items-center justify-center p-4">
         <div
-          className="relative w-full overflow-hidden rounded-[14px] bg-neutral-100 dark:bg-white/5"
-          style={
-            mediaNat
-              ? {
-                  aspectRatio: `${mediaNat[0]} / ${mediaNat[1]}`,
-                  maxHeight: '40dvh'
-                }
-              : { minHeight: 200 }
-          }
+          onClick={e => e.stopPropagation()}
+          className="w-[400px] max-w-full rounded-[24px] bg-white p-4 text-neutral-800 shadow-[0_24px_90px_rgba(0,0,0,0.55)] dark:bg-[#202020] dark:text-neutral-200"
         >
-          {preset.kind === 'video' ? (
-            <video
-              ref={autoplayMutedLoop}
-              src={preset.image}
-              poster={preset.poster}
-              preload="auto"
-              autoPlay
-              muted
-              loop
-              playsInline
-              onLoadedMetadata={e => {
-                const v = e.currentTarget
-                if (v.videoWidth && v.videoHeight) {
-                  setMediaNat([v.videoWidth, v.videoHeight])
-                }
-              }}
-              className="absolute inset-0 h-full w-full object-contain"
-            />
+          <div className="relative h-[min(280px,36dvh)] w-full overflow-hidden rounded-[14px] bg-neutral-100 dark:bg-white/5">
+            {preset.kind === 'video' ? (
+              <video
+                ref={autoplayMutedLoop}
+                src={preset.image}
+                poster={preset.poster}
+                preload="auto"
+                autoPlay
+                muted
+                loop
+                playsInline
+                className="absolute inset-0 h-full w-full object-contain"
+              />
+            ) : (
+              <img
+                src={preset.image}
+                alt={preset.label}
+                draggable={false}
+                className="absolute inset-0 h-full w-full object-contain"
+              />
+            )}
+          </div>
+          <p className="mt-4 whitespace-pre-wrap text-left text-[16px] font-medium leading-[1.45]">
+            {promptText}{' '}
+            {isLongPrompt && (
+              <button
+                type="button"
+                onClick={() => setShowFullPrompt(v => !v)}
+                className="font-semibold underline underline-offset-2"
+              >
+                {showFullPrompt ? 'Moins' : 'Voir plus'}
+              </button>
+            )}
+          </p>
+          {preset.category === 'edit' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                className="mt-4 h-[50px] w-full rounded-[25px] bg-black text-[15px] font-semibold text-white transition-colors duration-200 hover:bg-neutral-800 dark:text-neutral-100"
+              >
+                Sélectionner une photo
+              </button>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                // Visually hidden but RENDERED (never display:none): on Android
+                // Chrome a display:none input opened by code falls back to the
+                // Files manager instead of the gallery picker.
+                className="pointer-events-none absolute h-px w-px opacity-0"
+                aria-hidden
+                tabIndex={-1}
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  e.target.value = ''
+                  if (file) onSelectPhoto(file)
+                }}
+              />
+            </>
           ) : (
-            <img
-              src={preset.image}
-              alt={preset.label}
-              draggable={false}
-              onLoad={e => {
-                const im = e.currentTarget
-                if (im.naturalWidth && im.naturalHeight) {
-                  setMediaNat([im.naturalWidth, im.naturalHeight])
-                }
-              }}
-              className="absolute inset-0 h-full w-full object-contain"
-            />
-          )}
-        </div>
-        <p className="mt-4 whitespace-pre-wrap text-left text-[16px] font-medium leading-[1.45]">
-          {promptText}{' '}
-          {isLongPrompt && (
             <button
               type="button"
-              onClick={() => setShowFullPrompt(v => !v)}
-              className="font-semibold underline underline-offset-2"
-            >
-              {showFullPrompt ? 'Moins' : 'Voir plus'}
-            </button>
-          )}
-        </p>
-        {preset.category === 'edit' ? (
-          <>
-            <button
-              type="button"
-              onClick={() => photoInputRef.current?.click()}
+              onClick={onSend}
               className="mt-4 h-[50px] w-full rounded-[25px] bg-black text-[15px] font-semibold text-white transition-colors duration-200 hover:bg-neutral-800 dark:text-neutral-100"
             >
-              Sélectionner une photo
+              Envoyer
             </button>
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              // Visually hidden but RENDERED (never display:none): on Android
-              // Chrome a display:none input opened by code falls back to the
-              // Files manager instead of the gallery picker.
-              className="pointer-events-none absolute h-px w-px opacity-0"
-              aria-hidden
-              tabIndex={-1}
-              onChange={e => {
-                const file = e.target.files?.[0]
-                e.target.value = ''
-                if (file) onSelectPhoto(file)
-              }}
-            />
-          </>
-        ) : (
+          )}
           <button
             type="button"
-            onClick={onSend}
-            className="mt-4 h-[50px] w-full rounded-[25px] bg-black text-[15px] font-semibold text-white transition-colors duration-200 hover:bg-neutral-800 dark:text-neutral-100"
+            onClick={onClose}
+            className="mt-[22px] w-full text-center text-[15px] font-semibold transition-opacity hover:opacity-70"
           >
-            Envoyer
+            Annuler
           </button>
-        )}
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-[22px] w-full text-center text-[15px] font-semibold transition-opacity hover:opacity-70"
-        >
-          Annuler
-        </button>
+        </div>
       </div>
     </div>
   )
