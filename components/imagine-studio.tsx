@@ -17,6 +17,10 @@ import {
 import { ArrowUp, X } from 'lucide-react'
 
 import { buildV3Prompt } from '@/lib/imagine/v3prompt'
+import {
+  isAndroidDevice,
+  pickSingleImageViaPhotoPicker
+} from '@/lib/upload/photo-picker'
 import { cn } from '@/lib/utils'
 
 import AiImageCard from '@/components/ai-image-card'
@@ -1697,7 +1701,18 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         }}
       />
     ),
-    onAttach: () => fileInputRef.current?.click(),
+    // Android: dedicated photo-picker-eligible input (system gallery);
+    // desktop/iOS: existing hidden input (native behavior unchanged).
+    onAttach: () => {
+      if (isAndroidDevice()) {
+        void pickSingleImageViaPhotoPicker().then(file => {
+          // null = user cancelled: nothing to do.
+          if (file) void handleAttachFile(file)
+        })
+        return
+      }
+      fileInputRef.current?.click()
+    },
     canSend
   }
 
