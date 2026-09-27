@@ -977,5 +977,16 @@ export const OFFICIAL_PRESETS_MIXED: OfficialPreset[] = (() => {
       mixed[ib] = tmp
     }
   }
-  return [...OFFICIAL_NEW_PRESETS, ...mixed]
+  const ordered = [...OFFICIAL_NEW_PRESETS, ...mixed]
+  // Absolute placements (by id, 0-indexed) in the final grid: the DOM
+  // order is shared by mobile and desktop, so one index covers both.
+  const PLACE_AT: Array<[string, number]> = [['video-detecteur-priver', 5]]
+  for (const [id, at] of PLACE_AT) {
+    const i = ordered.findIndex(p => p.id === id)
+    if (i >= 0) {
+      const [card] = ordered.splice(i, 1)
+      ordered.splice(Math.min(at, ordered.length), 0, card)
+    }
+  }
+  return ordered
 })()
