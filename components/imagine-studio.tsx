@@ -16,6 +16,7 @@ import {
 } from '@tabler/icons-react'
 import { ArrowUp, X } from 'lucide-react'
 
+import { buildV3Prompt } from '@/lib/imagine/v3prompt'
 import { cn } from '@/lib/utils'
 
 import AiImageCard from '@/components/ai-image-card'
@@ -36,7 +37,10 @@ export interface ImagineParams {
   style: string | null
   variations: number
   sourceImageEntId: string | null
+  imagenModel: ImagenModel
 }
+
+export type ImagenModel = 'v2' | 'v3'
 
 export interface StudioAttachment {
   id: string
@@ -222,6 +226,77 @@ function VariationsSelect({
         </button>
       ))}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Imagen model selector (glassmorphic segmented): V2 (vibes backend) /
+// V3 (metaai backend, new). Video stays single-model: fixed Omni chip.
+// ---------------------------------------------------------------------------
+
+const IMAGEN_MODELS: Array<{
+  id: ImagenModel
+  short: string
+  name: string
+  badge?: string
+}> = [
+  { id: 'v2', short: 'V2', name: 'Nelth-imagen_V2 (vibes)' },
+  { id: 'v3', short: 'V3', name: 'Nelth-imagen_V3 (metaai)', badge: 'new' }
+]
+
+function ImagenModelSelect({
+  value,
+  onChange
+}: {
+  value: ImagenModel
+  onChange: (m: ImagenModel) => void
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Modèle image"
+      title="Modèle image"
+      className="flex h-[38px] shrink-0 items-center gap-0.5 rounded-[19px] border border-white/50 bg-white/55 p-1 shadow-[0_2px_14px_rgba(30,60,120,0.10)] backdrop-blur-md dark:border-white/15 dark:bg-white/10"
+    >
+      {IMAGEN_MODELS.map(m => {
+        const active = value === m.id
+        return (
+          <button
+            key={m.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            title={m.name}
+            onClick={() => onChange(m.id)}
+            className={cn(
+              'flex h-[30px] items-center gap-1 rounded-full px-2.5 text-[13px] transition-colors',
+              active
+                ? 'bg-white/90 font-semibold text-[#111] shadow-sm dark:bg-white/20 dark:text-foreground'
+                : 'text-neutral-500 hover:bg-white/60 dark:text-neutral-400 dark:hover:bg-white/10'
+            )}
+          >
+            {m.short}
+            {m.badge ? (
+              <span className="rounded-full bg-sky-500 px-1 text-[9px] font-bold uppercase leading-[1.4] text-white">
+                {m.badge}
+              </span>
+            ) : null}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function VideoOmniChip() {
+  return (
+    <span
+      title="Nelth-omni_V1 — unique modèle vidéo"
+      className="flex h-[38px] shrink-0 items-center gap-1.5 rounded-[19px] border border-white/50 bg-white/55 px-3 text-[13px] font-medium text-[#111] shadow-[0_2px_14px_rgba(0,0,0,0.06)] backdrop-blur-md dark:border-white/15 dark:bg-white/10 dark:text-foreground"
+    >
+      <span className="size-1.5 rounded-full bg-emerald-500" />
+      Omni V1
+    </span>
   )
 }
 
@@ -512,6 +587,8 @@ interface DiscoverComposerProps {
   generating: boolean
   onGenerate: () => void
   extras: ComposerExtras
+  imagenModel: ImagenModel
+  setImagenModel: (m: ImagenModel) => void
 }
 
 function DiscoverComposer({
@@ -527,7 +604,9 @@ function DiscoverComposer({
   setDuration,
   generating,
   onGenerate,
-  extras
+  extras,
+  imagenModel,
+  setImagenModel
 }: DiscoverComposerProps) {
   return (
     <>
@@ -570,6 +649,10 @@ function DiscoverComposer({
               <ToolbarIconButton label="Médias">
                 <IconLayoutGrid size={19} />
               </ToolbarIconButton>
+              <ImagenModelSelect
+                value={imagenModel}
+                onChange={setImagenModel}
+              />
             </>
           ) : (
             <>
@@ -593,6 +676,7 @@ function DiscoverComposer({
               <ToolbarIconButton label="Médias">
                 <IconLayoutGrid size={19} />
               </ToolbarIconButton>
+              <VideoOmniChip />
               <div className="hidden md:contents">
                 <SegmentedControl
                   options={VIDEO_RESOLUTIONS}
@@ -651,6 +735,7 @@ function DiscoverComposer({
       </div>
       {mode === 'video' && (
         <div className="mt-3 flex w-full flex-wrap items-center justify-center gap-2 md:hidden">
+          <VideoOmniChip />
           <SegmentedControl
             options={VIDEO_RESOLUTIONS}
             value={resolution}
@@ -663,6 +748,11 @@ function DiscoverComposer({
             disabledValues={['10s']}
             disabledHint="Bientôt disponible"
           />
+        </div>
+      )}
+      {mode === 'image' && (
+        <div className="mt-3 flex w-full flex-wrap items-center justify-center gap-2 md:hidden">
+          <ImagenModelSelect value={imagenModel} onChange={setImagenModel} />
         </div>
       )}
     </>
@@ -901,6 +991,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   const [editing, setEditing] = useState<ImagineResult | null>(null)
   const [expectedCount, setExpectedCount] = useState(2)
   const [variations, setVariations] = useState(2)
+  const [imagenModel, setImagenModel] = useState<ImagenModel>('v2')
   const [attachment, setAttachment] = useState<StudioAttachment | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [generating, setGenerating] = useState(false)
@@ -1176,7 +1267,8 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         prompt: text,
         duration,
         variations: count,
-        sourceImageEntId: ent?.sourceImageEntId ?? null
+        sourceImageEntId: ent?.sourceImageEntId ?? null,
+        imagenModel
       })
       return
     }
@@ -1186,11 +1278,103 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     busyRef.current = true
     setGenerating(true)
     setJob(null)
+    // V3 (metaai async) job polling: 2.5s cadence, live phase in the
+    // status label, collects image URLs across jobs.
+    const pollV3Jobs = async (
+      jobIds: string[],
+      expected: number
+    ): Promise<string[]> => {
+      const pending = new Set(jobIds)
+      const found: string[] = []
+      let attempt = 0
+      while (pending.size > 0) {
+        attempt += 1
+        if (attempt > 60) throw new Error('Délai dépassé, réessaie.')
+        const settled = await Promise.all(
+          [...pending].map(async id => {
+            try {
+              const r = await fetch('/api/imagine/v3/images/poll', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId: id })
+              })
+              const j = (await r.json().catch(() => null)) as {
+                success?: boolean
+                status?: string
+                imageUrls?: string[]
+                phase?: string
+                error?: string
+              } | null
+              return { id, ok: r.ok, j }
+            } catch {
+              return { id, ok: false, j: null }
+            }
+          })
+        )
+        for (const { id, ok, j } of settled) {
+          if (!ok || !j?.success) continue
+          const st = (j.status ?? '').toLowerCase()
+          if (st === 'done') {
+            pending.delete(id)
+            for (const u of j.imageUrls ?? []) {
+              if (typeof u === 'string' && u.length > 0 && !found.includes(u)) {
+                found.push(u)
+              }
+            }
+          } else if (st === 'failed' || st === 'error') {
+            pending.delete(id)
+          } else if (j.phase) {
+            setJob({
+              status: 'working',
+              label: `Génération V3… ${j.phase} (${attempt})`
+            })
+          }
+        }
+        if (pending.size > 0) {
+          setJob({ status: 'working', label: `Génération V3… (${attempt})` })
+          await new Promise<void>(resolve => {
+            pollTimerRef.current = setTimeout(() => resolve(), 2500)
+          })
+        }
+      }
+      return found.slice(0, expected)
+    }
     try {
       const fullPrompt = withStyle(text, params.style)
       // Attached source image → image-to-image edit (auto-enhanced
       // server-side) or image-to-video animate. Variations locked to 1.
       if (ent && params.mode === 'image') {
+        if (imagenModel === 'v3') {
+          setJob({ status: 'working', label: 'Édition V3…' })
+          const startRes = await fetch('/api/imagine/v3/images/edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              imageUrl: ent.imageUrl,
+              prompt: buildV3Prompt(fullPrompt, 1, params.aspectRatio)
+            })
+          })
+          const startJson = (await startRes.json().catch(() => null)) as {
+            jobId?: string
+            error?: string
+          } | null
+          if (!startRes.ok || !startJson?.jobId) {
+            throw new Error(startJson?.error || "L'édition a échoué.")
+          }
+          const urls = await pollV3Jobs([startJson.jobId], 1)
+          if (urls.length === 0) throw new Error('Aucune image générée.')
+          setResults(prev => [
+            ...urls.map(url => ({
+              kind: 'image' as const,
+              url,
+              prompt: text,
+              temporary: true
+            })),
+            ...prev
+          ])
+          setJob(null)
+          return
+        }
         setJob({ status: 'working', label: 'Édition de l’image…' })
         const res = await fetch('/api/imagine/images/edit', {
           method: 'POST',
@@ -1257,6 +1441,38 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         }
         batchId = json.batchId
       } else if (params.mode === 'image') {
+        if (imagenModel === 'v3') {
+          setJob({ status: 'working', label: 'Démarrage V3…' })
+          const startRes = await fetch('/api/imagine/v3/images', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: buildV3Prompt(fullPrompt, count, params.aspectRatio),
+              variations: count,
+              aspectRatio: params.aspectRatio
+            })
+          })
+          const startJson = (await startRes.json().catch(() => null)) as {
+            jobs?: string[]
+            error?: string
+          } | null
+          if (!startRes.ok || !startJson?.jobs?.length) {
+            throw new Error(startJson?.error || 'La génération a échoué.')
+          }
+          const urls = await pollV3Jobs(startJson.jobs, count)
+          if (urls.length === 0) throw new Error('Aucune image générée.')
+          setResults(prev => [
+            ...urls.map(url => ({
+              kind: 'image' as const,
+              url,
+              prompt: text,
+              temporary: true
+            })),
+            ...prev
+          ])
+          setJob(null)
+          return
+        }
         setJob({ status: 'working', label: 'Génération de l’image…' })
         const res = await fetch('/api/imagine/images', {
           method: 'POST',
@@ -1445,6 +1661,8 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
                 generating={generating}
                 onGenerate={handleGenerate}
                 extras={extras}
+                imagenModel={imagenModel}
+                setImagenModel={setImagenModel}
               />
             }
           />
@@ -1503,6 +1721,10 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
                     <ToolbarIconButton label="Médias">
                       <IconLayoutGrid size={19} />
                     </ToolbarIconButton>
+                    <ImagenModelSelect
+                      value={imagenModel}
+                      onChange={setImagenModel}
+                    />
                   </>
                 ) : (
                   <>
@@ -1529,6 +1751,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
                     <ToolbarIconButton label="Médias">
                       <IconLayoutGrid size={19} />
                     </ToolbarIconButton>
+                    <VideoOmniChip />
                     {/* Resolution selector — desktop: in toolbar /
                     mobile: below the composer (see below) */}
                     <div className="hidden md:contents">
@@ -1600,6 +1823,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
             (desktop keeps them inside the toolbar) */}
             {mode === 'video' && (
               <div className="mt-3 flex w-full flex-wrap items-center justify-center gap-2 md:hidden">
+                <VideoOmniChip />
                 <SegmentedControl
                   options={VIDEO_RESOLUTIONS}
                   value={resolution}
@@ -1611,6 +1835,14 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
                   onChange={setDuration}
                   disabledValues={['10s']}
                   disabledHint="Bientôt disponible"
+                />
+              </div>
+            )}
+            {mode === 'image' && (
+              <div className="mt-3 flex w-full flex-wrap items-center justify-center gap-2 md:hidden">
+                <ImagenModelSelect
+                  value={imagenModel}
+                  onChange={setImagenModel}
                 />
               </div>
             )}
