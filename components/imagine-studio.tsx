@@ -410,7 +410,16 @@ const STYLE_PRESETS = [
   'Rétro',
   'Vitrail',
   'Méduse',
-  'Château'
+  'Château',
+  'Sakura',
+  'Désert',
+  'Aurore',
+  'Pixel',
+  'Temple',
+  'Cascade',
+  'Fjord',
+  'Mosaïque',
+  'Volcan'
 ]
 
 function StylePresetGrid({
