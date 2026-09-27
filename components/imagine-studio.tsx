@@ -8,7 +8,6 @@ import {
   IconLayoutGrid,
   IconLoader2,
   IconPhoto,
-  IconPlayerPlay,
   IconPlus,
   IconRectangleVertical,
   IconSparkles,
@@ -380,6 +379,21 @@ function AttachmentBar({
 }
 
 // ---------------------------------------------------------------------------
+// Autoplay helper for the video preset cards: forces muted (the muted
+// content attribute alone is unreliable through React) and starts the
+// infinite loop. Module-level so the ref identity is stable across
+// renders — the <video> node is never recreated while typing.
+// ---------------------------------------------------------------------------
+
+function autoplayMutedLoop(el: HTMLVideoElement | null) {
+  if (!el) return
+  el.muted = true
+  void el.play().catch(() => {
+    // Autoplay blocked (data saver…) — the poster stays visible.
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Official preset grid (Whisk-style): dense compact cards, image cover,
 // bottom gradient, white label. Artwork + prompts come from the official
 // ImageKit catalog (OFFICIAL_PRESETS_MIXED): photos and videos interleaved
@@ -423,20 +437,19 @@ function StylePresetGrid({
             )}
           >
             {preset.kind === 'video' ? (
-              <>
-                <img
-                  src={preset.poster ?? preset.image}
-                  alt={preset.label}
-                  loading="lazy"
-                  draggable={false}
-                  className="absolute inset-0 h-full w-full object-cover"
-                />
-                <span className="absolute inset-0 flex items-center justify-center">
-                  <span className="flex size-9 items-center justify-center rounded-full bg-black/55 text-white">
-                    <IconPlayerPlay size={16} />
-                  </span>
-                </span>
-              </>
+              <video
+                ref={autoplayMutedLoop}
+                src={preset.image}
+                poster={preset.poster}
+                preload="auto"
+                autoPlay
+                muted
+                loop
+                playsInline
+                disablePictureInPicture
+                aria-hidden
+                className="absolute inset-0 h-full w-full object-cover"
+              />
             ) : (
               <img
                 src={preset.image}
