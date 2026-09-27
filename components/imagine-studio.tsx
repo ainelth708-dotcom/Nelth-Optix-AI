@@ -18,7 +18,7 @@ import {
 import { ArrowUp, X } from 'lucide-react'
 
 import {
-  OFFICIAL_PRESETS,
+  OFFICIAL_PRESETS_MIXED,
   type OfficialPreset,
   type OfficialPresetCategory
 } from '@/lib/imagine/official-presets'
@@ -382,9 +382,10 @@ function AttachmentBar({
 // ---------------------------------------------------------------------------
 // Official preset grid (Whisk-style): dense compact cards, image cover,
 // bottom gradient, white label. Artwork + prompts come from the official
-// ImageKit catalog (OFFICIAL_PRESETS): video presets show their mp4 first
-// frame, image presets their official picture. The parent filters by mode
-// (video → the 5 video prompts, image → the 45 image/edit prompts).
+// ImageKit catalog (OFFICIAL_PRESETS_MIXED): photos and videos interleaved
+// in a single grid that never changes with the studio mode — selecting a
+// card switches the studio to that card's mode. Video cards show their
+// mp4 poster (plain <img>) with a play badge.
 // ---------------------------------------------------------------------------
 
 function StylePresetGrid({
@@ -1947,17 +1948,18 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
               </div>
             )}
 
-            {/* Official presets: below the composer on desktop, below the
-            resolution/duration selectors on mobile (both sit above this
-            block). Filtered by mode — the 5 video prompts in video mode,
-            the 45 image/edit prompts in image mode. */}
+            {/* Official presets (mixed photos + videos): below the composer
+            on desktop, below the resolution/duration selectors on mobile
+            (both sit above this block). The grid never changes with the
+            mode — selecting a card switches to its mode. */}
             <div className="mt-8 w-full">
               <StylePresetGrid
-                presets={OFFICIAL_PRESETS.filter(p =>
-                  mode === 'video' ? p.kind === 'video' : p.kind === 'image'
-                )}
+                presets={OFFICIAL_PRESETS_MIXED}
                 activePrompt={prompt}
-                onSelect={setPreview}
+                onSelect={preset => {
+                  setMode(preset.kind === 'video' ? 'video' : 'image')
+                  setPreview(preset)
+                }}
                 expanded={expanded}
                 onToggle={() => setExpanded(prev => !prev)}
               />
@@ -2005,15 +2007,21 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
             preset={preview}
             hasSourceImage={attachment?.status === 'ready'}
             onUse={() => {
+              const presetMode = preview.kind === 'video' ? 'video' : 'image'
+              setMode(presetMode)
               setPrompt(preview.prompt)
               setPreview(null)
             }}
             onSend={() => {
+              // Mode comes from the card itself (setState is async, so
+              // pass it explicitly instead of reading `mode`).
+              const presetMode = preview.kind === 'video' ? 'video' : 'image'
               const presetPrompt = preview.prompt
+              setMode(presetMode)
               setPrompt(presetPrompt)
               setPreview(null)
               void runGeneration({
-                mode,
+                mode: presetMode,
                 prompt: presetPrompt,
                 aspectRatio,
                 resolution,

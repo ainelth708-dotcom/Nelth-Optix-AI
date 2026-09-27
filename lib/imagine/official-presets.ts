@@ -875,3 +875,26 @@ blurry, low resolution, noisy image, overexposed highlights, underexposed shadow
     prompt: `A breathtaking 2D hand-drawn Ghibli-style animation. A young girl with short brown hair stands on a grassy hill at night, holding a glowing magical lantern. Dozens of glowing fireflies rise into the dark starry sky around her. Soft wind blowing her dress and hair, cinematic lighting, whimsical and emotional atmosphere. Slow camera zoom-out, masterpiece, high frame rate`
   }
 ]
+
+/**
+ * Mixed display order for the preset grid: the 5 video presets are
+ * interleaved evenly among the 45 image presets (one video every 9
+ * images), so videos and photos always appear together in a single
+ * grid that never changes with the studio mode. Selecting a card
+ * switches the studio to that card's mode.
+ */
+export const OFFICIAL_PRESETS_MIXED: OfficialPreset[] = (() => {
+  const images = OFFICIAL_PRESETS.filter(p => p.kind === 'image')
+  const videos = OFFICIAL_PRESETS.filter(p => p.kind === 'video')
+  const mixed: OfficialPreset[] = []
+  const chunk = Math.ceil(images.length / videos.length)
+  images.forEach((preset, i) => {
+    mixed.push(preset)
+    if ((i + 1) % chunk === 0 && videos.length > 0) {
+      const video = videos.shift()
+      if (video) mixed.push(video)
+    }
+  })
+  mixed.push(...videos)
+  return mixed
+})()
