@@ -509,14 +509,14 @@ function StylePreviewCard({
     >
       <div
         onClick={e => e.stopPropagation()}
-        className="my-auto w-full max-w-md overflow-hidden rounded-[20px] bg-white shadow-2xl dark:bg-card"
+        className="my-auto w-full max-w-[594px] overflow-hidden rounded-[20px] bg-white shadow-2xl dark:bg-card"
       >
-        <div className="relative">
+        <div className="relative mx-auto mt-4 flex h-[388px] max-h-[55dvh] w-[562px] max-w-[calc(100%-2rem)] items-center justify-center overflow-hidden rounded-xl bg-neutral-100 dark:bg-white/5">
           <img
             src={fullUrl}
             alt={label}
             draggable={false}
-            className="aspect-[4/3] w-full object-cover"
+            className="h-full w-full object-contain object-center"
           />
           <button
             type="button"
