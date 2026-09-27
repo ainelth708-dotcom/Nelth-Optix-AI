@@ -19,6 +19,13 @@ export interface OfficialPreset {
   prompt: string
   /** ImageKit file URL (image, or mp4 for video presets). */
   image: string
+  /**
+   * Video-only poster (ImageKit ik-thumbnail.jpg first frame): used for
+   * the card thumbnail and the player poster. A raw <video> with
+   * preload="metadata" stays blank on several mobile browsers, so video
+   * cards never rely on it.
+   */
+  poster?: string
   kind: OfficialPresetKind
   category: OfficialPresetCategory
 }
@@ -821,6 +828,8 @@ blurry, low resolution, noisy image, overexposed highlights, underexposed shadow
     kind: 'video',
     image:
       'https://ik.imagekit.io/big9hcdtmk/video%20gen/detecteur%20priver.mp4',
+    poster:
+      'https://ik.imagekit.io/big9hcdtmk/video%20gen/detecteur%20priver.mp4/ik-thumbnail.jpg',
     prompt: `Un détective privé fatigué, vêtu d'un manteau en laine sombre, sort d'une étroite porte d'hôtel sous une pluie battante de minuit, s'arrête sous un panneau rouge clignotant, puis regarde la rue déserte ; travelling avant lent en contre-plongée, reflets sur le pavé mouillé, ombres profondes, couleurs néo-noir maîtrisées, pluie et mouvements du manteau réalistes, pas de secousse soudaine de caméra.`
   },
   {
@@ -829,6 +838,8 @@ blurry, low resolution, noisy image, overexposed highlights, underexposed shadow
     category: 'video',
     kind: 'video',
     image: 'https://ik.imagekit.io/big9hcdtmk/video%20gen/voiture%20blue.mp4',
+    poster:
+      'https://ik.imagekit.io/big9hcdtmk/video%20gen/voiture%20blue.mp4/ik-thumbnail.jpg',
     prompt: `blue and white formula one racing car parked on a wet track at sunset, glowing orange sparks flying from the floor against the side, grandstands filled with spectators in the background, cinematic lighting, realistic details`
   },
   {
@@ -838,6 +849,8 @@ blurry, low resolution, noisy image, overexposed highlights, underexposed shadow
     kind: 'video',
     image:
       'https://ik.imagekit.io/big9hcdtmk/video%20gen/transition%20vertical.mp4',
+    poster:
+      'https://ik.imagekit.io/big9hcdtmk/video%20gen/transition%20vertical.mp4/ik-thumbnail.jpg',
     prompt: `Écran partagé vertical : le même petit salon commence simple à gauche et se transforme en espace chaleureux et décoré à droite à mesure que les meubles et l'éclairage changent par étapes contrôlées ; caméra fixe, transitions rapides mais fluides, éclairage lumineux de style publicité lifestyle, géométrie de la pièce identique.`
   },
   {
@@ -846,6 +859,8 @@ blurry, low resolution, noisy image, overexposed highlights, underexposed shadow
     category: 'video',
     kind: 'video',
     image: 'https://ik.imagekit.io/big9hcdtmk/video%20gen/3D%20Pixar.mp4',
+    poster:
+      'https://ik.imagekit.io/big9hcdtmk/video%20gen/3D%20Pixar.mp4/ik-thumbnail.jpg',
     prompt: `A vibrant 3D Pixar-style animated video of a cute little red fox wearing a tiny blue backpack, happily skipping along a sunlit forest path. Golden hour lighting, soft shadows, cheerful mood. Smooth camera tracking shot following the fox from the side, dynamic movement, 4k resolution, high quality.`
   },
   {
@@ -855,6 +870,8 @@ blurry, low resolution, noisy image, overexposed highlights, underexposed shadow
     kind: 'video',
     image:
       'https://ik.imagekit.io/big9hcdtmk/video%20gen/A%20Breathtaking%202D.mp4',
+    poster:
+      'https://ik.imagekit.io/big9hcdtmk/video%20gen/A%20Breathtaking%202D.mp4/ik-thumbnail.jpg',
     prompt: `A breathtaking 2D hand-drawn Ghibli-style animation. A young girl with short brown hair stands on a grassy hill at night, holding a glowing magical lantern. Dozens of glowing fireflies rise into the dark starry sky around her. Soft wind blowing her dress and hair, cinematic lighting, whimsical and emotional atmosphere. Slow camera zoom-out, masterpiece, high frame rate`
   }
 ]

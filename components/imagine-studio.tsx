@@ -8,6 +8,7 @@ import {
   IconLayoutGrid,
   IconLoader2,
   IconPhoto,
+  IconPlayerPlay,
   IconPlus,
   IconRectangleVertical,
   IconSparkles,
@@ -421,15 +422,20 @@ function StylePresetGrid({
             )}
           >
             {preset.kind === 'video' ? (
-              <video
-                src={preset.image}
-                preload="metadata"
-                muted
-                playsInline
-                disablePictureInPicture
-                aria-hidden
-                className="absolute inset-0 h-full w-full object-cover"
-              />
+              <>
+                <img
+                  src={preset.poster ?? preset.image}
+                  alt={preset.label}
+                  loading="lazy"
+                  draggable={false}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+                <span className="absolute inset-0 flex items-center justify-center">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-black/55 text-white">
+                    <IconPlayerPlay size={16} />
+                  </span>
+                </span>
+              </>
             ) : (
               <img
                 src={preset.image}
@@ -535,6 +541,7 @@ function StylePreviewCard({
           {preset.kind === 'video' ? (
             <video
               src={preset.image}
+              poster={preset.poster}
               controls
               autoPlay
               muted
