@@ -1507,11 +1507,23 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       // server-side) or image-to-video animate. Variations locked to 1.
       if (ent && params.mode === 'image') {
         if (imagenModel === 'v3') {
-          setJob({ status: 'working', label: 'Édition V3…' })
+          // Multi-image fusion: every ready source is forwarded (the
+          // MetaAI endpoint accepts 1–8 reference images).
+          const imageUrls = readyAttachments
+            .map(a => a.ent?.imageUrl)
+            .filter((u): u is string => typeof u === 'string' && u.length > 0)
+            .slice(0, 8)
+          setJob({
+            status: 'working',
+            label:
+              imageUrls.length > 1
+                ? `Édition V3 (${imageUrls.length} images)…`
+                : 'Édition V3…'
+          })
           const startRes = await fetchImagineApi(
             '/api/imagine/v3/images/edit',
             {
-              imageUrl: ent.imageUrl,
+              imageUrls,
               prompt: buildV3Prompt(fullPrompt, 1, params.aspectRatio)
             }
           )
