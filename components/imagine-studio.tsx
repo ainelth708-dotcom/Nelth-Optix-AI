@@ -16,6 +16,11 @@ import {
 } from '@tabler/icons-react'
 import { ArrowUp, X } from 'lucide-react'
 
+import {
+  OFFICIAL_PRESETS,
+  type OfficialPreset,
+  type OfficialPresetCategory
+} from '@/lib/imagine/official-presets'
 import { buildV3Prompt } from '@/lib/imagine/v3prompt'
 import { compressImageForUpload } from '@/lib/upload/compress-image'
 import {
@@ -374,141 +379,119 @@ function AttachmentBar({
 }
 
 // ---------------------------------------------------------------------------
-// Style preset grid (Whisk-style): dense compact cards, image cover,
-// bottom gradient, white label. Thumbnails via picsum seeds until the
-// backend serves real style artwork.
+// Official preset grid (Whisk-style): dense compact cards, image cover,
+// bottom gradient, white label. Artwork + prompts come from the official
+// ImageKit catalog (OFFICIAL_PRESETS): video presets show their mp4 first
+// frame, image presets their official picture. The parent filters by mode
+// (video → the 5 video prompts, image → the 45 image/edit prompts).
 // ---------------------------------------------------------------------------
 
-const STYLE_PRESETS = [
-  'Mug',
-  'Neon',
-  'Arcade',
-  'Peluches',
-  'Parachute',
-  'Chibi',
-  'Studio',
-  'Bois',
-  'Hollywood',
-  'Pâte à modeler',
-  'Yoga',
-  'Floraison',
-  'Zen',
-  'Premier rang',
-  'Pastel',
-  'Sitcom Star',
-  'Origami',
-  'Attrape-peluche',
-  'Monstera',
-  'Gigascale',
-  'Fresque',
-  'Photo CV',
-  'Sur un banc',
-  'Élifique',
-  'Aquarelle',
-  'Pins',
-  'NYC',
-  'Peinture murale',
-  'Afrique années 70',
-  'Bento',
-  'Marbre',
-  'Parc d’attractions',
-  'Pop-up',
-  'Bronze',
-  'Café crème',
-  'Jungle',
-  'Rétro',
-  'Vitrail',
-  'Méduse',
-  'Château',
-  'Sakura',
-  'Désert',
-  'Aurore',
-  'Pixel',
-  'Temple',
-  'Cascade',
-  'Fjord',
-  'Mosaïque',
-  'Volcan'
-]
-
 function StylePresetGrid({
-  active,
+  presets,
+  activePrompt,
   onSelect,
   expanded,
   onToggle
 }: {
-  active: string | null
-  onSelect: (label: string) => void
+  presets: OfficialPreset[]
+  activePrompt: string
+  onSelect: (preset: OfficialPreset) => void
   expanded: boolean
   onToggle: () => void
 }) {
-  // Collapsed: first 17 presets + a "Plus" card; expanded: all 34 + Fermer.
-  const visible = expanded ? STYLE_PRESETS : STYLE_PRESETS.slice(0, 17)
+  // Collapsed: first 17 presets + a "Plus" card; expanded: all + Fermer.
+  // The trailing toggle card only renders when collapsing hides presets.
+  const COLLAPSED_COUNT = 17
+  const visible = expanded ? presets : presets.slice(0, COLLAPSED_COUNT)
   return (
     <div className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-5">
-      {visible.map(label => {
-        const isActive = active === label
+      {visible.map(preset => {
+        const isActive =
+          activePrompt.length > 0 && activePrompt === preset.prompt
         return (
           <button
-            key={label}
+            key={preset.id}
             type="button"
-            onClick={() => onSelect(label)}
+            onClick={() => onSelect(preset)}
             aria-pressed={isActive}
-            title={label}
+            title={preset.label}
             className={cn(
               'group relative aspect-[60/86] w-full overflow-hidden rounded-[18px] bg-neutral-200 transition-all duration-150 ease-out hover:scale-[1.04] hover:shadow-md dark:bg-white/10',
               isActive && 'shadow-lg ring-2 ring-white'
             )}
           >
-            <img
-              src={`https://picsum.photos/seed/${encodeURIComponent(label)}/280/400`}
-              alt={label}
-              loading="lazy"
-              draggable={false}
-              className="absolute inset-0 h-full w-full object-cover"
-            />
+            {preset.kind === 'video' ? (
+              <video
+                src={preset.image}
+                preload="metadata"
+                muted
+                playsInline
+                disablePictureInPicture
+                aria-hidden
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            ) : (
+              <img
+                src={preset.image}
+                alt={preset.label}
+                loading="lazy"
+                draggable={false}
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            )}
             <span
               aria-hidden
               className="absolute inset-x-0 bottom-0 h-[55%] bg-gradient-to-t from-black/65 via-black/20 to-transparent"
             />
             <span className="absolute bottom-[8px] left-[8px] right-[8px] text-left text-[12px] font-semibold leading-tight text-white">
-              {label}
+              {preset.label}
             </span>
           </button>
         )
       })}
       {/* Trailing card — Fermer collapses to 17 + Plus, Plus expands
-          back to the full 34. Same shape, no image. */}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex aspect-[60/86] w-full flex-col items-center justify-center gap-1 rounded-[18px] bg-[#F1F1F1] text-[#555555] transition-transform duration-150 ease-out hover:scale-[1.04] dark:bg-white/10 dark:text-neutral-400"
-      >
-        {expanded ? (
-          <X size={20} strokeWidth={2} />
-        ) : (
-          <IconPlus size={20} strokeWidth={2} />
-        )}
-        <span className="text-xs font-medium">
-          {expanded ? 'Fermer' : 'Plus'}
-        </span>
-      </button>
+          back to the full list. Same shape, no image. */}
+      {presets.length > COLLAPSED_COUNT && (
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex aspect-[60/86] w-full flex-col items-center justify-center gap-1 rounded-[18px] bg-[#F1F1F1] text-[#555555] transition-transform duration-150 ease-out hover:scale-[1.04] dark:bg-white/10 dark:text-neutral-400"
+        >
+          {expanded ? (
+            <X size={20} strokeWidth={2} />
+          ) : (
+            <IconPlus size={20} strokeWidth={2} />
+          )}
+          <span className="text-xs font-medium">
+            {expanded ? 'Fermer' : 'Plus'}
+          </span>
+        </button>
+      )}
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
 // Style preview card (Gemini/ChatGPT-like): click a preset → lightbox with
-// the image, its title and actions (use style, open original, send).
+// the official image (or video), its title, its full prompt and actions
+// (use prompt, open original, send).
 // ---------------------------------------------------------------------------
 
+const PRESET_CATEGORY_LABEL: Record<OfficialPresetCategory, string> = {
+  edit: 'Montage image',
+  generate: 'Image',
+  video: 'Vidéo'
+}
+
 function StylePreviewCard({
-  label,
+  preset,
+  hasSourceImage,
   onUse,
   onSend,
   onClose
 }: {
-  label: string
+  preset: OfficialPreset
+  hasSourceImage: boolean
   onUse: () => void
   onSend: () => void
   onClose: () => void
@@ -521,18 +504,16 @@ function StylePreviewCard({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // Natural size of the loaded image: the viewer box adopts its exact
+  // Natural size of the loaded media: the viewer box adopts its exact
   // ratio (portrait stays portrait, square stays square), so every image
   // is fully visible with no crop, zoom or distortion.
   const [previewNat, setPreviewNat] = useState<[number, number] | null>(null)
-
-  const fullUrl = `https://picsum.photos/seed/${encodeURIComponent(label)}/800/1000`
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={label}
+      aria-label={preset.label}
       onClick={onClose}
       className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/60 p-4"
     >
@@ -551,18 +532,36 @@ function StylePreviewCard({
               : { minHeight: 240 }
           }
         >
-          <img
-            src={fullUrl}
-            alt={label}
-            draggable={false}
-            onLoad={e => {
-              const im = e.currentTarget
-              if (im.naturalWidth && im.naturalHeight) {
-                setPreviewNat([im.naturalWidth, im.naturalHeight])
-              }
-            }}
-            className="absolute inset-0 h-full w-full object-contain object-center"
-          />
+          {preset.kind === 'video' ? (
+            <video
+              src={preset.image}
+              controls
+              autoPlay
+              muted
+              loop
+              playsInline
+              onLoadedMetadata={e => {
+                const v = e.currentTarget
+                if (v.videoWidth && v.videoHeight) {
+                  setPreviewNat([v.videoWidth, v.videoHeight])
+                }
+              }}
+              className="absolute inset-0 h-full w-full object-contain object-center"
+            />
+          ) : (
+            <img
+              src={preset.image}
+              alt={preset.label}
+              draggable={false}
+              onLoad={e => {
+                const im = e.currentTarget
+                if (im.naturalWidth && im.naturalHeight) {
+                  setPreviewNat([im.naturalWidth, im.naturalHeight])
+                }
+              }}
+              className="absolute inset-0 h-full w-full object-contain object-center"
+            />
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -572,17 +571,17 @@ function StylePreviewCard({
             <X size={16} strokeWidth={2} />
           </button>
         </div>
-        <div className="flex items-center gap-2 p-4">
+        <div className="flex items-center gap-2 p-4 pb-2">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-semibold text-[#111] dark:text-foreground">
-              {label}
+              {preset.label}
             </p>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              Preset de style
+              {PRESET_CATEGORY_LABEL[preset.category]} • Preset officiel
             </p>
           </div>
           <a
-            href={fullUrl}
+            href={preset.image}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Voir l'original"
@@ -608,6 +607,16 @@ function StylePreviewCard({
             <ArrowUp size={18} strokeWidth={2.5} />
           </button>
         </div>
+        <p className="max-h-36 overflow-y-auto whitespace-pre-wrap px-4 pb-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
+          {preset.prompt}
+        </p>
+        {preset.category === 'edit' && !hasSourceImage ? (
+          <p className="px-4 pb-3 text-xs text-amber-600 dark:text-amber-400">
+            Ajoutez une image source (+) pour un montage fidèle.
+          </p>
+        ) : (
+          <div className="pb-3" />
+        )}
       </div>
     </div>
   )
@@ -1058,9 +1067,8 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1')
   const [resolution, setResolution] = useState<VideoResolution>('480p')
   const [duration, setDuration] = useState<VideoDuration>('6s')
-  const [style, setStyle] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(true)
-  const [preview, setPreview] = useState<string | null>(null)
+  const [preview, setPreview] = useState<OfficialPreset | null>(null)
   const [view, setView] = useState<'create' | 'discover'>('create')
   const [editing, setEditing] = useState<ImagineResult | null>(null)
   const [expectedCount, setExpectedCount] = useState(2)
@@ -1683,7 +1691,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   }
 
   const handleGenerate = () => {
-    void runGeneration({ mode, prompt, aspectRatio, resolution, style })
+    void runGeneration({ mode, prompt, aspectRatio, resolution, style: null })
   }
   const extras: ComposerExtras = {
     variations,
@@ -1932,13 +1940,17 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
               </div>
             )}
 
-            {/* Style presets: below the composer on desktop, below the
+            {/* Official presets: below the composer on desktop, below the
             resolution/duration selectors on mobile (both sit above this
-            block). The backend fills real artwork in later. */}
+            block). Filtered by mode — the 5 video prompts in video mode,
+            the 45 image/edit prompts in image mode. */}
             <div className="mt-8 w-full">
               <StylePresetGrid
-                active={style}
-                onSelect={label => setPreview(label)}
+                presets={OFFICIAL_PRESETS.filter(p =>
+                  mode === 'video' ? p.kind === 'video' : p.kind === 'image'
+                )}
+                activePrompt={prompt}
+                onSelect={setPreview}
                 expanded={expanded}
                 onToggle={() => setExpanded(prev => !prev)}
               />
@@ -1983,20 +1995,22 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         )}
         {preview && (
           <StylePreviewCard
-            label={preview}
+            preset={preview}
+            hasSourceImage={attachment?.status === 'ready'}
             onUse={() => {
-              setStyle(preview)
+              setPrompt(preview.prompt)
               setPreview(null)
             }}
             onSend={() => {
-              setStyle(preview)
+              const presetPrompt = preview.prompt
+              setPrompt(presetPrompt)
               setPreview(null)
               void runGeneration({
                 mode,
-                prompt,
+                prompt: presetPrompt,
                 aspectRatio,
                 resolution,
-                style: preview
+                style: null
               })
             }}
             onClose={() => setPreview(null)}
