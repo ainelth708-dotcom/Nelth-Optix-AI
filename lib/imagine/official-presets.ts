@@ -877,11 +877,76 @@ blurry, low resolution, noisy image, overexposed highlights, underexposed shadow
 ]
 
 /**
- * Mixed display order for the preset grid: the 5 video presets are
- * interleaved evenly among the 45 image presets (one video every 9
- * images), so videos and photos always appear together in a single
- * grid that never changes with the studio mode. Selecting a card
- * switches the studio to that card's mode.
+ * The 5 newest cards (ImageKit folder "5 NEW"): always displayed FIRST in
+ * the grid, before the mixed catalog below.
+ */
+export const OFFICIAL_NEW_PRESETS: OfficialPreset[] = [
+  {
+    id: 'new-salle-de-sport',
+    label: 'Salle de Sport',
+    category: 'generate',
+    kind: 'image',
+    image: 'https://ik.imagekit.io/big9hcdtmk/5%20NEW/Salle%20de%20Sport.jpg',
+    prompt: `Ultra-realistic editorial photography, 8K UHD, ultra-detailed professional fitness photography. Vertical 1:2 composition.
+
+A {argument name="subject identity" default="21-year-old Indonesian woman"} inside a luxurious high-end fitness gym. The environment features an elegant modern fitness center with sophisticated mirrored walls, polished metal equipment, matte-black weight racks, reflective rubber flooring, and subtle ambient LED accents. The background has a soft cinematic bokeh effect that creates strong depth separation while preserving subtle, recognizable gym shapes. The atmosphere is clean, premium, athletic, energetic, and styled like a professional fitness photoshoot, with a shallow depth of field and smooth background blur.
+
+The subject has an athletic and toned physique with natural muscle definition. She has a warm medium-tan Indonesian complexion with a healthy natural glow and visible realistic skin micro-texture. Realistic beads of sweat are visible on her forehead, clavicles, shoulders, and upper chest after an intense workout. Her facial anatomy is natural, with symmetrical features and realistic bone structure. She has a focused, determined expression while lifting weights.
+
+Her hair is dark brown, styled in an effortless messy bun, with a few loose strands naturally framing her face. Some strands are slightly damp from sweat and gently adhere to her temples.
+
+Maintain 1:1 anatomical accuracy of the facial structure. Do not alter the skeletal structure or natural chest proportions. Preserve realistic human anatomy and natural body proportions without exaggeration.
+
+She is wearing a premium athletic bodysuit made from high-performance stretch fabric with subtle compression. The fitted design naturally emphasizes her athletic physique. The fabric has a slight sheen that catches the gym lighting, with realistic folds, tension lines, and material texture. The overall clothing style is minimalist luxury sportswear.
+
+She is actively lifting weights during a workout. Capture a dynamic full-body medium shot showing the movement of lifting a dumbbell or barbell. Her posture is strong and athletic, with visibly engaged muscles and natural physical effort. Include subtle movement tension in the arms and shoulders while maintaining realistic anatomy.
+
+Shot with a professional full-frame DSLR or mirrorless camera using an 85mm portrait lens, f/2.0 aperture, ISO 100, and 1/500s shutter speed. The face and body should be sharply focused with realistic professional photographic detail, natural lighting, accurate skin texture, realistic sweat, physically accurate shadows, cinematic depth, and premium editorial fitness photography quality.`
+  },
+  {
+    id: 'new-travel-lifestyle',
+    label: 'Photorealistic Lifestyle Travel Photography',
+    category: 'generate',
+    kind: 'image',
+    image:
+      'https://ik.imagekit.io/big9hcdtmk/5%20NEW/Photorealistic%20Lifestyle%20Travel%20Photography.jpg',
+    prompt: `Photorealistic premium travel lifestyle photography, cozy soft aesthetic, natural candid moment, warm and muted color palette, soft ambient cabin lighting, realistic natural skin tones, subtle cinematic atmosphere, shallow depth of field, 50mm lens, eye-level composition, slightly close framing, highly detailed textures, clean modern interior, intimate and relaxed mood, editorial-grade photography, ultra-realistic, 4K detail.`
+  },
+  {
+    id: 'new-iphone-selfie',
+    label: 'Intimate Low-Light iPhone Selfie Realism',
+    category: 'generate',
+    kind: 'image',
+    image:
+      'https://ik.imagekit.io/big9hcdtmk/5%20NEW/Intimate%20Low-Light%20iPhone%20Selfie%20Realism.jpg',
+    prompt: `Ultra-photorealistic low-light iPhone selfie photography, intimate late-night bathroom realism, authentic smartphone camera aesthetic, warm vanity mirror lighting, subtle soft grain, natural skin texture with visible pores, realistic imperfect details, cozy humid atmosphere, candid unposed lifestyle photography, 24mm wide-angle perspective, slightly elevated selfie angle, vertical 9:16 composition, natural warm muted colors, soft atmospheric highlights, realistic shadows, genuine everyday moment, no studio lighting, no professional photoshoot look, no artificial skin smoothing, highly detailed 8K photographic realism.`
+  },
+  {
+    id: 'new-cinematic-urban-3d',
+    label: 'Cinematic Urban Realism × 3D Cartoon Character',
+    category: 'generate',
+    kind: 'image',
+    image:
+      'https://ik.imagekit.io/big9hcdtmk/5%20NEW/Cinematic%20Urban%20Realism%20%C3%97%203D%20Cartoon%20Character.jpg',
+    prompt: `Ultra-hyperrealistic cinematic urban photography, premium DSLR aesthetic, mixed-media composition combining photorealistic human photography with a cute stylized 3D cartoon/chibi character, modern street-fashion editorial aesthetic, natural daylight, soft realistic shadows, cinematic color grading, high dynamic range, realistic skin and clothing textures, 50mm lens look, shallow depth of field, crisp subject focus, modern glass architecture, clean urban environment, sophisticated Instagram lifestyle aesthetic, playful contrast between real life and animated character design, ultra-detailed, photorealistic rendering, premium visual quality, 8K.`
+  },
+  {
+    id: 'new-mountain-action',
+    label: 'Cinematic Golden-Hour Mountain Action',
+    category: 'generate',
+    kind: 'image',
+    image:
+      'https://ik.imagekit.io/big9hcdtmk/5%20NEW/Cinematic%20Golden-Hour%20Mountain%20Action.jpg',
+    prompt: `Cinematic action sports photography, ultra-realistic mountain adventure aesthetic, dynamic wide-angle low-angle tracking shot, dramatic low perspective, intense golden-hour backlighting, prominent anamorphic-style lens flare from the upper right, high-contrast cinematic color grading, warm golden highlights contrasted with deep teal shadows, natural atmospheric haze, crisp subject focus, intentional motion blur on the road and wheels, subtle analog film grain, high dynamic range, dramatic mountain landscape, energetic sense of speed and movement, premium outdoor editorial photography, immersive cinematic composition, emphasis on camera angle, lighting design and color grading.`
+  }
+]
+
+/**
+ * Mixed display order for the preset grid: the 5 NEW cards first, then
+ * the catalog with the 5 video presets interleaved evenly among the 45
+ * image presets (one video every 9 images), so videos and photos always
+ * appear together in a single grid that never changes with the studio
+ * mode. Selecting a card switches the studio to that card's mode.
  */
 export const OFFICIAL_PRESETS_MIXED: OfficialPreset[] = (() => {
   const images = OFFICIAL_PRESETS.filter(p => p.kind === 'image')
@@ -912,5 +977,5 @@ export const OFFICIAL_PRESETS_MIXED: OfficialPreset[] = (() => {
       mixed[ib] = tmp
     }
   }
-  return mixed
+  return [...OFFICIAL_NEW_PRESETS, ...mixed]
 })()
