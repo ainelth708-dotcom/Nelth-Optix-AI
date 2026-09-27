@@ -311,21 +311,21 @@ function VideoOmniChip() {
 }
 
 // ---------------------------------------------------------------------------
-// Attached source image chip (thumbnail + upload status + remove).
+// Attached source images (thumbnail + upload status + remove, one chip
+// per image — multi-upload: adding a file appends, never replaces).
 // ---------------------------------------------------------------------------
 
-function AttachmentBar({
+function AttachmentChip({
   attachment,
   onRemove,
   onRetry
 }: {
-  attachment: StudioAttachment | null
+  attachment: StudioAttachment
   onRemove: () => void
   onRetry: () => void
 }) {
-  if (!attachment) return null
   return (
-    <div className="flex items-center gap-2 px-[19px] pt-3">
+    <div className="flex items-center gap-2">
       <div className="relative size-11 shrink-0 overflow-hidden rounded-lg border border-black/5 bg-neutral-100 dark:border-white/10 dark:bg-white/10">
         {attachment.previewUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -372,6 +372,30 @@ function AttachmentBar({
       >
         <X size={14} strokeWidth={2} />
       </button>
+    </div>
+  )
+}
+
+function AttachmentBar({
+  attachments,
+  onRemove,
+  onRetry
+}: {
+  attachments: StudioAttachment[]
+  onRemove: (id: string) => void
+  onRetry: (id: string) => void
+}) {
+  if (attachments.length === 0) return null
+  return (
+    <div className="flex flex-col gap-2 px-[19px] pt-3">
+      {attachments.map(attachment => (
+        <AttachmentChip
+          key={attachment.id}
+          attachment={attachment}
+          onRemove={() => onRemove(attachment.id)}
+          onRetry={() => onRetry(attachment.id)}
+        />
+      ))}
     </div>
   )
 }
@@ -490,21 +514,27 @@ function StylePresetGrid({
 }
 
 // ---------------------------------------------------------------------------
-// Preset photo modal: click a card → centered choice modal with the
-// preset's official artwork (cover), an explanatory text, a primary
-// "Sélectionner une photo" action (opens the file picker; the chosen
-// image becomes the source for the transformation) and a plain
-// "Annuler" action. Premium dark/blurred backdrop, compact rounded
-// card, light + dark mode.
+// Preset card modal: click a card → centered modal with the preset's
+// official artwork at its ORIGINAL ratio (fully visible, never cropped
+// or zoomed; videos autoplay muted in an infinite loop), the card's
+// official prompt (collapsed with "Voir plus" / "Moins" when long),
+// then per-category actions — edit cards: "Sélectionner une photo"
+// (the picked photo becomes the transformation source) + "Annuler";
+// image/video-gen cards: "Envoyer" + "Annuler". Premium dark/blurred
+// backdrop, compact rounded card, light + dark mode.
 // ---------------------------------------------------------------------------
+
+const PROMPT_COLLAPSED_CHARS = 140
 
 function StylePreviewCard({
   preset,
   onSelectPhoto,
+  onSend,
   onClose
 }: {
   preset: OfficialPreset
   onSelectPhoto: (file: File) => void
+  onSend: () => void
   onClose: () => void
 }) {
   useEffect(() => {
@@ -516,9 +546,15 @@ function StylePreviewCard({
   }, [onClose])
 
   const photoInputRef = useRef<HTMLInputElement>(null)
-  // Video presets show their poster frame (spec = still image, cover).
-  const previewSrc =
-    preset.kind === 'video' ? (preset.poster ?? preset.image) : preset.image
+  const [showFullPrompt, setShowFullPrompt] = useState(false)
+  // Natural media size: the viewer box adopts its exact ratio so the
+  // artwork is fully visible with no crop, zoom or distortion.
+  const [mediaNat, setMediaNat] = useState<[number, number] | null>(null)
+  const isLongPrompt = preset.prompt.length > PROMPT_COLLAPSED_CHARS
+  const promptText =
+    !isLongPrompt || showFullPrompt
+      ? preset.prompt
+      : `${preset.prompt.slice(0, PROMPT_COLLAPSED_CHARS).trimEnd()}…`
 
   return (
     <div
@@ -532,23 +568,97 @@ function StylePreviewCard({
         onClick={e => e.stopPropagation()}
         className="my-auto w-[400px] max-w-[calc(100%-2rem)] rounded-[24px] bg-white p-4 text-neutral-800 shadow-[0_24px_90px_rgba(0,0,0,0.55)] dark:bg-[#202020] dark:text-neutral-200"
       >
-        <img
-          src={previewSrc}
-          alt=""
-          draggable={false}
-          className="h-[280px] w-full rounded-[14px] object-cover"
-        />
-        <p className="mt-4 text-left text-[16px] font-medium leading-[1.45]">
-          Imaginez-vous sur une affiche de film rétro des années 70. Ajoutez une
-          photo et regardez-la se transformer.
-        </p>
-        <button
-          type="button"
-          onClick={() => photoInputRef.current?.click()}
-          className="mt-4 h-[50px] w-full rounded-[25px] bg-black text-[15px] font-semibold text-white transition-colors duration-200 hover:bg-neutral-800 dark:text-neutral-100"
+        <div
+          className="relative w-full overflow-hidden rounded-[14px] bg-neutral-100 dark:bg-white/5"
+          style={
+            mediaNat
+              ? {
+                  aspectRatio: `${mediaNat[0]} / ${mediaNat[1]}`,
+                  maxHeight: '40dvh'
+                }
+              : { minHeight: 200 }
+          }
         >
-          Sélectionner une photo
-        </button>
+          {preset.kind === 'video' ? (
+            <video
+              ref={autoplayMutedLoop}
+              src={preset.image}
+              poster={preset.poster}
+              preload="auto"
+              autoPlay
+              muted
+              loop
+              playsInline
+              onLoadedMetadata={e => {
+                const v = e.currentTarget
+                if (v.videoWidth && v.videoHeight) {
+                  setMediaNat([v.videoWidth, v.videoHeight])
+                }
+              }}
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          ) : (
+            <img
+              src={preset.image}
+              alt={preset.label}
+              draggable={false}
+              onLoad={e => {
+                const im = e.currentTarget
+                if (im.naturalWidth && im.naturalHeight) {
+                  setMediaNat([im.naturalWidth, im.naturalHeight])
+                }
+              }}
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          )}
+        </div>
+        <p className="mt-4 whitespace-pre-wrap text-left text-[16px] font-medium leading-[1.45]">
+          {promptText}{' '}
+          {isLongPrompt && (
+            <button
+              type="button"
+              onClick={() => setShowFullPrompt(v => !v)}
+              className="font-semibold underline underline-offset-2"
+            >
+              {showFullPrompt ? 'Moins' : 'Voir plus'}
+            </button>
+          )}
+        </p>
+        {preset.category === 'edit' ? (
+          <>
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              className="mt-4 h-[50px] w-full rounded-[25px] bg-black text-[15px] font-semibold text-white transition-colors duration-200 hover:bg-neutral-800 dark:text-neutral-100"
+            >
+              Sélectionner une photo
+            </button>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              // Visually hidden but RENDERED (never display:none): on Android
+              // Chrome a display:none input opened by code falls back to the
+              // Files manager instead of the gallery picker.
+              className="pointer-events-none absolute h-px w-px opacity-0"
+              aria-hidden
+              tabIndex={-1}
+              onChange={e => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                if (file) onSelectPhoto(file)
+              }}
+            />
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={onSend}
+            className="mt-4 h-[50px] w-full rounded-[25px] bg-black text-[15px] font-semibold text-white transition-colors duration-200 hover:bg-neutral-800 dark:text-neutral-100"
+          >
+            Envoyer
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}
@@ -556,22 +666,6 @@ function StylePreviewCard({
         >
           Annuler
         </button>
-        <input
-          ref={photoInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          // Visually hidden but RENDERED (never display:none): on Android
-          // Chrome a display:none input opened by code falls back to the
-          // Files manager instead of the gallery picker.
-          className="pointer-events-none absolute h-px w-px opacity-0"
-          aria-hidden
-          tabIndex={-1}
-          onChange={e => {
-            const file = e.target.files?.[0]
-            e.target.value = ''
-            if (file) onSelectPhoto(file)
-          }}
-        />
       </div>
     </div>
   )
@@ -1029,7 +1123,9 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   const [expectedCount, setExpectedCount] = useState(2)
   const [variations, setVariations] = useState(2)
   const [imagenModel, setImagenModel] = useState<ImagenModel>('v2')
-  const [attachment, setAttachment] = useState<StudioAttachment | null>(null)
+  // Multi-upload: every added file appends its own entry (never replaces
+  // the previous ones), each with its own compress/upload lifecycle.
+  const [attachments, setAttachments] = useState<StudioAttachment[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [generating, setGenerating] = useState(false)
   const [job, setJob] = useState<
@@ -1046,14 +1142,28 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
 
   // Effective variations: locked to 1 as soon as a source image is
   // attached (the request becomes image-to-image / image-to-video).
-  const variationsLocked = attachment?.status === 'ready'
+  // Primary source = the most recently added ready image.
+  const readyAttachments = attachments.filter(a => a.status === 'ready')
+  const primaryAttachment =
+    readyAttachments.length > 0
+      ? readyAttachments[readyAttachments.length - 1]
+      : null
+  const variationsLocked = primaryAttachment !== null
   const effectiveVariations = variationsLocked ? 1 : variations
   // Send allowed with prompt text — or empty for auto-animate (attached
-  // image + video mode, motion directive optional).
+  // image + video mode, motion directive optional). Blocked while any
+  // upload is still running.
   const canSend =
     !generating &&
-    attachment?.status !== 'uploading' &&
+    !attachments.some(a => a.status === 'uploading') &&
     (prompt.trim().length > 0 || (mode === 'video' && variationsLocked))
+  // Card-modal flow only: when set, the generation starts automatically
+  // as soon as the modal-picked photo finishes uploading (single-shot).
+  const autoStartRef = useRef<{
+    prompt: string
+    mode: StudioMode
+    attachmentId: string
+  } | null>(null)
 
   // Stop any pending video poll on unmount.
   useEffect(() => {
@@ -1160,23 +1270,47 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   // everything else to a sub-Mo payload, so big phone photos are welcome.
   const MAX_IMAGE_BYTES = 25 * 1024 * 1024
 
-  const handleRemoveAttachment = () => {
-    setAttachment(prev => {
-      if (prev?.previewUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(prev.previewUrl)
+  const handleRemoveAttachment = (id: string) => {
+    // A pending card-modal autostart dies with its photo.
+    if (autoStartRef.current?.attachmentId === id) autoStartRef.current = null
+    setAttachments(prev => {
+      const target = prev.find(a => a.id === id)
+      if (target?.previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(target.previewUrl)
       }
-      return null
+      return prev.filter(a => a.id !== id)
     })
   }
 
-  const handleAttachFile = async (file: File) => {
-    handleRemoveAttachment()
-    const id =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}`
+  const newAttachmentId = () =>
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+
+  const handleAttachFile = async (file: File, existingId?: string) => {
+    // Appends a new entry (multi-upload) — or refreshes the retried one.
+    const id = existingId ?? newAttachmentId()
+    const upsert = (entry: StudioAttachment) =>
+      setAttachments(prev => {
+        const i = prev.findIndex(a => a.id === id)
+        if (i === -1) return [...prev, entry]
+        const current = prev[i]
+        if (
+          current.previewUrl.startsWith('blob:') &&
+          current.previewUrl !== entry.previewUrl
+        ) {
+          URL.revokeObjectURL(current.previewUrl)
+        }
+        const next = [...prev]
+        next[i] = entry
+        return next
+      })
+    const patch = (partial: Partial<StudioAttachment>) =>
+      setAttachments(prev =>
+        prev.map(a => (a.id === id ? { ...a, ...partial } : a))
+      )
     if (!file.type.startsWith('image/')) {
-      setAttachment({
+      upsert({
         id,
         name: file.name,
         previewUrl: '',
@@ -1186,16 +1320,17 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       return
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      setAttachment({
+      upsert({
         id,
         name: file.name,
         previewUrl: URL.createObjectURL(file),
         status: 'error',
-        error: 'Image trop lourde (max 25 Mo).'
+        error: 'Image trop lourde (max 25 Mo).',
+        file
       })
       return
     }
-    setAttachment({
+    upsert({
       id,
       name: file.name,
       previewUrl: URL.createObjectURL(file),
@@ -1205,9 +1340,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     })
     try {
       const pressed = await compressImageForUpload(file)
-      setAttachment(prev =>
-        prev && prev.id === id ? { ...prev, stage: 'upload' } : prev
-      )
+      patch({ stage: 'upload' })
       const res = await fetchImagineApi('/api/imagine/upload', {
         imageBase64: pressed.base64,
         filename: file.name
@@ -1232,20 +1365,28 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
               : `L'envoi a échoué (${res.status}).`)
         )
       }
-      setAttachment(prev =>
-        prev && prev.id === id
-          ? {
-              ...prev,
-              status: 'ready',
-              ent: {
-                sourceImageEntId: json.sourceImageEntId!,
-                mediaEntId: json.mediaEntId!,
-                imageUrl: json.imageUrl!,
-                allMediaEntIds: json.allMediaEntIds ?? []
-              }
-            }
-          : prev
-      )
+      patch({
+        status: 'ready',
+        ent: {
+          sourceImageEntId: json.sourceImageEntId,
+          mediaEntId: json.mediaEntId,
+          imageUrl: json.imageUrl,
+          allMediaEntIds: json.allMediaEntIds ?? []
+        }
+      })
+      // Card-modal flow only: the picked photo is fully imported →
+      // start the generation automatically (single-shot).
+      const pending = autoStartRef.current
+      if (pending && pending.attachmentId === id) {
+        autoStartRef.current = null
+        void runGeneration({
+          mode: pending.mode,
+          prompt: pending.prompt,
+          aspectRatio,
+          resolution,
+          style: null
+        })
+      }
     } catch (err) {
       const isHeic =
         file.type === 'image/heic' ||
@@ -1261,11 +1402,10 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
             : err instanceof Error
               ? err.message
               : "L'envoi a échoué."
-      setAttachment(prev =>
-        prev && prev.id === id
-          ? { ...prev, status: 'error', error: message }
-          : prev
-      )
+      if (autoStartRef.current?.attachmentId === id) {
+        autoStartRef.current = null
+      }
+      patch({ status: 'error', error: message })
     }
   }
 
@@ -1278,7 +1418,8 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     variations?: number
   }) => {
     const text = params.prompt.trim()
-    const ent = attachment?.status === 'ready' ? attachment.ent! : null
+    // Primary source = the most recently added ready image.
+    const ent = primaryAttachment?.ent ?? null
     const count = ent
       ? 1
       : typeof params.variations === 'number' &&
@@ -1290,15 +1431,16 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     // An attached image that isn't ready must block the send explicitly —
     // silently falling back to text-only generation would answer the wrong
     // request. The error surfaces in the Découvrir view.
-    if (attachment && attachment.status !== 'ready') {
+    const pendingAttachment = attachments.find(a => a.status !== 'ready')
+    if (pendingAttachment) {
       setView('discover')
       setExpectedCount(count)
       setJob({
         status: 'error',
         message:
-          attachment.status === 'uploading'
-            ? "Attends la fin de l'envoi de l'image."
-            : "L'image n'est pas prête — réessaie l'envoi ou retire-la."
+          pendingAttachment.status === 'uploading'
+            ? "Attends la fin de l'envoi des images."
+            : "Une image n'est pas prête — réessaie l'envoi ou retire-la."
       })
       return
     }
@@ -1654,11 +1796,11 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     variationsLocked,
     attachmentBar: (
       <AttachmentBar
-        attachment={attachment}
+        attachments={attachments}
         onRemove={handleRemoveAttachment}
-        onRetry={() => {
-          const file = attachment?.file
-          if (file) void handleAttachFile(file)
+        onRetry={id => {
+          const file = attachments.find(a => a.id === id)?.file
+          if (file) void handleAttachFile(file, id)
         }}
       />
     ),
@@ -1953,14 +2095,36 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           <StylePreviewCard
             preset={preview}
             onSelectPhoto={file => {
-              // The chosen photo becomes the transformation source: fill
-              // the composer with the card's prompt + mode, attach the
-              // file (compress + upload runs in the background), close.
+              // Edit-card flow only: the picked photo becomes the source,
+              // the composer is filled with the card's prompt + mode, and
+              // the generation starts automatically once the photo is
+              // fully imported (single-shot autostart).
               const presetMode = preview.kind === 'video' ? 'video' : 'image'
               setMode(presetMode)
               setPrompt(preview.prompt)
               setPreview(null)
-              void handleAttachFile(file)
+              const attachmentId = newAttachmentId()
+              autoStartRef.current = {
+                prompt: preview.prompt,
+                mode: presetMode,
+                attachmentId
+              }
+              void handleAttachFile(file, attachmentId)
+            }}
+            onSend={() => {
+              // Image/video-gen cards: no source photo — send directly.
+              const presetMode = preview.kind === 'video' ? 'video' : 'image'
+              const presetPrompt = preview.prompt
+              setMode(presetMode)
+              setPrompt(presetPrompt)
+              setPreview(null)
+              void runGeneration({
+                mode: presetMode,
+                prompt: presetPrompt,
+                aspectRatio,
+                resolution,
+                style: null
+              })
             }}
             onClose={() => setPreview(null)}
           />
