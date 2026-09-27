@@ -15,6 +15,8 @@ export interface AiImageCardProps {
   imageAlt?: string
   /** Label shown at the bottom-left while generating. */
   label?: string
+  /** When false, the footer overlay (label + timer) is not rendered. */
+  showFooter?: boolean
   className?: string
 }
 
@@ -23,6 +25,7 @@ export function AiImageCard({
   imageSrc = '/fightclub1.jpeg',
   imageAlt = 'AI generated image',
   label = 'Generating image',
+  showFooter = true,
   className
 }: AiImageCardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -204,22 +207,25 @@ export function AiImageCard({
       </AnimatePresence>
 
       {/* Footer: label + timer — smooth fade with text pinned to the very bottom */}
-      <div
-        className="absolute inset-x-0 bottom-0 h-24 bg-white/40 backdrop-blur-md dark:bg-black/50"
-        style={{
-          maskImage: 'linear-gradient(to top, black 0%, transparent 100%)',
-          WebkitMaskImage: 'linear-gradient(to top, black 0%, transparent 100%)'
-        }}
-      >
-        <div className="absolute bottom-3 left-5 right-5 flex items-center justify-between">
-          <span className="text-sm font-medium text-neutral-900 dark:text-white dark:drop-shadow-sm">
-            {done ? 'Generated' : label}
-          </span>
-          <span className="text-sm font-medium text-neutral-900/90 dark:text-white/90 tabular-nums dark:drop-shadow-sm">
-            {seconds}s
-          </span>
+      {showFooter && (
+        <div
+          className="absolute inset-x-0 bottom-0 h-24 bg-white/40 backdrop-blur-md dark:bg-black/50"
+          style={{
+            maskImage: 'linear-gradient(to top, black 0%, transparent 100%)',
+            WebkitMaskImage:
+              'linear-gradient(to top, black 0%, transparent 100%)'
+          }}
+        >
+          <div className="absolute bottom-3 left-5 right-5 flex items-center justify-between">
+            <span className="text-sm font-medium text-neutral-900 dark:text-white dark:drop-shadow-sm">
+              {done ? 'Generated' : label}
+            </span>
+            <span className="text-sm font-medium text-neutral-900/90 dark:text-white/90 tabular-nums dark:drop-shadow-sm">
+              {seconds}s
+            </span>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

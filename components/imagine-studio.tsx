@@ -417,6 +417,100 @@ function autoplayMutedLoop(el: HTMLVideoElement | null) {
 }
 
 // ---------------------------------------------------------------------------
+// V2 → V3 upsell modal: shown once per session when a second source
+// image is added while on the V2 model. Modern compact card, same
+// visual language as the preset modal, portaled to document.body.
+// ---------------------------------------------------------------------------
+
+function V2UpsellModal({
+  onStay,
+  onSwitch
+}: {
+  onStay: () => void
+  onSwitch: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onStay()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onStay])
+
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Passer au modèle V3"
+      onClick={onStay}
+      className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/60 backdrop-blur-lg"
+    >
+      <div className="flex min-h-full items-center justify-center p-4">
+        <div
+          onClick={e => e.stopPropagation()}
+          className="w-[400px] max-w-full rounded-[24px] bg-white p-5 text-neutral-800 shadow-[0_24px_90px_rgba(0,0,0,0.55)] dark:bg-[#202020] dark:text-neutral-200"
+        >
+          <div className="flex size-11 items-center justify-center rounded-full bg-black text-white">
+            <IconSparkles size={20} />
+          </div>
+          <p className="mt-4 text-[17px] font-semibold leading-snug">
+            Plusieurs images ?
+          </p>
+          <p className="mt-2 text-[14px] leading-relaxed text-neutral-600 dark:text-neutral-400">
+            Pour que le multi-image fonctionne, bascule sur le dernier modèle
+            Nelth-AI :{' '}
+            <span className="font-semibold text-neutral-900 dark:text-white">
+              Nelth-Imagen_V3
+            </span>
+            , le plus performant.
+          </p>
+          <button
+            type="button"
+            onClick={onSwitch}
+            className="mt-5 h-[50px] w-full rounded-[25px] bg-black text-[15px] font-semibold text-white transition-colors duration-200 hover:bg-neutral-800 dark:text-neutral-100"
+          >
+            Basculer vers Nelth-Imagen_V3
+          </button>
+          <button
+            type="button"
+            onClick={onStay}
+            className="mt-[18px] w-full text-center text-[14px] font-semibold transition-opacity hover:opacity-70"
+          >
+            Rester sur le modèle actuel
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+function V3ActivatedBanner({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="flex items-center gap-2 rounded-[16px] bg-sky-500/10 px-3 py-2 text-left dark:bg-sky-400/10">
+      <IconSparkles
+        size={15}
+        className="shrink-0 text-sky-600 dark:text-sky-300"
+      />
+      <p className="min-w-0 flex-1 text-[12.5px] leading-snug text-neutral-700 dark:text-neutral-200">
+        <span className="font-semibold">Nelth-Imagen_V3 activé</span> — le
+        modèle le plus performant. Essaie d&apos;uploader plusieurs images
+        maintenant.
+      </p>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Fermer"
+        className="shrink-0 rounded-full p-1 text-neutral-500 transition-colors hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/10"
+      >
+        <X size={13} strokeWidth={2} />
+      </button>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Official preset grid (Whisk-style): dense compact cards, image cover,
 // bottom gradient, white label. Artwork + prompts come from the official
 // ImageKit catalog (OFFICIAL_PRESETS_MIXED): photos and videos interleaved
@@ -821,7 +915,9 @@ function DiscoverComposer({
           </div>
         </div>
       </div>
-      {mode === 'video' && (
+      {/* Settings row below the composer — mobile only, hidden on
+          Android (model switching there goes through the V2 upsell). */}
+      {mode === 'video' && !isAndroidDevice() && (
         <div className="mt-3 flex w-full flex-wrap items-center justify-center gap-2 md:hidden">
           <VideoOmniChip />
           <SegmentedControl
@@ -838,7 +934,7 @@ function DiscoverComposer({
           />
         </div>
       )}
-      {mode === 'image' && (
+      {mode === 'image' && !isAndroidDevice() && (
         <div className="mt-3 flex w-full flex-wrap items-center justify-center gap-2 md:hidden">
           <ImagenModelSelect value={imagenModel} onChange={setImagenModel} />
         </div>
@@ -864,6 +960,7 @@ export interface ImagineResult {
 }
 
 const V3_PHASE_LABEL: Record<string, string> = {
+  waiting: 'Attente',
   sending: 'Envoi',
   generating: 'Génération',
   image: 'Finalisation'
@@ -899,6 +996,7 @@ export function ImageGenerationLoadingCard({
       imageSrc=""
       imageAlt=""
       label={label}
+      showFooter={false}
       className="absolute inset-0 aspect-auto rounded-[4px] border-0 bg-[#f5f5f5] dark:bg-white/5 [&_.tabular-nums]:hidden"
     />
   )
@@ -1030,11 +1128,6 @@ function DiscoverView({
           <span className="sm:hidden">Pro</span>
         </button>
       </div>
-      <div className="pl-4 pr-4 pt-[6px] md:pl-14">
-        <div className="flex size-[42px] select-none items-center justify-center rounded-full bg-[#f1f1f1] text-xs text-neutral-600 dark:bg-white/10 dark:text-neutral-300">
-          ug
-        </div>
-      </div>
       {/* Status slot with reserved height: appearing/disappearing status
           never shifts the cards below. */}
       <div className="pl-4 pr-4 pt-3 md:pl-14">
@@ -1045,7 +1138,7 @@ function DiscoverView({
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-neutral-400 opacity-40" />
                 <span className="relative inline-flex size-2 rounded-full bg-neutral-400" />
               </span>
-              <span>{status}</span>
+              <span className="imagine-status-shimmer">{status}</span>
             </div>
           ) : null}
           {error ? (
@@ -1087,7 +1180,7 @@ function DiscoverView({
           />
         ))}
       </div>
-      <div className="sticky bottom-4 z-10 mx-auto mt-8 w-full max-w-[750px] px-4 pb-2">
+      <div className="sticky bottom-4 z-10 mx-auto mt-auto w-full max-w-[750px] px-4 pb-2 pt-8">
         {composer}
       </div>
       <div className="pb-4" />
@@ -1103,6 +1196,10 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   const [duration, setDuration] = useState<VideoDuration>('6s')
   const [expanded, setExpanded] = useState(true)
   const [preview, setPreview] = useState<OfficialPreset | null>(null)
+  // V2 multi-image upsell: modal once per session + confirmation banner.
+  const [v2UpsellOpen, setV2UpsellOpen] = useState(false)
+  const v2UpsellShownRef = useRef(false)
+  const [v3BannerVisible, setV3BannerVisible] = useState(false)
   const [view, setView] = useState<'create' | 'discover'>('create')
   const [editing, setEditing] = useState<ImagineResult | null>(null)
   const [expectedCount, setExpectedCount] = useState(2)
@@ -1272,6 +1369,17 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.floor(Math.random() * 1e6)}`
 
+  const clearAttachments = () => {
+    setAttachments(prev => {
+      for (const a of prev) {
+        if (a.previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(a.previewUrl)
+        }
+      }
+      return []
+    })
+  }
+
   const handleAttachFile = async (file: File, existingId?: string) => {
     // Appends a new entry (multi-upload) — or refreshes the retried one.
     const id = existingId ?? newAttachmentId()
@@ -1323,6 +1431,17 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       stage: 'compress',
       file
     })
+    // V2 upsell: adding a second source image while on the V2 model →
+    // offer the switch to V3 once per session (uploads continue anyway).
+    if (
+      !existingId &&
+      imagenModel === 'v2' &&
+      attachments.length >= 1 &&
+      !v2UpsellShownRef.current
+    ) {
+      v2UpsellShownRef.current = true
+      setV2UpsellOpen(true)
+    }
     try {
       const pressed = await compressImageForUpload(file)
       patch({ stage: 'upload' })
@@ -1429,6 +1548,10 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       })
       return
     }
+    // Fresh composer right after sending (chat-like): prompt text and
+    // sources were captured above, so clearing state here is safe.
+    setPrompt('')
+    clearAttachments()
     // External handler (embedding) takes over entirely when provided.
     if (onGenerate) {
       onGenerate({
@@ -1834,23 +1957,32 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
             error={job?.status === 'error' ? job.message : null}
             phase={v3phase}
             composer={
-              <DiscoverComposer
-                prompt={prompt}
-                setPrompt={setPrompt}
-                mode={mode}
-                setMode={setMode}
-                aspectRatio={aspectRatio}
-                cycleAspectRatio={cycleAspectRatio}
-                resolution={resolution}
-                setResolution={setResolution}
-                duration={duration}
-                setDuration={setDuration}
-                generating={generating}
-                onGenerate={handleGenerate}
-                extras={extras}
-                imagenModel={imagenModel}
-                setImagenModel={setImagenModel}
-              />
+              <>
+                {v3BannerVisible && (
+                  <div className="mx-auto mb-2 w-full max-w-[750px] px-4">
+                    <V3ActivatedBanner
+                      onClose={() => setV3BannerVisible(false)}
+                    />
+                  </div>
+                )}
+                <DiscoverComposer
+                  prompt={prompt}
+                  setPrompt={setPrompt}
+                  mode={mode}
+                  setMode={setMode}
+                  aspectRatio={aspectRatio}
+                  cycleAspectRatio={cycleAspectRatio}
+                  resolution={resolution}
+                  setResolution={setResolution}
+                  duration={duration}
+                  setDuration={setDuration}
+                  generating={generating}
+                  onGenerate={handleGenerate}
+                  extras={extras}
+                  imagenModel={imagenModel}
+                  setImagenModel={setImagenModel}
+                />
+              </>
             }
           />
         ) : (
@@ -1860,6 +1992,11 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
             </h1>
 
             {/* Prompt composer */}
+            {v3BannerVisible && (
+              <div className="mt-[20px] w-full">
+                <V3ActivatedBanner onClose={() => setV3BannerVisible(false)} />
+              </div>
+            )}
             <div className="mt-[34px] w-full overflow-hidden rounded-[22px] border border-[#e3e3e3] bg-white dark:border-border dark:bg-card">
               {extras.attachmentBar}
               <textarea
@@ -2007,8 +2144,9 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
             </div>
 
             {/* Video settings below the composer — mobile only
-            (desktop keeps them inside the toolbar) */}
-            {mode === 'video' && (
+            (desktop keeps them inside the toolbar), hidden on Android
+            (model switching there goes through the V2 upsell) */}
+            {mode === 'video' && !isAndroidDevice() && (
               <div className="mt-3 flex w-full flex-wrap items-center justify-center gap-2 md:hidden">
                 <VideoOmniChip />
                 <SegmentedControl
@@ -2025,7 +2163,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
                 />
               </div>
             )}
-            {mode === 'image' && (
+            {mode === 'image' && !isAndroidDevice() && (
               <div className="mt-3 flex w-full flex-wrap items-center justify-center gap-2 md:hidden">
                 <ImagenModelSelect
                   value={imagenModel}
@@ -2124,6 +2262,16 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
               })
             }}
             onClose={() => setPreview(null)}
+          />
+        )}
+        {v2UpsellOpen && (
+          <V2UpsellModal
+            onStay={() => setV2UpsellOpen(false)}
+            onSwitch={() => {
+              setImagenModel('v3')
+              setV2UpsellOpen(false)
+              setV3BannerVisible(true)
+            }}
           />
         )}
       </div>
