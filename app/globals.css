@@ -412,6 +412,30 @@
   }
 }
 
+/* soralabs video dialog on phones: the vendored CSS sizes the frame in
+   dvh (large viewport, behind mobile browser chrome) and parks .close
+   58px ABOVE the frame — so the video top and the X are cut off. Fit
+   the visible viewport (svh) and dock the X inside the frame instead.
+   Higher specificity than the runtime-injected upstream rules. */
+@media (max-width: 760px) {
+  .media-01[data-media-01-player] .frame {
+    width: min(
+      100%,
+      calc((100svh - 28px) * var(--video-ratio-number, 1.7778))
+    );
+    max-height: calc(100svh - 28px);
+  }
+  .media-01[data-media-01-player] .close {
+    top: 10px;
+    left: auto;
+    right: 10px;
+    transform: none;
+  }
+  .media-01[data-media-01-player].is-player-open.is-close-ready .close {
+    transform: none;
+  }
+}
+
 /* Animation utilities for dropdown menu */
 @utility animate-in {
   animation-name: enter;
