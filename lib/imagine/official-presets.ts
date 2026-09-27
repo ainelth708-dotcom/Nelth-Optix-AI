@@ -896,5 +896,21 @@ export const OFFICIAL_PRESETS_MIXED: OfficialPreset[] = (() => {
     }
   })
   mixed.push(...videos)
+  // Manual position swaps (by id): exchange two cards' places in the
+  // mixed grid without touching anything else.
+  const SWAPS: Array<[string, string]> = [
+    ['video-detecteur-priver', 'night-street-flash'],
+    ['video-voiture-blue', 'red-metal-door'],
+    ['video-3d-pixar', 'christmas-box-collage']
+  ]
+  for (const [a, b] of SWAPS) {
+    const ia = mixed.findIndex(p => p.id === a)
+    const ib = mixed.findIndex(p => p.id === b)
+    if (ia >= 0 && ib >= 0) {
+      const tmp = mixed[ia]
+      mixed[ia] = mixed[ib]
+      mixed[ib] = tmp
+    }
+  }
   return mixed
 })()
