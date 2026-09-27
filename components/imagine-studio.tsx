@@ -1137,14 +1137,51 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   const withStyle = (text: string, styleOverride: string | null) =>
     styleOverride ? `${text} (${styleOverride} style)` : text
 
+  // POST helper for our imagine routes: single automatic retry on
+  // NETWORK failures only (never on HTTP errors), and only when the
+  // failure happens fast (<20s — the server can't have finished, so no
+  // duplicate generation risk). Mobile networks drop mid-request often;
+  // one transparent retry fixes most of those.
+  const fetchImagineApi = async (
+    path: string,
+    body: unknown,
+    timeoutMs = 70000
+  ): Promise<Response> => {
+    let lastErr: unknown = null
+    for (let attempt = 0; attempt <= 1; attempt++) {
+      const started = Date.now()
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), timeoutMs)
+      try {
+        const res = await fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal
+        })
+        clearTimeout(timeout)
+        return res
+      } catch (err) {
+        clearTimeout(timeout)
+        lastErr = err
+        const transient =
+          err instanceof DOMException
+            ? err.name === 'AbortError'
+            : err instanceof TypeError
+        const fast = Date.now() - started < 20000
+        if (!transient || !fast || attempt >= 1) throw err
+        await new Promise(r => setTimeout(r, 2000))
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error('Échec réseau.')
+  }
+
   // Watermark removal + logo via our clean proxy, returned as a session
   // blob URL (browser-local, no ImageKit). Throws on failure so callers
   // can fall back to the raw fbcdn URL.
   const cleanToBlobUrl = async (fbcdnUrl: string): Promise<string> => {
-    const res = await fetch('/api/imagine/images/clean', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_url: fbcdnUrl })
+    const res = await fetchImagineApi('/api/imagine/images/clean', {
+      image_url: fbcdnUrl
     })
     if (!res.ok) throw new Error('Nettoyage impossible.')
     const blob = await res.blob()
@@ -1154,13 +1191,13 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   const MAX_IMAGE_BYTES = 3 * 1024 * 1024
 
   // Downscale hero photos client-side so the upload stays small and fast:
-  // files ≤1.5Mo go through untouched, bigger ones are resized (max 1920px,
-  // JPEG 0.85). Without this, phone photos blow past the serverless body
+  // files ≤800Ko go through untouched, bigger ones are resized (max 1600px,
+  // JPEG 0.82). Without this, phone photos blow past the serverless body
   // limit (HTTP 413) or stall the 4-account upload past its timeout.
   const prepareImageForUpload = (file: File): Promise<{ base64: string }> =>
     new Promise((resolve, reject) => {
       const fail = () => reject(new Error('Lecture impossible.'))
-      if (file.size <= 1536 * 1024) {
+      if (file.size <= 800 * 1024) {
         const reader = new FileReader()
         reader.onload = () => {
           const result = typeof reader.result === 'string' ? reader.result : ''
@@ -1175,7 +1212,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       const img = new Image()
       img.onload = () => {
         URL.revokeObjectURL(url)
-        const scale = Math.min(1, 1920 / Math.max(img.width, img.height)) || 1
+        const scale = Math.min(1, 1600 / Math.max(img.width, img.height)) || 1
         const w = Math.max(1, Math.round(img.width * scale))
         const h = Math.max(1, Math.round(img.height * scale))
         const canvas = document.createElement('canvas')
@@ -1187,7 +1224,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           return
         }
         ctx.drawImage(img, 0, 0, w, h)
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82)
         const comma = dataUrl.indexOf(',')
         resolve({ base64: comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl })
       }
@@ -1242,21 +1279,10 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     })
     try {
       const { base64 } = await prepareImageForUpload(file)
-      // Slow mobile networks need headroom: the 4-account fan-out alone
-      // takes ~13s even for tiny files.
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 90000)
-      let res: Response
-      try {
-        res = await fetch('/api/imagine/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: base64, filename: file.name }),
-          signal: controller.signal
-        })
-      } finally {
-        clearTimeout(timeout)
-      }
+      const res = await fetchImagineApi('/api/imagine/upload', {
+        imageBase64: base64,
+        filename: file.name
+      })
       const json = (await res.json().catch(() => null)) as {
         sourceImageEntId?: string
         mediaEntId?: string
@@ -1332,6 +1358,21 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         ? params.variations
         : variations
     if ((!text && !(ent && params.mode === 'video')) || busyRef.current) return
+    // An attached image that isn't ready must block the send explicitly —
+    // silently falling back to text-only generation would answer the wrong
+    // request. The error surfaces in the Découvrir view.
+    if (attachment && attachment.status !== 'ready') {
+      setView('discover')
+      setExpectedCount(count)
+      setJob({
+        status: 'error',
+        message:
+          attachment.status === 'uploading'
+            ? "Attends la fin de l'envoi de l'image."
+            : "L'image n'est pas prête — réessaie l'envoi ou retire-la."
+      })
+      return
+    }
     // External handler (embedding) takes over entirely when provided.
     if (onGenerate) {
       onGenerate({
@@ -1366,10 +1407,8 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         const settled = await Promise.all(
           [...pending].map(async id => {
             try {
-              const r = await fetch('/api/imagine/v3/images/poll', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jobId: id })
+              const r = await fetchImagineApi('/api/imagine/v3/images/poll', {
+                jobId: id
               })
               const j = (await r.json().catch(() => null)) as {
                 success?: boolean
@@ -1420,14 +1459,13 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       if (ent && params.mode === 'image') {
         if (imagenModel === 'v3') {
           setJob({ status: 'working', label: 'Édition V3…' })
-          const startRes = await fetch('/api/imagine/v3/images/edit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+          const startRes = await fetchImagineApi(
+            '/api/imagine/v3/images/edit',
+            {
               imageUrl: ent.imageUrl,
               prompt: buildV3Prompt(fullPrompt, 1, params.aspectRatio)
-            })
-          })
+            }
+          )
           const startJson = (await startRes.json().catch(() => null)) as {
             jobId?: string
             error?: string
@@ -1450,14 +1488,10 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           return
         }
         setJob({ status: 'working', label: 'Édition de l’image…' })
-        const res = await fetch('/api/imagine/images/edit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sourceImageEntId: ent.sourceImageEntId,
-            editPrompt: fullPrompt,
-            allMediaEntIds: ent.allMediaEntIds
-          })
+        const res = await fetchImagineApi('/api/imagine/images/edit', {
+          sourceImageEntId: ent.sourceImageEntId,
+          editPrompt: fullPrompt,
+          allMediaEntIds: ent.allMediaEntIds
         })
         const json = (await res.json().catch(() => null)) as {
           contentItem?: { imageUrl: string }
@@ -1494,17 +1528,13 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       let batchId: string
       if (ent) {
         setJob({ status: 'working', label: 'Animation de l’image…' })
-        const res = await fetch('/api/imagine/videos/animate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            source: {
-              id: ent.mediaEntId,
-              imageUrl: ent.imageUrl,
-              mediaEntId: ent.mediaEntId
-            },
-            ...(text ? { motion: fullPrompt } : {})
-          })
+        const res = await fetchImagineApi('/api/imagine/videos/animate', {
+          source: {
+            id: ent.mediaEntId,
+            imageUrl: ent.imageUrl,
+            mediaEntId: ent.mediaEntId
+          },
+          ...(text ? { motion: fullPrompt } : {})
         })
         const json = (await res.json().catch(() => null)) as {
           batchId?: string
@@ -1517,14 +1547,10 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       } else if (params.mode === 'image') {
         if (imagenModel === 'v3') {
           setJob({ status: 'working', label: 'Démarrage V3…' })
-          const startRes = await fetch('/api/imagine/v3/images', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              prompt: buildV3Prompt(fullPrompt, count, params.aspectRatio),
-              variations: count,
-              aspectRatio: params.aspectRatio
-            })
+          const startRes = await fetchImagineApi('/api/imagine/v3/images', {
+            prompt: buildV3Prompt(fullPrompt, count, params.aspectRatio),
+            variations: count,
+            aspectRatio: params.aspectRatio
           })
           const startJson = (await startRes.json().catch(() => null)) as {
             jobs?: string[]
@@ -1548,14 +1574,10 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           return
         }
         setJob({ status: 'working', label: 'Génération de l’image…' })
-        const res = await fetch('/api/imagine/images', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: fullPrompt,
-            aspectRatio: params.aspectRatio,
-            variations: count
-          })
+        const res = await fetchImagineApi('/api/imagine/images', {
+          prompt: fullPrompt,
+          aspectRatio: params.aspectRatio,
+          variations: count
         })
         const json = (await res.json().catch(() => null)) as {
           data?: Array<{ url: string }>
@@ -1591,15 +1613,11 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         return
       } else {
         setJob({ status: 'working', label: 'Démarrage de la vidéo…' })
-        const res = await fetch('/api/imagine/videos', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: fullPrompt,
-            aspectRatio: params.aspectRatio,
-            resolution: params.resolution,
-            variations: count
-          })
+        const res = await fetchImagineApi('/api/imagine/videos', {
+          prompt: fullPrompt,
+          aspectRatio: params.aspectRatio,
+          resolution: params.resolution,
+          variations: count
         })
         const json = (await res.json().catch(() => null)) as {
           batchId?: string
@@ -1620,31 +1638,45 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
             status: 'working',
             label: 'Génération vidéo…'
           })
-          const pollRes = await fetch('/api/imagine/videos/poll', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ batchId })
-          })
-          const pollJson = (await pollRes.json().catch(() => null)) as {
-            batch?: {
-              isComplete?: boolean
-              content?: Array<{ videoUrl?: string | null }>
+          let content: Array<{ videoUrl?: string | null }> = []
+          let batchComplete = false
+          try {
+            const pollRes = await fetchImagineApi(
+              '/api/imagine/videos/poll',
+              { batchId },
+              30000
+            )
+            const pollJson = (await pollRes.json().catch(() => null)) as {
+              batch?: {
+                isComplete?: boolean
+                content?: Array<{ videoUrl?: string | null }>
+              }
+              error?: string
+            } | null
+            if (!pollRes.ok || !pollJson?.batch) {
+              throw new Error(pollJson?.error || 'Le suivi a échoué.')
             }
-            error?: string
-          } | null
-          if (!pollRes.ok || !pollJson?.batch) {
-            throw new Error(pollJson?.error || 'Le suivi a échoué.')
+            content = pollJson.batch.content ?? []
+            batchComplete = pollJson.batch.isComplete === true
+          } catch (err) {
+            // Transient network blip mid-poll: skip this round and try
+            // the next one instead of killing the whole generation.
+            const transient =
+              err instanceof DOMException
+                ? err.name === 'AbortError'
+                : err instanceof TypeError
+            if (!transient) throw err
           }
           const urls = [
             ...new Set(
-              (pollJson.batch.content ?? []).flatMap(c =>
+              content.flatMap(c =>
                 typeof c.videoUrl === 'string' && c.videoUrl.length > 0
                   ? [c.videoUrl]
                   : []
               )
             )
           ]
-          if (urls.length >= count || pollJson.batch.isComplete) {
+          if (urls.length >= count || batchComplete) {
             if (urls.length === 0) throw new Error('Aucune vidéo générée.')
             setResults(prev => [
               ...urls.slice(0, count).map(
