@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import {
   IconArrowLeft,
@@ -554,7 +555,12 @@ function StylePreviewCard({
       ? preset.prompt
       : `${preset.prompt.slice(0, PROMPT_COLLAPSED_CHARS).trimEnd()}…`
 
-  return (
+  // Portal to document.body: an ancestor with a CSS transform/filter
+  // would otherwise turn `fixed inset-0` into ancestor-relative
+  // positioning, so after scrolling down the modal+blur would open at
+  // the top of the page instead of centered on the viewport.
+  if (typeof document === 'undefined') return null
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -645,7 +651,8 @@ function StylePreviewCard({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
