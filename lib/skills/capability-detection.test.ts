@@ -137,6 +137,75 @@ describe('detectRequestCapabilities — all languages', () => {
     expect(capsContinue.needsSearch).toBe(true)
   })
 
+  it('never web-searches bare founder-role questions (internal knowledge only)', async () => {
+    for (const q of [
+      'Qui est le CEO ?',
+      'les cofondateurs ?',
+      "c'est qui la fondatrice ?",
+      'co-fondateur ?',
+      'who is the founder?',
+      'CEO'
+    ]) {
+      const caps = await detectRequestCapabilities(q)
+      expect(caps.needsSearch, `query: ${q}`).toBe(false)
+    }
+  })
+
+  it('still web-searches founder queries naming another entity', async () => {
+    for (const q of [
+      'Qui est le fondateur de Facebook ?',
+      'fondateur de Tesla'
+    ]) {
+      const caps = await detectRequestCapabilities(q)
+      expect(caps.needsSearch, `query: ${q}`).toBe(true)
+    }
+  })
+
+  it('inherits internal status for anaphoric follow-ups in founder threads', async () => {
+    const founderHistory = [
+      {
+        id: '1',
+        role: 'user' as const,
+        parts: [
+          { type: 'text' as const, text: 'Qui sont les cofondateurs ?' }
+        ]
+      },
+      {
+        id: '2',
+        role: 'assistant' as const,
+        parts: [
+          { type: 'text' as const, text: 'Les cofondateurs sont Yannick et Nelcia.' }
+        ]
+      }
+    ]
+    for (const q of ["et l'autre ?", 'et son âge ?', 'lui aussi ?']) {
+      const caps = await detectRequestCapabilities(q, [], founderHistory)
+      expect(caps.needsSearch, `query: "${q}"`).toBe(false)
+    }
+
+    // Same follow-up in a non-internal thread keeps normal routing.
+    const otherHistory = [
+      {
+        id: '1',
+        role: 'user' as const,
+        parts: [{ type: 'text' as const, text: 'Qui est Elon Musk ?' }]
+      },
+      {
+        id: '2',
+        role: 'assistant' as const,
+        parts: [
+          { type: 'text' as const, text: 'Elon Musk est le patron de Tesla.' }
+        ]
+      }
+    ]
+    const caps = await detectRequestCapabilities(
+      "et l'autre ?",
+      [],
+      otherHistory
+    )
+    expect(caps.needsSearch).toBe(true)
+  })
+
   it('never triggers web search for identity queries like "qui est tu" or "qui es-tu"', async () => {
     for (const q of [
       'qui est tu',

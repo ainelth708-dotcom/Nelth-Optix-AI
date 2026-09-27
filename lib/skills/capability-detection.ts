@@ -1,7 +1,7 @@
 import type { UIMessage } from 'ai'
 
 import { isAffirmativeContinuation } from '@/lib/conversation/conversation-state'
-import { isPureGreeting } from '@/lib/utils/message-utils'
+import { getTextFromParts, isPureGreeting } from '@/lib/utils/message-utils'
 import { getSkillRegistry } from './registry'
 import { routeSkills } from './router'
 import { foldText, intentRe } from './text-fold'
@@ -146,6 +146,25 @@ const IDENTITY_QUERY_RE = intentRe(
 const INTERNAL_KNOWLEDGE_SUBJECT_RE =
   /\b(nelcia|julie\s+fenitra|randrianavahana|yannick(?:\s+jonathan)?|todiarison|optix(?:\s*ai)?|nelth(?:\s*ai)?|(?:ceo|pdg|co-?founder|fondat(?:eur|rice|eurs)|cr[eé]at(?:eur|rice|eurs))\s+(?:d['’]|de\s+)?(?:optix|nelth))\b/i
 
+// Bare founder-role questions ("Qui est le CEO ?", "les cofondateurs ?",
+// "c'est qui la fondatrice ?", "who is the founder?"). In this
+// single-company assistant they can only refer to OUR founders — internal
+// knowledge, never web search (searching them returns random strangers and
+// the weak model presents them as our founders). Anchored end-to-end on
+// FOLDED text so "fondateur de Facebook" (explicit other entity) still
+// searches. Tested against foldText() output (lowercase, no diacritics).
+const BARE_FOUNDER_ROLE_RE =
+  /^(?:qui\s+est|qui\s+sont|c['’ʼ]?est\s+(?:quoi\s+|qui\s+)?|who\s+is|what\s+is)?\s*(?:le|la|les|the|un|une|a|an|notre|votre|mon|ma|ton|ta|our|your|my)?\s*(?:ceo|pdg|co-?\s?fondat(?:eur|rice)s?|fondat(?:eur|rice)s?|co-?\s?founders?|founders?)\s*[?.!…]*$/
+
+// Narrow anaphoric follow-ups: pronouns/demonstratives that REQUIRE an
+// antecedent ("et l'autre ?", "et son âge ?", "lui aussi ?"). Deliberately
+// NOT the broad continuation/follow-up matchers — "et les prix ?" or
+// "et demain ?" must keep their normal routing (the factual gate still
+// forces search for prices/quotas). Only used to inherit internal status
+// from a recent internal-knowledge thread, never to grant it alone.
+const ANAPHORIC_FOLLOWUP_RE =
+  /\b(il|elle|ils|elles|lui|leur|leurs|son|sa|ses|ça|cela|ceci|celui(?:-ci|-là)?|celle(?:-ci|-là)?|ceux|celles|autre|même|this|that|these|those|he|she|it|they|them|their|his|her|hers)\b/i
+
 // A request that wants to SEE the official photo of the CEO / Co-Founder /
 // founders of Nelth-IA / Optix AI. These photos are provided directly in the
 // system prompt, so the assistant must NOT search the web and MUST NOT call
@@ -231,9 +250,34 @@ export async function detectRequestCapabilities(
   const qf = foldText(query ?? '')
 
   const isIdentity = IDENTITY_QUERY_RE.test(qf)
+  const isBareFounderRole = BARE_FOUNDER_ROLE_RE.test(qf)
+  // Anaphoric follow-up inside an internal thread ("et l'autre ?" after
+  // founder talk): inherit internal status so a decontextualized web
+  // search can't inject strangers as our founders. Narrow on purpose —
+  // only pronoun/demonstrative follow-ups inherit, never plain "et X"
+  // continuations (those keep normal routing; the factual gate still
+  // forces search for prices/quotas).
+  let inheritsInternal = false
+  if (history.length > 0 && ANAPHORIC_FOLLOWUP_RE.test(query ?? '')) {
+    inheritsInternal = history.slice(-6).some(m => {
+      try {
+        const text = getTextFromParts((m as any).parts)
+        return (
+          !!text &&
+          (INTERNAL_KNOWLEDGE_SUBJECT_RE.test(text) ||
+            BARE_FOUNDER_ROLE_RE.test(foldText(text)))
+        )
+      } catch {
+        return false
+      }
+    })
+  }
   const isInternalKnowledge =
     query !== undefined && query !== null
-      ? INTERNAL_KNOWLEDGE_SUBJECT_RE.test(query) || isIdentity
+      ? INTERNAL_KNOWLEDGE_SUBJECT_RE.test(query) ||
+        isIdentity ||
+        isBareFounderRole ||
+        inheritsInternal
       : false
 
   // Founder-photo request: present the official photos directly. Force
