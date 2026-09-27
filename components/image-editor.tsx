@@ -70,8 +70,7 @@ export function ImageEditor({ src, title, onClose, onSave }: ImageEditorProps) {
   const [mounted, setMounted] = useState(false)
   const [ready, setReady] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  // Display-box ratio follows the loaded backing store.
-  const [dims, setDims] = useState<[number, number]>([1280, 720])
+
   const [tool, setTool] = useState<'draw' | 'text'>('draw')
   const [color, setColor] = useState(PALETTE[1])
   const [actions, setActions] = useState<EditorAction[]>([])
@@ -105,7 +104,6 @@ export function ImageEditor({ src, title, onClose, onSave }: ImageEditorProps) {
       if (canvas) {
         canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
         canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
-        setDims([canvas.width, canvas.height])
       }
       baseRef.current = img
       setActions([])
@@ -370,21 +368,20 @@ export function ImageEditor({ src, title, onClose, onSave }: ImageEditorProps) {
         <p className="px-4 pb-2 text-center text-sm text-red-400">{error}</p>
       )}
 
-      {/* Center viewer — FIXED stable box (same ratio as the backing
-          store, so bitmap:box is 1:1 with no distortion), clamped to the
-          viewport width AND to the available flex area height (never
-          clipped by overflow). Canvas contain-fills it exactly. */}
+      {/* Center viewer — NO aspect-ratio property anywhere: the canvas
+          element sizes itself from its intrinsic (natural) dimensions,
+          clamped only by viewport-absolute maximums (always definite, no
+          circular percentages). Every image keeps its exact natural
+          ratio — portrait stays portrait, square stays square — fully
+          visible, never cropped, zoomed or distorted. */}
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-4 pt-5 md:px-10">
-        <div
-          className="relative flex items-center justify-center overflow-hidden rounded-[40px]"
-          style={{
-            aspectRatio: `${dims[0]} / ${dims[1]}`,
-            width: 'min(900px, calc(100vw - 120px))',
-            maxHeight: '100%'
-          }}
-        >
+        <div className="relative inline-block overflow-hidden rounded-[40px]">
           <canvas
             ref={canvasRef}
+            style={{
+              maxWidth: 'min(900px, calc(100vw - 120px))',
+              maxHeight: 'min(500px, calc(100svh - 260px))'
+            }}
             onPointerDown={e => {
               if (!ready) return
               const p = toRelative(e)
@@ -440,7 +437,7 @@ export function ImageEditor({ src, title, onClose, onSave }: ImageEditorProps) {
               repaint()
             }}
             className={cn(
-              'absolute inset-0 h-full w-full touch-none',
+              'block h-auto w-auto touch-none',
               tool === 'draw' ? 'cursor-crosshair' : 'cursor-text'
             )}
           />
