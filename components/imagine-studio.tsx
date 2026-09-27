@@ -402,9 +402,15 @@ const STYLE_PRESETS = [
   'Afrique années 70',
   'Bento',
   'Marbre',
-  'Parc d\u2019attractions',
+  'Parc d’attractions',
   'Pop-up',
-  'Bronze'
+  'Bronze',
+  'Café crème',
+  'Jungle',
+  'Rétro',
+  'Vitrail',
+  'Méduse',
+  'Château'
 ]
 
 function StylePresetGrid({
