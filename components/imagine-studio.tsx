@@ -512,6 +512,11 @@ function StylePreviewCard({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // Natural size of the loaded image: the viewer box adopts its exact
+  // ratio (portrait stays portrait, square stays square), so every image
+  // is fully visible with no crop, zoom or distortion.
+  const [previewNat, setPreviewNat] = useState<[number, number] | null>(null)
+
   const fullUrl = `https://picsum.photos/seed/${encodeURIComponent(label)}/800/1000`
 
   return (
@@ -526,12 +531,28 @@ function StylePreviewCard({
         onClick={e => e.stopPropagation()}
         className="my-auto w-full max-w-[594px] overflow-hidden rounded-[20px] bg-white shadow-2xl dark:bg-card"
       >
-        <div className="relative mx-auto mt-4 flex h-[388px] max-h-[55dvh] w-[562px] max-w-[calc(100%-2rem)] items-center justify-center overflow-hidden rounded-xl bg-neutral-100 dark:bg-white/5">
+        <div
+          className="relative mx-auto mt-4 w-[562px] max-w-[calc(100%-2rem)] overflow-hidden rounded-xl bg-neutral-100 dark:bg-white/5"
+          style={
+            previewNat
+              ? {
+                  aspectRatio: `${previewNat[0]} / ${previewNat[1]}`,
+                  maxHeight: '62dvh'
+                }
+              : { minHeight: 240 }
+          }
+        >
           <img
             src={fullUrl}
             alt={label}
             draggable={false}
-            className="h-full w-full object-contain object-center"
+            onLoad={e => {
+              const im = e.currentTarget
+              if (im.naturalWidth && im.naturalHeight) {
+                setPreviewNat([im.naturalWidth, im.naturalHeight])
+              }
+            }}
+            className="absolute inset-0 h-full w-full object-contain object-center"
           />
           <button
             type="button"
