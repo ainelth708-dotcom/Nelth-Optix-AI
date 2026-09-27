@@ -66,18 +66,39 @@ export async function nelthaiStartEditJob(input: {
   imageUrl: string
   prompt: string
 }): Promise<{ jobId: string }> {
-  const data = await nelthaiFetch<{
-    job_id?: string
-    jobId?: string
-    id?: string
-  }>(
-    '/api/metaai/image-to-image/async',
-    { prompt: input.prompt, image_url: input.imageUrl, mode: 'instant' },
-    30000
-  )
-  const jobId = data.job_id || data.jobId || data.id
-  if (!jobId) throw new Error('No job_id returned')
-  return { jobId }
+  // NOTE: this endpoint ONLY accepts multipart/form-data (JSON is
+  // rejected with "multipart/form-data attendu").
+  const form = new FormData()
+  form.append('prompt', input.prompt)
+  form.append('image_url', input.imageUrl)
+  form.append('mode', 'instant')
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000)
+  try {
+    const res = await fetch(
+      `${NELTHAI_API_BASE}/api/metaai/image-to-image/async`,
+      { method: 'POST', body: form, signal: controller.signal }
+    )
+    const data = (await res.json().catch(() => null)) as {
+      job_id?: string
+      jobId?: string
+      id?: string
+      error?: string
+      detail?: string
+    } | null
+    if (!res.ok || !data) {
+      throw new Error(
+        (data as { error?: string; detail?: string } | null)?.error ??
+          (data as { detail?: string } | null)?.detail ??
+          `NelthAI API error (${res.status})`
+      )
+    }
+    const jobId = data.job_id || data.jobId || data.id
+    if (!jobId) throw new Error('No job_id returned')
+    return { jobId }
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export async function nelthaiPollJob(jobId: string): Promise<NelthaiJobState> {
