@@ -775,15 +775,33 @@ export interface ImagineResult {
   enhanced?: boolean
 }
 
+const V3_PHASE_LABEL: Record<string, string> = {
+  sending: 'Envoi',
+  generating: 'Génération',
+  image: 'Finalisation'
+}
+
+export function humanizeV3Phase(phase?: string | null): string | null {
+  if (!phase) return null
+  return V3_PHASE_LABEL[phase.toLowerCase()] ?? phase
+}
+
 /**
  * ImageGenerationLoadingCard — loading skeleton with the exact geometry
  * of the final card (same width, 2:3 aspect, rounded corners). Live
- * blinking-grid + elapsed timer while the backend works; the reveal is
- * driven by our real results (the card unmounts on arrival), never by
- * the countdown. The card box never changes size, so the conversation
- * height stays frozen while loading.
+ * blinking-grid while the backend works, with its live phase as label;
+ * the elapsed-seconds counter is hidden. The reveal is driven by our
+ * real results (the card unmounts on arrival), never by the countdown.
+ * The card box never changes size, so the conversation height stays
+ * frozen while loading.
  */
-export function ImageGenerationLoadingCard({ loading }: { loading: boolean }) {
+export function ImageGenerationLoadingCard({
+  loading,
+  label = ''
+}: {
+  loading: boolean
+  label?: string
+}) {
   if (!loading) {
     return <div aria-hidden className="noise-placeholder absolute inset-0" />
   }
@@ -792,8 +810,8 @@ export function ImageGenerationLoadingCard({ loading }: { loading: boolean }) {
       generateDuration={9999}
       imageSrc=""
       imageAlt=""
-      label=""
-      className="absolute inset-0 aspect-auto rounded-[4px] border-0 bg-[#f5f5f5] dark:bg-white/5"
+      label={label}
+      className="absolute inset-0 aspect-auto rounded-[4px] border-0 bg-[#f5f5f5] dark:bg-white/5 [&_.tabular-nums]:hidden"
     />
   )
 }
@@ -801,11 +819,13 @@ export function ImageGenerationLoadingCard({ loading }: { loading: boolean }) {
 function DiscoverCard({
   result,
   loading,
-  onEdit
+  onEdit,
+  phase
 }: {
   result?: ImagineResult | null
   loading: boolean
   onEdit?: () => void
+  phase?: string | null
 }) {
   // Fresh mount per URL (parent keys by identity): video starts hidden
   // over its own skeleton and fades in on first playable frame — same
@@ -830,7 +850,9 @@ function DiscoverCard({
           dialogLabel="Lecture de la vidéo"
           triggerClassName="absolute inset-0 block h-full w-full cursor-pointer p-0"
         >
-          {!videoReady && <ImageGenerationLoadingCard loading={loading} />}
+          {!videoReady && (
+            <ImageGenerationLoadingCard loading={loading} label={phase ?? ''} />
+          )}
           <video
             key={result.url}
             src={result.url}
@@ -848,7 +870,7 @@ function DiscoverCard({
           </span>
         </VideoPlayer>
       ) : (
-        <ImageGenerationLoadingCard loading={loading} />
+        <ImageGenerationLoadingCard loading={loading} label={phase ?? ''} />
       )}
       {result?.temporary ? (
         <span
@@ -879,6 +901,7 @@ function DiscoverView({
   working,
   status,
   error,
+  phase,
   composer
 }: {
   onBack: () => void
@@ -889,6 +912,7 @@ function DiscoverView({
   working: boolean
   status: string | null
   error: string | null
+  phase: string | null
   composer: React.ReactNode
 }) {
   return (
@@ -956,7 +980,12 @@ function DiscoverView({
         {/* In-flight generation: fresh loading cards first … */}
         {working &&
           Array.from({ length: Math.max(1, expected) }).map((_, i) => (
-            <DiscoverCard key={`pending-${i}`} result={null} loading />
+            <DiscoverCard
+              key={`pending-${i}`}
+              result={null}
+              loading
+              phase={phase}
+            />
           ))}
         {/* … then every past result, keyed by identity so nothing already
             displayed is ever replaced: 4 max per row, following
@@ -1001,6 +1030,9 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     | null
   >(null)
   const [results, setResults] = useState<ImagineResult[]>([])
+  // Live backend phase (V3: sending → generating → image), shown on the
+  // loading cards instead of raw counters.
+  const [v3phase, setV3Phase] = useState<string | null>(null)
   const busyRef = useRef(false)
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -1278,6 +1310,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     busyRef.current = true
     setGenerating(true)
     setJob(null)
+    setV3Phase(null)
     // V3 (metaai async) job polling: 2.5s cadence, live phase in the
     // status label, collects image URLs across jobs.
     const pollV3Jobs = async (
@@ -1324,14 +1357,15 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           } else if (st === 'failed' || st === 'error') {
             pending.delete(id)
           } else if (j.phase) {
+            const human = humanizeV3Phase(j.phase)
+            setV3Phase(human)
             setJob({
               status: 'working',
-              label: `Génération V3… ${j.phase} (${attempt})`
+              label: human ? `Génération V3… ${human}` : 'Génération V3…'
             })
           }
         }
         if (pending.size > 0) {
-          setJob({ status: 'working', label: `Génération V3… (${attempt})` })
           await new Promise<void>(resolve => {
             pollTimerRef.current = setTimeout(() => resolve(), 2500)
           })
@@ -1544,7 +1578,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           if (attempt > 60) throw new Error('Délai dépassé, réessaie.')
           setJob({
             status: 'working',
-            label: `Génération vidéo… (${attempt})`
+            label: 'Génération vidéo…'
           })
           const pollRes = await fetch('/api/imagine/videos/poll', {
             method: 'POST',
@@ -1606,6 +1640,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     } finally {
       busyRef.current = false
       setGenerating(false)
+      setV3Phase(null)
     }
   }
 
@@ -1646,6 +1681,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
             working={generating}
             status={job?.status === 'working' ? job.label : null}
             error={job?.status === 'error' ? job.message : null}
+            phase={v3phase}
             composer={
               <DiscoverComposer
                 prompt={prompt}
