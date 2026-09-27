@@ -66,6 +66,9 @@ describe('pickSingleImageViaPhotoPicker', () => {
     expect(input.accept).toBe('image/*')
     expect(input.hasAttribute('capture')).toBe(false)
     expect(input.multiple).toBe(false)
+    // Rendered but invisible (display:none would fall back to Files).
+    expect(input.style.display).not.toBe('none')
+    expect(input.style.opacity).toBe('0')
 
     const file = new File(['pixels'], 'galerie.png', { type: 'image/png' })
     Object.defineProperty(input, 'files', { value: [file] })

@@ -1947,7 +1947,10 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              className="hidden"
+              // Visually hidden but RENDERED (never display:none): on
+              // Android Chrome a display:none input opened by code falls
+              // back to the Files manager instead of the gallery picker.
+              className="pointer-events-none absolute h-px w-px opacity-0"
               aria-hidden
               tabIndex={-1}
               onChange={e => {

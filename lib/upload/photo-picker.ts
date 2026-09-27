@@ -45,7 +45,11 @@ export function pickSingleImageViaPhotoPicker(): Promise<File | null> {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'image/*'
-    input.style.display = 'none'
+    // Visually hidden but RENDERED (never display:none): on Android
+    // Chrome a display:none input opened by code falls back to the Files
+    // manager instead of the gallery picker.
+    input.style.cssText =
+      'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;'
     let settled = false
     const onFocusBack = () => {
       window.setTimeout(() => {
