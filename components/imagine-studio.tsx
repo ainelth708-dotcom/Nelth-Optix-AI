@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react'
 
 import {
   IconArrowLeft,
-  IconExternalLink,
   IconLayoutGrid,
   IconLoader2,
   IconPhoto,
@@ -18,8 +17,7 @@ import { ArrowUp, X } from 'lucide-react'
 
 import {
   OFFICIAL_PRESETS_MIXED,
-  type OfficialPreset,
-  type OfficialPresetCategory
+  type OfficialPreset
 } from '@/lib/imagine/official-presets'
 import { buildV3Prompt } from '@/lib/imagine/v3prompt'
 import { compressImageForUpload } from '@/lib/upload/compress-image'
@@ -492,28 +490,21 @@ function StylePresetGrid({
 }
 
 // ---------------------------------------------------------------------------
-// Style preview card (Gemini/ChatGPT-like): click a preset → lightbox with
-// the official image (or video), its title, its full prompt and actions
-// (use prompt, open original, send).
+// Preset photo modal: click a card → centered choice modal with the
+// preset's official artwork (cover), an explanatory text, a primary
+// "Sélectionner une photo" action (opens the file picker; the chosen
+// image becomes the source for the transformation) and a plain
+// "Annuler" action. Premium dark/blurred backdrop, compact rounded
+// card, light + dark mode.
 // ---------------------------------------------------------------------------
-
-const PRESET_CATEGORY_LABEL: Record<OfficialPresetCategory, string> = {
-  edit: 'Montage image',
-  generate: 'Image',
-  video: 'Vidéo'
-}
 
 function StylePreviewCard({
   preset,
-  hasSourceImage,
-  onUse,
-  onSend,
+  onSelectPhoto,
   onClose
 }: {
   preset: OfficialPreset
-  hasSourceImage: boolean
-  onUse: () => void
-  onSend: () => void
+  onSelectPhoto: (file: File) => void
   onClose: () => void
 }) {
   useEffect(() => {
@@ -524,10 +515,10 @@ function StylePreviewCard({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // Natural size of the loaded media: the viewer box adopts its exact
-  // ratio (portrait stays portrait, square stays square), so every image
-  // is fully visible with no crop, zoom or distortion.
-  const [previewNat, setPreviewNat] = useState<[number, number] | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  // Video presets show their poster frame (spec = still image, cover).
+  const previewSrc =
+    preset.kind === 'video' ? (preset.poster ?? preset.image) : preset.image
 
   return (
     <div
@@ -535,109 +526,52 @@ function StylePreviewCard({
       aria-modal="true"
       aria-label={preset.label}
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/60 p-4 backdrop-blur-lg"
     >
       <div
         onClick={e => e.stopPropagation()}
-        className="my-auto w-full max-w-[594px] overflow-hidden rounded-[20px] bg-white shadow-2xl dark:bg-card"
+        className="my-auto w-[400px] max-w-[calc(100%-2rem)] rounded-[24px] bg-white p-4 text-neutral-800 shadow-[0_24px_90px_rgba(0,0,0,0.55)] dark:bg-[#202020] dark:text-neutral-200"
       >
-        <div
-          className="relative mx-auto mt-4 w-[562px] max-w-[calc(100%-2rem)] overflow-hidden rounded-xl bg-neutral-100 dark:bg-white/5"
-          style={
-            previewNat
-              ? {
-                  aspectRatio: `${previewNat[0]} / ${previewNat[1]}`,
-                  maxHeight: '62dvh'
-                }
-              : { minHeight: 240 }
-          }
-        >
-          {preset.kind === 'video' ? (
-            <video
-              src={preset.image}
-              poster={preset.poster}
-              controls
-              autoPlay
-              muted
-              loop
-              playsInline
-              onLoadedMetadata={e => {
-                const v = e.currentTarget
-                if (v.videoWidth && v.videoHeight) {
-                  setPreviewNat([v.videoWidth, v.videoHeight])
-                }
-              }}
-              className="absolute inset-0 h-full w-full object-contain object-center"
-            />
-          ) : (
-            <img
-              src={preset.image}
-              alt={preset.label}
-              draggable={false}
-              onLoad={e => {
-                const im = e.currentTarget
-                if (im.naturalWidth && im.naturalHeight) {
-                  setPreviewNat([im.naturalWidth, im.naturalHeight])
-                }
-              }}
-              className="absolute inset-0 h-full w-full object-contain object-center"
-            />
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fermer l'aperçu"
-            className="absolute right-3 top-3 flex size-8 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70"
-          >
-            <X size={16} strokeWidth={2} />
-          </button>
-        </div>
-        <div className="flex items-center gap-2 p-4 pb-2">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-semibold text-[#111] dark:text-foreground">
-              {preset.label}
-            </p>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              {PRESET_CATEGORY_LABEL[preset.category]} • Preset officiel
-            </p>
-          </div>
-          <a
-            href={preset.image}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Voir l'original"
-            title="Voir l'original"
-            className="flex size-10 shrink-0 items-center justify-center rounded-full text-neutral-500 transition-colors hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/10"
-          >
-            <IconExternalLink size={17} />
-          </a>
-          <button
-            type="button"
-            onClick={onUse}
-            className="shrink-0 rounded-full border border-black/10 px-3.5 py-2 text-[13px] font-medium text-[#111] transition-colors hover:bg-black/5 dark:border-white/15 dark:text-foreground dark:hover:bg-white/10"
-          >
-            Utiliser
-          </button>
-          <button
-            type="button"
-            onClick={onSend}
-            aria-label="Envoyer"
-            title="Envoyer"
-            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-black text-white transition-transform hover:scale-105 active:scale-95 dark:bg-white dark:text-black"
-          >
-            <ArrowUp size={18} strokeWidth={2.5} />
-          </button>
-        </div>
-        <p className="max-h-36 overflow-y-auto whitespace-pre-wrap px-4 pb-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
-          {preset.prompt}
+        <img
+          src={previewSrc}
+          alt=""
+          draggable={false}
+          className="h-[280px] w-full rounded-[14px] object-cover"
+        />
+        <p className="mt-4 text-left text-[16px] font-medium leading-[1.45]">
+          Imaginez-vous sur une affiche de film rétro des années 70. Ajoutez une
+          photo et regardez-la se transformer.
         </p>
-        {preset.category === 'edit' && !hasSourceImage ? (
-          <p className="px-4 pb-3 text-xs text-amber-600 dark:text-amber-400">
-            Ajoutez une image source (+) pour un montage fidèle.
-          </p>
-        ) : (
-          <div className="pb-3" />
-        )}
+        <button
+          type="button"
+          onClick={() => photoInputRef.current?.click()}
+          className="mt-4 h-[50px] w-full rounded-[25px] bg-black text-[15px] font-semibold text-white transition-colors duration-200 hover:bg-neutral-800 dark:text-neutral-100"
+        >
+          Sélectionner une photo
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-[22px] w-full text-center text-[15px] font-semibold transition-opacity hover:opacity-70"
+        >
+          Annuler
+        </button>
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          // Visually hidden but RENDERED (never display:none): on Android
+          // Chrome a display:none input opened by code falls back to the
+          // Files manager instead of the gallery picker.
+          className="pointer-events-none absolute h-px w-px opacity-0"
+          aria-hidden
+          tabIndex={-1}
+          onChange={e => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (file) onSelectPhoto(file)
+          }}
+        />
       </div>
     </div>
   )
@@ -2018,28 +1952,15 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         {preview && (
           <StylePreviewCard
             preset={preview}
-            hasSourceImage={attachment?.status === 'ready'}
-            onUse={() => {
+            onSelectPhoto={file => {
+              // The chosen photo becomes the transformation source: fill
+              // the composer with the card's prompt + mode, attach the
+              // file (compress + upload runs in the background), close.
               const presetMode = preview.kind === 'video' ? 'video' : 'image'
               setMode(presetMode)
               setPrompt(preview.prompt)
               setPreview(null)
-            }}
-            onSend={() => {
-              // Mode comes from the card itself (setState is async, so
-              // pass it explicitly instead of reading `mode`).
-              const presetMode = preview.kind === 'video' ? 'video' : 'image'
-              const presetPrompt = preview.prompt
-              setMode(presetMode)
-              setPrompt(presetPrompt)
-              setPreview(null)
-              void runGeneration({
-                mode: presetMode,
-                prompt: presetPrompt,
-                aspectRatio,
-                resolution,
-                style: null
-              })
+              void handleAttachFile(file)
             }}
             onClose={() => setPreview(null)}
           />
