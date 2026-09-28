@@ -16,6 +16,7 @@ import {
 } from '@tabler/icons-react'
 import { ArrowUp, X } from 'lucide-react'
 
+import { addNelthLogo } from '@/lib/imagine/add-logo'
 import {
   OFFICIAL_PRESETS_MIXED,
   type OfficialPreset
@@ -1760,12 +1761,27 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           }
           const urls = await pollV3Jobs([startJson.jobId], 1)
           if (urls.length === 0) throw new Error('Aucune image générée.')
+          // Nelth logo only (no cleaning): stamped client-side, with a
+          // raw fbcdn fallback per URL.
+          setJob({ status: 'working', label: 'Logo Nelth…' })
+          const stamped = await Promise.all(
+            urls.map(async u => {
+              try {
+                return {
+                  url: URL.createObjectURL(await addNelthLogo(u)),
+                  temporary: false
+                }
+              } catch {
+                return { url: u, temporary: true }
+              }
+            })
+          )
           setResults(prev => [
-            ...urls.map(url => ({
+            ...stamped.map(s => ({
               kind: 'image' as const,
-              url,
+              url: s.url,
               prompt: text,
-              temporary: true
+              temporary: s.temporary
             })),
             ...prev
           ])
@@ -1846,12 +1862,27 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           }
           const urls = await pollV3Jobs(startJson.jobs, count)
           if (urls.length === 0) throw new Error('Aucune image générée.')
+          // Nelth logo only (no cleaning): stamped client-side, with a
+          // raw fbcdn fallback per URL.
+          setJob({ status: 'working', label: 'Logo Nelth…' })
+          const stamped = await Promise.all(
+            urls.map(async u => {
+              try {
+                return {
+                  url: URL.createObjectURL(await addNelthLogo(u)),
+                  temporary: false
+                }
+              } catch {
+                return { url: u, temporary: true }
+              }
+            })
+          )
           setResults(prev => [
-            ...urls.map(url => ({
+            ...stamped.map(s => ({
               kind: 'image' as const,
-              url,
+              url: s.url,
               prompt: text,
-              temporary: true
+              temporary: s.temporary
             })),
             ...prev
           ])
