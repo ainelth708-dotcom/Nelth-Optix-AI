@@ -18,6 +18,13 @@ import { ArrowUp, X } from 'lucide-react'
 
 import { addNelthLogo } from '@/lib/imagine/add-logo'
 import {
+  markAnnouncementShown,
+  markTryNowClicked,
+  NEW_MODEL_ANNOUNCEMENTS,
+  type NewModelAnnouncement,
+  shouldShowAnnouncement
+} from '@/lib/imagine/new-models'
+import {
   OFFICIAL_PRESETS_MIXED,
   type OfficialPreset
 } from '@/lib/imagine/official-presets'
@@ -31,6 +38,7 @@ import { cn } from '@/lib/utils'
 
 import AiImageCard from '@/components/ai-image-card'
 import { ImageEditor } from '@/components/image-editor'
+import { NewModelModal } from '@/components/new-model-modal'
 import { VideoPlayer } from '@/components/sora-ui/effects/video-player'
 
 type StudioMode = 'image' | 'video'
@@ -1261,6 +1269,23 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   const [v2UpsellOpen, setV2UpsellOpen] = useState(false)
   const v2UpsellShownRef = useRef(false)
   const [v3BannerVisible, setV3BannerVisible] = useState(false)
+  // New-model announcement: shown ~1s after load when due (5h interval,
+  // per-model tried state).
+  const [announcement, setAnnouncement] = useState<NewModelAnnouncement | null>(
+    null
+  )
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      const due = NEW_MODEL_ANNOUNCEMENTS.find(a =>
+        shouldShowAnnouncement(a, Date.now())
+      )
+      if (due) {
+        markAnnouncementShown(due.modelId, Date.now())
+        setAnnouncement(due)
+      }
+    }, 1000)
+    return () => window.clearTimeout(t)
+  }, [])
   const [view, setView] = useState<'create' | 'discover'>('create')
   const [editing, setEditing] = useState<ImagineResult | null>(null)
   const [expectedCount, setExpectedCount] = useState(2)
@@ -1430,6 +1455,8 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   // Hard input cap (OOM safety only): the compressor below shrinks
   // everything else to a sub-Mo payload, so big phone photos are welcome.
   const MAX_IMAGE_BYTES = 25 * 1024 * 1024
+  // Reference-image cap: the V3 fusion backend accepts 1–8 images.
+  const MAX_ATTACHMENTS = 8
 
   const handleRemoveAttachment = (id: string) => {
     // A pending card-modal autostart dies with its photo.
@@ -1499,6 +1526,16 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         status: 'error',
         error: 'Image trop lourde (max 25 Mo).',
         file
+      })
+      return
+    }
+    if (!existingId && attachments.length >= MAX_ATTACHMENTS) {
+      upsert({
+        id,
+        name: file.name,
+        previewUrl: '',
+        status: 'error',
+        error: '8 images maximum.'
       })
       return
     }
@@ -2036,6 +2073,18 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     void runGeneration({ mode, prompt, aspectRatio, resolution, style: null })
   }
 
+  // Announcement "Try Now": never auto-show again for this model, open
+  // the image interface on the announced model, back to the composer.
+  const handleAnnouncementTryNow = (model: NewModelAnnouncement) => {
+    markTryNowClicked(model.modelId)
+    setAnnouncement(null)
+    if (model.modelId === 'v2' || model.modelId === 'v3') {
+      setImagenModel(model.modelId)
+    }
+    setMode('image')
+    scrollRootRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   // Import a result image back as a source: fetch its bytes, then run
   // the standard upload pipeline so it gets a fresh edit/animate ent.
   const handleAttachUrl = async (url: string, name: string) => {
@@ -2449,6 +2498,20 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
               setV2UpsellOpen(false)
               setV3BannerVisible(true)
             }}
+          />
+        )}
+        {announcement && (
+          <NewModelModal
+            modelId={announcement.modelId}
+            modelName={announcement.modelName}
+            modelDescription={announcement.modelDescription}
+            modelImage={announcement.modelImage}
+            badge={announcement.badge}
+            features={announcement.features}
+            maxReferenceImages={announcement.maxReferenceImages}
+            buttonText={announcement.buttonText}
+            onTryNow={() => handleAnnouncementTryNow(announcement)}
+            onClose={() => setAnnouncement(null)}
           />
         )}
       </div>
