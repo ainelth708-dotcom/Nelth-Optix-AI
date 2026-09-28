@@ -42,7 +42,7 @@ import { NewModelModal } from '@/components/new-model-modal'
 import { VideoPlayer } from '@/components/sora-ui/effects/video-player'
 
 type StudioMode = 'image' | 'video'
-type AspectRatio = '1:1' | '16:9' | '9:16'
+type AspectRatio = 'auto' | '1:1' | '16:9' | '9:16'
 type VideoResolution = '480p' | '720p'
 type VideoDuration = '6s' | '10s'
 
@@ -207,7 +207,7 @@ function SegmentedControl<T extends string>({
 // Imagine studio (frontend only — backend wiring comes later)
 // ---------------------------------------------------------------------------
 
-const ASPECT_RATIOS: AspectRatio[] = ['1:1', '16:9', '9:16']
+const ASPECT_RATIOS: AspectRatio[] = ['auto', '1:1', '16:9', '9:16']
 const VIDEO_RESOLUTIONS: VideoResolution[] = ['480p', '720p']
 
 // ---------------------------------------------------------------------------
@@ -1261,7 +1261,8 @@ function DiscoverView({
 export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   const [mode, setMode] = useState<StudioMode>('image')
   const [prompt, setPrompt] = useState('')
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1')
+  // Auto is the V3 default (backend decides); V2 maps it to 1:1.
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('auto')
   const [resolution, setResolution] = useState<VideoResolution>('480p')
   const [expanded, setExpanded] = useState(true)
   const [preview, setPreview] = useState<OfficialPreset | null>(null)
@@ -1392,10 +1393,19 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   }, [editing, preview])
 
   const cycleAspectRatio = () => {
-    setAspectRatio(
-      prev =>
+    // Auto is V3-only (and its default): skipped while on V2, where the
+    // backend requires an explicit ratio (auto behaves as 1:1 there).
+    setAspectRatio(prev => {
+      let next =
         ASPECT_RATIOS[(ASPECT_RATIOS.indexOf(prev) + 1) % ASPECT_RATIOS.length]
-    )
+      if (next === 'auto' && imagenModel !== 'v3') {
+        next =
+          ASPECT_RATIOS[
+            (ASPECT_RATIOS.indexOf(next) + 1) % ASPECT_RATIOS.length
+          ]
+      }
+      return next
+    })
   }
 
   const withStyle = (text: string, styleOverride: string | null) =>
@@ -1935,7 +1945,8 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         setJob({ status: 'working', label: 'Génération de l’image…' })
         const res = await fetchImagineApi('/api/imagine/images', {
           prompt: fullPrompt,
-          aspectRatio: params.aspectRatio,
+          aspectRatio:
+            params.aspectRatio === 'auto' ? '1:1' : params.aspectRatio,
           variations: count
         })
         const json = (await res.json().catch(() => null)) as {
@@ -1974,7 +1985,8 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         setJob({ status: 'working', label: 'Démarrage de la vidéo…' })
         const res = await fetchImagineApi('/api/imagine/videos', {
           prompt: fullPrompt,
-          aspectRatio: params.aspectRatio,
+          aspectRatio:
+            params.aspectRatio === 'auto' ? '1:1' : params.aspectRatio,
           resolution: params.resolution,
           variations: count
         })
