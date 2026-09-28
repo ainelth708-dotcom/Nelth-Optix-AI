@@ -7,12 +7,12 @@ import {
   IconArrowLeft,
   IconLayoutGrid,
   IconLoader2,
+  IconPencil,
   IconPhoto,
   IconPlus,
   IconRectangleVertical,
   IconSparkles,
-  IconVideo,
-  IconVolumeOff
+  IconVideo
 } from '@tabler/icons-react'
 import { ArrowUp, X } from 'lucide-react'
 
@@ -69,11 +69,16 @@ export interface StudioAttachment {
   }
 }
 
+/** Uploaded source entity, passed explicitly when state is stale
+    (card-modal autostart fires from inside the upload continuation). */
+export type ImagineSourceEnt = NonNullable<StudioAttachment['ent']>
+
 export interface ComposerExtras {
   variations: number
   setVariations: (n: number) => void
   variationsLocked: boolean
   attachmentBar: React.ReactNode
+  animateChoiceBar: React.ReactNode
   onAttach: () => void
   canSend: boolean
 }
@@ -195,7 +200,6 @@ function SegmentedControl<T extends string>({
 
 const ASPECT_RATIOS: AspectRatio[] = ['1:1', '16:9', '9:16']
 const VIDEO_RESOLUTIONS: VideoResolution[] = ['480p', '720p']
-const VIDEO_DURATIONS: VideoDuration[] = ['6s', '10s']
 
 // ---------------------------------------------------------------------------
 // Variations selector (1-4, default 2). Locked to 1 when an image is
@@ -751,6 +755,43 @@ function StylePreviewCard({
 }
 
 // ---------------------------------------------------------------------------
+// Auto-growing composer textarea: grows with the text instead of
+// scrolling internally (native scroll only past the 200px cap). Height
+// follows `value`, so programmatic clears shrink it back too.
+// ---------------------------------------------------------------------------
+
+function AutoGrowTextarea({
+  value,
+  onChange,
+  onKeyDown,
+  placeholder
+}: {
+  value: string
+  onChange: (v: string) => void
+  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
+  placeholder: string
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+  }, [value])
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      onKeyDown={onKeyDown}
+      placeholder={placeholder}
+      rows={1}
+      className="max-h-[200px] min-h-[48px] w-full resize-none bg-transparent px-[19px] pt-[16px] text-[16px] leading-[22px] text-[#111] outline-none placeholder:text-[#707070] dark:text-foreground"
+    />
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Découvrir composer — matches the Découvrir reference twin of the studio
 // toolbar: quality pills (Vitesse / Qualité 2.0), mic, pastel-blue CTA.
 // ---------------------------------------------------------------------------
@@ -764,8 +805,6 @@ interface DiscoverComposerProps {
   cycleAspectRatio: () => void
   resolution: VideoResolution
   setResolution: (r: VideoResolution) => void
-  duration: VideoDuration
-  setDuration: (d: VideoDuration) => void
   generating: boolean
   onGenerate: () => void
   extras: ComposerExtras
@@ -782,8 +821,6 @@ function DiscoverComposer({
   cycleAspectRatio,
   resolution,
   setResolution,
-  duration,
-  setDuration,
   generating,
   onGenerate,
   extras,
@@ -794,9 +831,10 @@ function DiscoverComposer({
     <>
       <div className="w-full overflow-hidden rounded-[24px] border border-[#e5e5e5] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.06)] dark:border-border dark:bg-card">
         {extras.attachmentBar}
-        <textarea
+        {extras.animateChoiceBar}
+        <AutoGrowTextarea
           value={prompt}
-          onChange={e => setPrompt(e.target.value)}
+          onChange={setPrompt}
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
@@ -804,8 +842,6 @@ function DiscoverComposer({
             }
           }}
           placeholder="Décrivez ce que vous imaginez"
-          rows={1}
-          className="min-h-[48px] w-full resize-none bg-transparent px-[19px] pt-[16px] text-[16px] leading-[22px] text-[#111] outline-none placeholder:text-[#707070] dark:text-foreground"
         />
         <div className="no-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto px-[15px] pt-[6px] pb-[11px] md:flex-wrap md:gap-3 md:overflow-visible md:px-[19px]">
           <ToolbarIconButton
@@ -866,18 +902,6 @@ function DiscoverComposer({
                   onChange={setResolution}
                 />
               </div>
-              <div className="hidden md:contents">
-                <SegmentedControl
-                  options={VIDEO_DURATIONS}
-                  value={duration}
-                  onChange={setDuration}
-                  disabledValues={['10s']}
-                  disabledHint="Bientôt disponible"
-                />
-              </div>
-              <ToolbarIconButton label="Audio (bientôt disponible)">
-                <IconVolumeOff size={18} />
-              </ToolbarIconButton>
             </>
           )}
           {/* No ratio in edit/animate mode — the source image decides. */}
@@ -924,13 +948,6 @@ function DiscoverComposer({
             options={VIDEO_RESOLUTIONS}
             value={resolution}
             onChange={setResolution}
-          />
-          <SegmentedControl
-            options={VIDEO_DURATIONS}
-            value={duration}
-            onChange={setDuration}
-            disabledValues={['10s']}
-            disabledHint="Bientôt disponible"
           />
         </div>
       )}
@@ -1006,11 +1023,15 @@ function DiscoverCard({
   result,
   loading,
   onEdit,
+  onAnimate,
+  onEditSource,
   phase
 }: {
   result?: ImagineResult | null
   loading: boolean
   onEdit?: () => void
+  onAnimate?: () => void
+  onEditSource?: () => void
   phase?: string | null
 }) {
   // Fresh mount per URL (parent keys by identity): video starts hidden
@@ -1066,10 +1087,40 @@ function DiscoverCard({
           Temporaire
         </span>
       ) : null}
+      {result?.kind === 'image' && (onAnimate || onEditSource) ? (
+        <div className="absolute inset-x-2 bottom-2 flex gap-1.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+          {onAnimate && (
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation()
+                onAnimate()
+              }}
+              className="flex flex-1 items-center justify-center gap-1 rounded-full bg-black/60 py-1.5 text-[11px] font-semibold text-white backdrop-blur-sm transition-colors hover:bg-black/80"
+            >
+              <IconVideo size={12} />
+              Animer
+            </button>
+          )}
+          {onEditSource && (
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation()
+                onEditSource()
+              }}
+              className="flex flex-1 items-center justify-center gap-1 rounded-full bg-black/60 py-1.5 text-[11px] font-semibold text-white backdrop-blur-sm transition-colors hover:bg-black/80"
+            >
+              <IconPencil size={12} />
+              Modifier
+            </button>
+          )}
+        </div>
+      ) : null}
       {result?.kind === 'image' && result?.enhanced ? (
         <span
           title="Prompt auto-amélioré appliqué"
-          className="pointer-events-none absolute bottom-2 left-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white"
+          className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white"
         >
           ✨ Amélioré
         </span>
@@ -1082,6 +1133,8 @@ function DiscoverView({
   onBack,
   onRetry,
   onEditResult,
+  onAnimateResult,
+  onEditSourceResult,
   results,
   expected,
   working,
@@ -1093,6 +1146,8 @@ function DiscoverView({
   onBack: () => void
   onRetry: () => void
   onEditResult: (r: ImagineResult) => void
+  onAnimateResult: (r: ImagineResult) => void
+  onEditSourceResult: (r: ImagineResult) => void
   results: ImagineResult[]
   expected: number
   working: boolean
@@ -1177,6 +1232,12 @@ function DiscoverView({
             result={r}
             loading={false}
             onEdit={r.kind === 'image' ? () => onEditResult(r) : undefined}
+            onAnimate={
+              r.kind === 'image' ? () => onAnimateResult(r) : undefined
+            }
+            onEditSource={
+              r.kind === 'image' ? () => onEditSourceResult(r) : undefined
+            }
           />
         ))}
       </div>
@@ -1193,7 +1254,6 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   const [prompt, setPrompt] = useState('')
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1')
   const [resolution, setResolution] = useState<VideoResolution>('480p')
-  const [duration, setDuration] = useState<VideoDuration>('6s')
   const [expanded, setExpanded] = useState(true)
   const [preview, setPreview] = useState<OfficialPreset | null>(null)
   // V2 multi-image upsell: modal once per session + confirmation banner.
@@ -1204,10 +1264,28 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   const [editing, setEditing] = useState<ImagineResult | null>(null)
   const [expectedCount, setExpectedCount] = useState(2)
   const [variations, setVariations] = useState(2)
-  const [imagenModel, setImagenModel] = useState<ImagenModel>('v2')
+  // Last selected model survives refreshes (no more forced return to V2).
+  const [imagenModel, setImagenModel] = useState<ImagenModel>(() => {
+    if (typeof window === 'undefined') return 'v2'
+    try {
+      const saved = window.localStorage.getItem('nelth-imagen-model')
+      return saved === 'v3' || saved === 'v2' ? saved : 'v2'
+    } catch {
+      return 'v2'
+    }
+  })
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('nelth-imagen-model', imagenModel)
+    } catch {
+      // Private mode / storage blocked: session-only model.
+    }
+  }, [imagenModel])
   // Multi-upload: every added file appends its own entry (never replaces
   // the previous ones), each with its own compress/upload lifecycle.
   const [attachments, setAttachments] = useState<StudioAttachment[]>([])
+  // Animate-choice pills (Auto / Manuel) after the Animer result action.
+  const [animateChoice, setAnimateChoice] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [generating, setGenerating] = useState(false)
   const [job, setJob] = useState<
@@ -1469,17 +1547,17 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
               : `L'envoi a échoué (${res.status}).`)
         )
       }
-      patch({
-        status: 'ready',
-        ent: {
-          sourceImageEntId: json.sourceImageEntId,
-          mediaEntId: json.mediaEntId,
-          imageUrl: json.imageUrl,
-          allMediaEntIds: json.allMediaEntIds ?? []
-        }
-      })
+      const freshEnt: ImagineSourceEnt = {
+        sourceImageEntId: json.sourceImageEntId,
+        mediaEntId: json.mediaEntId,
+        imageUrl: json.imageUrl,
+        allMediaEntIds: json.allMediaEntIds ?? []
+      }
+      patch({ status: 'ready', ent: freshEnt })
       // Card-modal flow only: the picked photo is fully imported →
-      // start the generation automatically (single-shot).
+      // start the generation automatically (single-shot). The fresh ent
+      // is passed explicitly: state is still stale in this continuation,
+      // which is why autostart previously fell back to text-to-image.
       const pending = autoStartRef.current
       if (pending && pending.attachmentId === id) {
         autoStartRef.current = null
@@ -1488,7 +1566,8 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           prompt: pending.prompt,
           aspectRatio,
           resolution,
-          style: null
+          style: null,
+          sourceEnt: freshEnt
         })
       }
     } catch (err) {
@@ -1520,10 +1599,13 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     resolution: VideoResolution
     style: string | null
     variations?: number
+    /** Explicit source (autostart): state may still be stale in the
+        upload continuation that triggers the send. */
+    sourceEnt?: ImagineSourceEnt | null
   }) => {
     const text = params.prompt.trim()
     // Primary source = the most recently added ready image.
-    const ent = primaryAttachment?.ent ?? null
+    const ent = params.sourceEnt ?? primaryAttachment?.ent ?? null
     const count = ent
       ? 1
       : typeof params.variations === 'number' &&
@@ -1552,12 +1634,13 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     // sources were captured above, so clearing state here is safe.
     setPrompt('')
     clearAttachments()
+    setAnimateChoice(false)
     // External handler (embedding) takes over entirely when provided.
     if (onGenerate) {
       onGenerate({
         ...params,
         prompt: text,
-        duration,
+        duration: '6s',
         variations: count,
         sourceImageEntId: ent?.sourceImageEntId ?? null,
         imagenModel
@@ -1638,22 +1721,33 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       if (ent && params.mode === 'image') {
         if (imagenModel === 'v3') {
           // Multi-image fusion: every ready source is forwarded (the
-          // MetaAI endpoint accepts 1–8 reference images).
-          const imageUrls = readyAttachments
-            .map(a => a.ent?.imageUrl)
-            .filter((u): u is string => typeof u === 'string' && u.length > 0)
-            .slice(0, 8)
+          // MetaAI endpoint accepts 1–8 reference images). `ent` leads:
+          // state may be stale when autostart fires from the upload
+          // continuation, so the explicit source always comes first.
+          const seen = new Set<string>()
+          const imageUrls: string[] = []
+          for (const u of [
+            ent?.imageUrl,
+            ...readyAttachments.map(a => a.ent?.imageUrl)
+          ]) {
+            if (typeof u === 'string' && u.length > 0 && !seen.has(u)) {
+              seen.add(u)
+              imageUrls.push(u)
+            }
+          }
+          // MetaAI fuses 1–8 reference images.
+          const fusionUrls = imageUrls.slice(0, 8)
           setJob({
             status: 'working',
             label:
-              imageUrls.length > 1
-                ? `Édition V3 (${imageUrls.length} images)…`
+              fusionUrls.length > 1
+                ? `Édition V3 (${fusionUrls.length} images)…`
                 : 'Édition V3…'
           })
           const startRes = await fetchImagineApi(
             '/api/imagine/v3/images/edit',
             {
-              imageUrls,
+              imageUrls: fusionUrls,
               prompt: buildV3Prompt(fullPrompt, 1, params.aspectRatio)
             }
           )
@@ -1910,6 +2004,58 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   const handleGenerate = () => {
     void runGeneration({ mode, prompt, aspectRatio, resolution, style: null })
   }
+
+  // Import a result image back as a source: fetch its bytes, then run
+  // the standard upload pipeline so it gets a fresh edit/animate ent.
+  const handleAttachUrl = async (url: string, name: string) => {
+    const id = newAttachmentId()
+    setAttachments(prev => [
+      ...prev,
+      { id, name, previewUrl: url, status: 'uploading', stage: 'upload' }
+    ])
+    try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`Import impossible (${res.status}).`)
+      const blob = await res.blob()
+      if (!blob.type.startsWith('image/')) {
+        throw new Error('Image uniquement.')
+      }
+      await handleAttachFile(new File([blob], name, { type: blob.type }), id)
+    } catch (err) {
+      setAttachments(prev =>
+        prev.map(a =>
+          a.id === id
+            ? {
+                ...a,
+                status: 'error' as const,
+                error: err instanceof Error ? err.message : "L'import a échoué."
+              }
+            : a
+        )
+      )
+    }
+  }
+
+  // Result action: Animer → source imported for image-to-video + the
+  // Auto/Manuel choice shows in the composer.
+  const handleAnimateResult = (r: ImagineResult) => {
+    setMode('video')
+    setAnimateChoice(true)
+    void handleAttachUrl(r.url, 'image-resultat.jpg')
+  }
+
+  // Result action: Modifier → source imported for image-to-image edit;
+  // the user writes the prompt and sends as usual (current model kept).
+  const handleEditSourceResult = (r: ImagineResult) => {
+    setMode('image')
+    setPrompt('')
+    void handleAttachUrl(r.url, 'image-resultat.jpg')
+  }
+
+  const handleAnimateAuto = () => {
+    setAnimateChoice(false)
+    handleGenerate()
+  }
   const extras: ComposerExtras = {
     variations,
     setVariations,
@@ -1924,6 +2070,29 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         }}
       />
     ),
+    animateChoiceBar:
+      animateChoice && mode === 'video' && variationsLocked ? (
+        <div className="flex flex-wrap items-center gap-2 px-[19px] pt-3">
+          <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+            Animer :
+          </span>
+          <button
+            type="button"
+            onClick={handleAnimateAuto}
+            disabled={!canSend}
+            className="shrink-0 rounded-full bg-black px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-neutral-800 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-neutral-200"
+          >
+            Auto
+          </button>
+          <button
+            type="button"
+            onClick={() => setAnimateChoice(false)}
+            className="shrink-0 rounded-full border border-black/10 px-3.5 py-1.5 text-xs font-semibold text-[#111] transition-colors hover:bg-black/5 dark:border-white/15 dark:text-foreground dark:hover:bg-white/10"
+          >
+            Manuel
+          </button>
+        </div>
+      ) : null,
     // Android: dedicated photo-picker-eligible input (system gallery);
     // desktop/iOS: existing hidden input (native behavior unchanged).
     onAttach: () => {
@@ -1950,6 +2119,8 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
             onBack={() => setView('create')}
             onRetry={handleGenerate}
             onEditResult={r => setEditing(r)}
+            onAnimateResult={handleAnimateResult}
+            onEditSourceResult={handleEditSourceResult}
             results={results}
             expected={expectedCount}
             working={generating}
@@ -1974,8 +2145,6 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
                   cycleAspectRatio={cycleAspectRatio}
                   resolution={resolution}
                   setResolution={setResolution}
-                  duration={duration}
-                  setDuration={setDuration}
                   generating={generating}
                   onGenerate={handleGenerate}
                   extras={extras}
@@ -1999,9 +2168,10 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
             )}
             <div className="mt-[34px] w-full overflow-hidden rounded-[22px] border border-[#e3e3e3] bg-white dark:border-border dark:bg-card">
               {extras.attachmentBar}
-              <textarea
+              {extras.animateChoiceBar}
+              <AutoGrowTextarea
                 value={prompt}
-                onChange={e => setPrompt(e.target.value)}
+                onChange={setPrompt}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
@@ -2009,8 +2179,6 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
                   }
                 }}
                 placeholder="Décrivez ce que vous imaginez"
-                rows={1}
-                className="min-h-[48px] w-full resize-none bg-transparent px-[19px] pt-[16px] text-[16px] leading-[22px] text-[#111] outline-none placeholder:text-[#707070] dark:text-foreground"
               />
 
               {/* Bottom toolbar — same composer, controls swap per mode.
@@ -2085,21 +2253,6 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
                         onChange={setResolution}
                       />
                     </div>
-                    {/* Duration selector (10s coming soon) — desktop: in
-                    toolbar / mobile: below the composer (see below) */}
-                    <div className="hidden md:contents">
-                      <SegmentedControl
-                        options={VIDEO_DURATIONS}
-                        value={duration}
-                        onChange={setDuration}
-                        disabledValues={['10s']}
-                        disabledHint="Bientôt disponible"
-                      />
-                    </div>
-                    {/* Sound (audio coming soon — stays disabled) */}
-                    <ToolbarIconButton label="Audio (bientôt disponible)">
-                      <IconVolumeOff size={18} />
-                    </ToolbarIconButton>
                   </>
                 )}
 
@@ -2153,13 +2306,6 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
                   options={VIDEO_RESOLUTIONS}
                   value={resolution}
                   onChange={setResolution}
-                />
-                <SegmentedControl
-                  options={VIDEO_DURATIONS}
-                  value={duration}
-                  onChange={setDuration}
-                  disabledValues={['10s']}
-                  disabledHint="Bientôt disponible"
                 />
               </div>
             )}
