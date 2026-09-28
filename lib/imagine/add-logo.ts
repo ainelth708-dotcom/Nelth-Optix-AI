@@ -1,8 +1,9 @@
 // ---------------------------------------------------------------------------
 // Nelth logo stamping (client-side, logo ONLY — no watermark removal or
 // other processing): draws the result photo onto a canvas and overlays
-// the Nelth mark (same artwork as the header IconLogo) bottom-right in
-// white with a soft shadow. Returns a PNG blob for a session blob URL.
+// the Nelth mark (same artwork as the header IconLogo, filled white per
+// the V3 spec) small bottom-right at 40% opacity with a soft shadow.
+// Returns a PNG blob for a session blob URL.
 // Throws on failure so callers can fall back to the raw URL.
 // ---------------------------------------------------------------------------
 
@@ -51,13 +52,14 @@ export async function addNelthLogo(imageUrl: string): Promise<Blob> {
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('Canvas indisponible.')
       ctx.drawImage(photo, 0, 0, w, h)
-      // Logo at ~18% of the image width, bottom-right, 3% padding.
-      const logoW = Math.max(24, Math.round(w * 0.18))
+      // Logo: small filled-white mark (~10% of the image width) at 40%
+      // opacity, bottom-right, 3% padding.
+      const logoW = Math.max(20, Math.round(w * 0.1))
       const logoH = Math.round((logoW * LOGO_VIEWBOX_H) / LOGO_VIEWBOX_W)
       const pad = Math.round(Math.min(w, h) * 0.03)
       const svg =
         `<svg xmlns="http://www.w3.org/2000/svg" width="${logoW}" height="${logoH}" viewBox="0 0 ${LOGO_VIEWBOX_W} ${LOGO_VIEWBOX_H}">` +
-        `<path d="${NELTH_LOGO_PATH}" fill="none" stroke="white" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>` +
+        `<path d="${NELTH_LOGO_PATH}" fill="white" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>` +
         `</svg>`
       const svgUrl = URL.createObjectURL(
         new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
@@ -65,9 +67,9 @@ export async function addNelthLogo(imageUrl: string): Promise<Blob> {
       try {
         const logo = await loadImage(svgUrl)
         ctx.save()
-        ctx.shadowColor = 'rgba(0,0,0,0.45)'
+        ctx.shadowColor = 'rgba(0,0,0,0.35)'
         ctx.shadowBlur = Math.max(2, Math.round(logoW * 0.04))
-        ctx.globalAlpha = 0.92
+        ctx.globalAlpha = 0.4
         ctx.drawImage(logo, w - logoW - pad, h - logoH - pad, logoW, logoH)
         ctx.restore()
       } finally {
