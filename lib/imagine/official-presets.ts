@@ -884,7 +884,7 @@ export const OFFICIAL_NEW_PRESETS: OfficialPreset[] = [
   {
     id: 'new-salle-de-sport',
     label: 'Salle de Sport',
-    category: 'generate',
+    category: 'edit',
     kind: 'image',
     image: 'https://ik.imagekit.io/big9hcdtmk/5%20NEW/Salle%20de%20Sport.jpg',
     prompt: `Ultra-realistic editorial photography, 8K UHD, ultra-detailed professional fitness photography. Vertical 1:2 composition.
@@ -906,7 +906,7 @@ Shot with a professional full-frame DSLR or mirrorless camera using an 85mm port
   {
     id: 'new-travel-lifestyle',
     label: 'Photorealistic Lifestyle Travel Photography',
-    category: 'generate',
+    category: 'edit',
     kind: 'image',
     image:
       'https://ik.imagekit.io/big9hcdtmk/5%20NEW/Photorealistic%20Lifestyle%20Travel%20Photography.jpg',
@@ -915,7 +915,7 @@ Shot with a professional full-frame DSLR or mirrorless camera using an 85mm port
   {
     id: 'new-iphone-selfie',
     label: 'Intimate Low-Light iPhone Selfie Realism',
-    category: 'generate',
+    category: 'edit',
     kind: 'image',
     image:
       'https://ik.imagekit.io/big9hcdtmk/5%20NEW/Intimate%20Low-Light%20iPhone%20Selfie%20Realism.jpg',
@@ -924,7 +924,7 @@ Shot with a professional full-frame DSLR or mirrorless camera using an 85mm port
   {
     id: 'new-cinematic-urban-3d',
     label: 'Cinematic Urban Realism × 3D Cartoon Character',
-    category: 'generate',
+    category: 'edit',
     kind: 'image',
     image:
       'https://ik.imagekit.io/big9hcdtmk/5%20NEW/Cinematic%20Urban%20Realism%20%C3%97%203D%20Cartoon%20Character.jpg',
@@ -933,7 +933,7 @@ Shot with a professional full-frame DSLR or mirrorless camera using an 85mm port
   {
     id: 'new-mountain-action',
     label: 'Cinematic Golden-Hour Mountain Action',
-    category: 'generate',
+    category: 'edit',
     kind: 'image',
     image:
       'https://ik.imagekit.io/big9hcdtmk/5%20NEW/Cinematic%20Golden-Hour%20Mountain%20Action.jpg',
