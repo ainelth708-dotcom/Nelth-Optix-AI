@@ -16,13 +16,24 @@ const MAX_EDGE = 2048
 
 function loadImage(
   src: string,
-  crossOrigin?: string
+  crossOrigin?: string,
+  timeoutMs: number = 20000
 ): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('Image trop longue à charger.')),
+      timeoutMs
+    )
     const img = new Image()
     if (crossOrigin) img.crossOrigin = crossOrigin
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('Image illisible.'))
+    img.onload = () => {
+      clearTimeout(timer)
+      resolve(img)
+    }
+    img.onerror = () => {
+      clearTimeout(timer)
+      reject(new Error('Image illisible.'))
+    }
     img.src = src
   })
 }

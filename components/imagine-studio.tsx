@@ -1798,31 +1798,34 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           }
           const urls = await pollV3Jobs([startJson.jobId], 1)
           if (urls.length === 0) throw new Error('Aucune image générée.')
-          // Nelth logo only (no cleaning): stamped client-side, with a
-          // raw fbcdn fallback per URL.
-          setJob({ status: 'working', label: 'Logo Nelth…' })
-          const stamped = await Promise.all(
-            urls.map(async u => {
-              try {
-                return {
-                  url: URL.createObjectURL(await addNelthLogo(u)),
-                  temporary: false
-                }
-              } catch {
-                return { url: u, temporary: true }
-              }
-            })
-          )
+          // Instant display (raw fbcdn), then stamp the Nelth logo in the
+          // background and swap per URL (logo only, no cleaning). Stamping
+          // never blocks or breaks the display: on failure the raw URL
+          // simply stays.
           setResults(prev => [
-            ...stamped.map(s => ({
-              kind: 'image' as const,
-              url: s.url,
-              prompt: text,
-              temporary: s.temporary
-            })),
+            ...urls.map(
+              (url): ImagineResult => ({
+                kind: 'image',
+                url,
+                prompt: text,
+                temporary: true
+              })
+            ),
             ...prev
           ])
           setJob(null)
+          for (const u of urls) {
+            addNelthLogo(u)
+              .then(blob => {
+                const stamped = URL.createObjectURL(blob)
+                setResults(prev =>
+                  prev.map(r =>
+                    r.url === u ? { ...r, url: stamped, temporary: false } : r
+                  )
+                )
+              })
+              .catch(() => {})
+          }
           return
         }
         setJob({ status: 'working', label: 'Édition de l’image…' })
@@ -1899,31 +1902,34 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           }
           const urls = await pollV3Jobs(startJson.jobs, count)
           if (urls.length === 0) throw new Error('Aucune image générée.')
-          // Nelth logo only (no cleaning): stamped client-side, with a
-          // raw fbcdn fallback per URL.
-          setJob({ status: 'working', label: 'Logo Nelth…' })
-          const stamped = await Promise.all(
-            urls.map(async u => {
-              try {
-                return {
-                  url: URL.createObjectURL(await addNelthLogo(u)),
-                  temporary: false
-                }
-              } catch {
-                return { url: u, temporary: true }
-              }
-            })
-          )
+          // Instant display (raw fbcdn), then stamp the Nelth logo in the
+          // background and swap per URL (logo only, no cleaning). Stamping
+          // never blocks or breaks the display: on failure the raw URL
+          // simply stays.
           setResults(prev => [
-            ...stamped.map(s => ({
-              kind: 'image' as const,
-              url: s.url,
-              prompt: text,
-              temporary: s.temporary
-            })),
+            ...urls.map(
+              (url): ImagineResult => ({
+                kind: 'image',
+                url,
+                prompt: text,
+                temporary: true
+              })
+            ),
             ...prev
           ])
           setJob(null)
+          for (const u of urls) {
+            addNelthLogo(u)
+              .then(blob => {
+                const stamped = URL.createObjectURL(blob)
+                setResults(prev =>
+                  prev.map(r =>
+                    r.url === u ? { ...r, url: stamped, temporary: false } : r
+                  )
+                )
+              })
+              .catch(() => {})
+          }
           return
         }
         setJob({ status: 'working', label: 'Génération de l’image…' })
