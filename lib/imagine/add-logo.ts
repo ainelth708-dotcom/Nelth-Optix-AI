@@ -38,6 +38,50 @@ function loadImage(
   })
 }
 
+/**
+ * Display-fit (no logo): downscales oversized backend images to a
+ * mobile-decodable size. Phones render huge photos blank or broken
+ * while desktops decode anything — capping the long edge keeps every
+ * result viewable everywhere. Small images pass through untouched.
+ * Throws on failure so callers can fall back to the original URL.
+ */
+export async function fitImageForDisplay(
+  imageUrl: string,
+  maxEdge: number = MAX_EDGE
+): Promise<Blob> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000)
+  try {
+    const res = await fetch(imageUrl, { signal: controller.signal })
+    if (!res.ok) throw new Error(`Image inaccessible (${res.status}).`)
+    const srcBlob = await res.blob()
+    const srcUrl = URL.createObjectURL(srcBlob)
+    try {
+      const photo = await loadImage(srcUrl)
+      const longest = Math.max(photo.naturalWidth, photo.naturalHeight)
+      if (!longest || longest <= maxEdge) return srcBlob
+      const scale = maxEdge / longest
+      const w = Math.max(1, Math.round(photo.naturalWidth * scale))
+      const h = Math.max(1, Math.round(photo.naturalHeight * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Canvas indisponible.')
+      ctx.drawImage(photo, 0, 0, w, h)
+      const out = await new Promise<Blob | null>(resolve =>
+        canvas.toBlob(resolve, 'image/jpeg', 0.92)
+      )
+      if (!out) throw new Error('Encodage impossible.')
+      return out
+    } finally {
+      URL.revokeObjectURL(srcUrl)
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export async function addNelthLogo(imageUrl: string): Promise<Blob> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 30000)

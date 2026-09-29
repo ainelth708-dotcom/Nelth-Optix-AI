@@ -16,7 +16,7 @@ import {
 } from '@tabler/icons-react'
 import { ArrowUp, X } from 'lucide-react'
 
-import { addNelthLogo } from '@/lib/imagine/add-logo'
+import { addNelthLogo, fitImageForDisplay } from '@/lib/imagine/add-logo'
 import {
   markAnnouncementShown,
   markTryNowClicked,
@@ -1808,23 +1808,32 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           }
           const urls = await pollV3Jobs([startJson.jobId], 1)
           if (urls.length === 0) throw new Error('Aucune image générée.')
-          // Instant display (raw fbcdn), then stamp the Nelth logo in the
-          // background and swap per URL (logo only, no cleaning). Stamping
-          // never blocks or breaks the display: on failure the raw URL
-          // simply stays.
+          // Display-fit first (mobile-decodable local blobs), then stamp
+          // the Nelth logo in the background and swap per URL (logo only,
+          // no cleaning — failures keep the fitted URL).
+          const fitted = await Promise.all(
+            urls.map(async u => {
+              try {
+                return URL.createObjectURL(await fitImageForDisplay(u))
+              } catch {
+                return u
+              }
+            })
+          )
           setResults(prev => [
-            ...urls.map(
+            ...fitted.map(
               (url): ImagineResult => ({
                 kind: 'image',
                 url,
                 prompt: text,
-                temporary: true
+                temporary: !url.startsWith('blob:')
               })
             ),
             ...prev
           ])
           setJob(null)
-          for (const u of urls) {
+          for (const u of fitted) {
+            if (!u.startsWith('blob:')) continue
             addNelthLogo(u)
               .then(blob => {
                 const stamped = URL.createObjectURL(blob)
@@ -1861,6 +1870,14 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           editTemporary = false
         } catch {
           // Fallback: raw fbcdn URL stays visible (~1h).
+        }
+        // Display-fit: downscale oversized results so phones can decode
+        // them too (a local blob never expires).
+        try {
+          editUrl = URL.createObjectURL(await fitImageForDisplay(editUrl))
+          editTemporary = false
+        } catch {
+          // Fallback: previous URL stays as is.
         }
         setResults(prev => [
           {
@@ -1912,23 +1929,32 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
           }
           const urls = await pollV3Jobs(startJson.jobs, count)
           if (urls.length === 0) throw new Error('Aucune image générée.')
-          // Instant display (raw fbcdn), then stamp the Nelth logo in the
-          // background and swap per URL (logo only, no cleaning). Stamping
-          // never blocks or breaks the display: on failure the raw URL
-          // simply stays.
+          // Display-fit first (mobile-decodable local blobs), then stamp
+          // the Nelth logo in the background and swap per URL (logo only,
+          // no cleaning — failures keep the fitted URL).
+          const fitted = await Promise.all(
+            urls.map(async u => {
+              try {
+                return URL.createObjectURL(await fitImageForDisplay(u))
+              } catch {
+                return u
+              }
+            })
+          )
           setResults(prev => [
-            ...urls.map(
+            ...fitted.map(
               (url): ImagineResult => ({
                 kind: 'image',
                 url,
                 prompt: text,
-                temporary: true
+                temporary: !url.startsWith('blob:')
               })
             ),
             ...prev
           ])
           setJob(null)
-          for (const u of urls) {
+          for (const u of fitted) {
+            if (!u.startsWith('blob:')) continue
             addNelthLogo(u)
               .then(blob => {
                 const stamped = URL.createObjectURL(blob)
@@ -1959,15 +1985,23 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         setJob({ status: 'working', label: 'Nettoyage…' })
         const cleaned = await Promise.all(
           json.data!.map(async d => {
+            let url = d.url
+            let temporary = true
             try {
-              return {
-                url: await cleanToBlobUrl(d.url),
-                temporary: false
-              }
+              url = await cleanToBlobUrl(d.url)
+              temporary = false
             } catch {
-              // Fallback: raw fbcdn URL stays visible (~1h).
-              return { url: d.url, temporary: true }
+              // Fallback: raw fbcdn URL.
             }
+            // Display-fit: downscale oversized results so phones can
+            // decode them too (a local blob never expires).
+            try {
+              url = URL.createObjectURL(await fitImageForDisplay(url))
+              temporary = false
+            } catch {
+              // Fallback: previous URL stays as is.
+            }
+            return { url, temporary }
           })
         )
         setResults(prev => [
