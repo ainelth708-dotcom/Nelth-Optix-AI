@@ -38,8 +38,8 @@ import { cn } from '@/lib/utils'
 
 import AiImageCard from '@/components/ai-image-card'
 import { ImageEditor } from '@/components/image-editor'
+import { NelthVideoPlayer } from '@/components/nelth-video-player'
 import { NewModelModal } from '@/components/new-model-modal'
-import { VideoPlayer } from '@/components/sora-ui/effects/video-player'
 
 type StudioMode = 'image' | 'video'
 type AspectRatio = 'auto' | '1:1' | '16:9' | '9:16'
@@ -1060,9 +1060,8 @@ function DiscoverCard({
           className="discover-card-in absolute inset-0 h-full w-full cursor-pointer object-cover"
         />
       ) : result?.kind === 'video' ? (
-        <VideoPlayer
+        <NelthVideoPlayer
           src={result.url}
-          defaultSpeed={1}
           dialogLabel="Lecture de la vidéo"
           triggerClassName="absolute inset-0 block h-full w-full cursor-pointer p-0"
         >
@@ -1084,7 +1083,7 @@ function DiscoverCard({
           <span className="pointer-events-none absolute left-2 top-2 flex size-7 items-center justify-center rounded-full bg-black/55 text-white">
             <IconVideo size={14} />
           </span>
-        </VideoPlayer>
+        </NelthVideoPlayer>
       ) : (
         <ImageGenerationLoadingCard loading={loading} label={phase ?? ''} />
       )}
@@ -1360,16 +1359,15 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   }, [])
 
   // Lock background scroll while an overlay is open (editor, preset
-  // preview, or the video player dialog which signals via its hidden
-  // attribute) so wheel/touch never scrolls the page behind them.
+  // preview, or our video player dialog which renders
+  // data-nelth-player-open only while open) so wheel/touch never scrolls
+  // the page behind them.
   // NOTE: the real scroller is the studio container below (the app shell
   // is position:fixed, body itself never scrolls) — lock them both.
   const scrollRootRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const sync = () => {
-      const videoOpen = !!document.querySelector(
-        '[data-media-01-player]:not([hidden])'
-      )
+      const videoOpen = !!document.querySelector('[data-nelth-player-open]')
       const locked = editing !== null || preview !== null || videoOpen
       document.body.style.overflow = locked ? 'hidden' : ''
       if (scrollRootRef.current) {
@@ -1380,6 +1378,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
     const obs = new MutationObserver(sync)
     obs.observe(document.body, {
       attributes: true,
+      childList: true,
       subtree: true,
       attributeFilter: ['hidden', 'class']
     })
