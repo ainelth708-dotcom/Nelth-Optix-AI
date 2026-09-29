@@ -95,15 +95,23 @@ export async function vibesGenerateImages(input: {
   }
   // The backend gateway times out (~40s+) on multi-variation synchronous
   // calls, so fan out N parallel single-variation calls instead (~13s
-  // each). Partial success is tolerated — show whatever arrived.
-  const settled = await Promise.allSettled(
-    Array.from({ length: count }, () => single())
-  )
-  const merged = settled.flatMap(s =>
-    s.status === 'fulfilled' ? (s.value.data ?? []) : []
-  )
-  if (merged.length === 0) throw new Error('La génération a échoué.')
-  return merged
+  // each). The backend flaps: rejected legs get ONE retry round before we
+  // settle for partial results (otherwise "variations 2" often shows 1).
+  // Slow rounds are kept as-is to stay within the route time budget.
+  let have: VibesImageResult[] = []
+  for (let round = 0; round <= 1 && have.length < count; round++) {
+    const need = count - have.length
+    const started = Date.now()
+    const settled = await Promise.allSettled(
+      Array.from({ length: need }, () => single())
+    )
+    for (const s of settled) {
+      if (s.status === 'fulfilled') have.push(...(s.value.data ?? []))
+    }
+    if (Date.now() - started > 25000) break
+  }
+  if (have.length === 0) throw new Error('La génération a échoué.')
+  return have.slice(0, count)
 }
 
 export async function vibesGenerateVideo(input: {

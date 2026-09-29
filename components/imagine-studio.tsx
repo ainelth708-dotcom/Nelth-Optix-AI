@@ -913,11 +913,7 @@ function DiscoverComposer({
               />
               <ToolbarIconButton
                 label="Mode vidéo"
-                onClick={() => {
-                  // Fresh video intent (original default): 1 variation.
-                  setMode('video')
-                  extras.setVariations(1)
-                }}
+                onClick={() => setMode('video')}
               >
                 <IconVideo size={20} />
               </ToolbarIconButton>
@@ -2436,13 +2432,10 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
                       label="Image"
                       icon={<IconPhoto size={15} />}
                     />
-                    {/* Switch to video mode (original default: 1 variation) */}
+                    {/* Switch to video mode */}
                     <ToolbarIconButton
                       label="Mode vidéo"
-                      onClick={() => {
-                        setMode('video')
-                        extras.setVariations(1)
-                      }}
+                      onClick={() => setMode('video')}
                     >
                       <IconVideo size={20} />
                     </ToolbarIconButton>
