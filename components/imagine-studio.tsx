@@ -1614,7 +1614,17 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       setV2UpsellOpen(true)
     }
     try {
-      const pressed = await compressImageForUpload(file)
+      const pressed = await compressImageForUpload(file).catch(
+        (compressErr: unknown) => {
+          const base =
+            compressErr instanceof Error && compressErr.message
+              ? compressErr.message
+              : null
+          throw new Error(
+            base ? `Compression : ${base}` : 'Compression impossible.'
+          )
+        }
+      )
       patch({ stage: 'upload' })
       const res = await fetchImagineApi('/api/imagine/upload', {
         imageBase64: pressed.base64,
