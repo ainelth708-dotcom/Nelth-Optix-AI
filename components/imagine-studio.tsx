@@ -2058,21 +2058,34 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         return
       } else {
         setJob({ status: 'working', label: 'Démarrage de la vidéo…' })
-        const res = await fetchImagineApi('/api/imagine/videos', {
-          prompt: fullPrompt,
-          aspectRatio:
-            params.aspectRatio === 'auto' ? '1:1' : params.aspectRatio,
-          resolution: params.resolution,
-          variations: count
-        })
-        const json = (await res.json().catch(() => null)) as {
-          batchId?: string
-          error?: string
-        } | null
-        if (!res.ok || !json?.batchId) {
-          throw new Error(json?.error || 'La génération a échoué.')
+        // The videos backend flaps (intermittent fast 502s): retry the
+        // START once when it fails fast. Safe against duplicates — a fast
+        // 502 means no job was created server-side.
+        let batchJson: { batchId?: string; error?: string } | null = null
+        for (let attempt = 0; attempt <= 1; attempt++) {
+          if (attempt > 0) {
+            setJob({ status: 'working', label: 'Nouvelle tentative…' })
+          }
+          const started = Date.now()
+          const res = await fetchImagineApi('/api/imagine/videos', {
+            prompt: fullPrompt,
+            aspectRatio:
+              params.aspectRatio === 'auto' ? '1:1' : params.aspectRatio,
+            resolution: params.resolution,
+            variations: count
+          })
+          batchJson = (await res.json().catch(() => null)) as {
+            batchId?: string
+            error?: string
+          } | null
+          if (res.ok && batchJson?.batchId) break
+          if (Date.now() - started > 20000) break
+          batchJson = null
         }
-        batchId = json.batchId
+        if (!batchJson?.batchId) {
+          throw new Error(batchJson?.error || 'La génération a échoué.')
+        }
+        batchId = batchJson.batchId
       }
       {
         // Poll every 5s (backend timeout=5s) until enough videoUrls land.
