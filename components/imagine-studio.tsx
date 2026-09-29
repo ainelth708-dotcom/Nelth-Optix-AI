@@ -898,7 +898,11 @@ function DiscoverComposer({
               />
               <ToolbarIconButton
                 label="Mode vidéo"
-                onClick={() => setMode('video')}
+                onClick={() => {
+                  // Fresh video intent (original default): 1 variation.
+                  setMode('video')
+                  extras.setVariations(1)
+                }}
               >
                 <IconVideo size={20} />
               </ToolbarIconButton>
@@ -2089,15 +2093,50 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       }
       {
         // Poll every 5s (backend timeout=5s) until enough videoUrls land.
+        // Like the original dashboard: urls accumulate across rounds, and
+        // a failed round (e.g. expired batch 404) finishes with what was
+        // already collected instead of killing the generation.
         let attempt = 0
+        const collected: string[] = []
+        const collect = (items: Array<{ videoUrl?: string | null }>) => {
+          for (const c of items) {
+            if (
+              typeof c.videoUrl === 'string' &&
+              c.videoUrl.length > 0 &&
+              !collected.includes(c.videoUrl)
+            ) {
+              collected.push(c.videoUrl)
+            }
+          }
+        }
+        const finish = () => {
+          if (collected.length === 0) throw new Error('Aucune vidéo générée.')
+          setResults(prev => [
+            ...collected.slice(0, count).map(
+              (url): ImagineResult => ({
+                kind: 'video',
+                url,
+                prompt: text,
+                temporary: true
+              })
+            ),
+            ...prev
+          ])
+          setJob(null)
+        }
         const poll = async (): Promise<void> => {
           attempt += 1
-          if (attempt > 60) throw new Error('Délai dépassé, réessaie.')
+          if (attempt > 60) {
+            if (collected.length > 0) {
+              finish()
+              return
+            }
+            throw new Error('Délai dépassé, réessaie.')
+          }
           setJob({
             status: 'working',
             label: 'Génération vidéo…'
           })
-          let content: Array<{ videoUrl?: string | null }> = []
           let batchComplete = false
           try {
             const pollRes = await fetchImagineApi(
@@ -2115,40 +2154,24 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
             if (!pollRes.ok || !pollJson?.batch) {
               throw new Error(pollJson?.error || 'Le suivi a échoué.')
             }
-            content = pollJson.batch.content ?? []
+            collect(pollJson.batch.content ?? [])
             batchComplete = pollJson.batch.isComplete === true
           } catch (err) {
-            // Transient network blip mid-poll: skip this round and try
-            // the next one instead of killing the whole generation.
+            // Failed round (expired batch, network blip): finish with the
+            // urls already collected, else skip and try the next round for
+            // transient errors, else fail.
+            if (collected.length >= count) {
+              finish()
+              return
+            }
             const transient =
               err instanceof DOMException
                 ? err.name === 'AbortError'
                 : err instanceof TypeError
             if (!transient) throw err
           }
-          const urls = [
-            ...new Set(
-              content.flatMap(c =>
-                typeof c.videoUrl === 'string' && c.videoUrl.length > 0
-                  ? [c.videoUrl]
-                  : []
-              )
-            )
-          ]
-          if (urls.length >= count || batchComplete) {
-            if (urls.length === 0) throw new Error('Aucune vidéo générée.')
-            setResults(prev => [
-              ...urls.slice(0, count).map(
-                (url): ImagineResult => ({
-                  kind: 'video',
-                  url,
-                  prompt: text,
-                  temporary: true
-                })
-              ),
-              ...prev
-            ])
-            setJob(null)
+          if (collected.length >= count || batchComplete) {
+            finish()
             return
           }
           await new Promise<void>(resolve => {
@@ -2388,10 +2411,13 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
                       label="Image"
                       icon={<IconPhoto size={15} />}
                     />
-                    {/* Switch to video mode */}
+                    {/* Switch to video mode (original default: 1 variation) */}
                     <ToolbarIconButton
                       label="Mode vidéo"
-                      onClick={() => setMode('video')}
+                      onClick={() => {
+                        setMode('video')
+                        extras.setVariations(1)
+                      }}
                     >
                       <IconVideo size={20} />
                     </ToolbarIconButton>
