@@ -747,7 +747,20 @@ function StylePreviewCard({
             <>
               <button
                 type="button"
-                onClick={() => photoInputRef.current?.click()}
+                onClick={() => {
+                  // Gallery-only on mobile: Android goes through the
+                  // dedicated photo-picker path (system gallery directly,
+                  // never the Files manager); other platforms use the
+                  // gallery-eligible hidden input below.
+                  if (isAndroidDevice()) {
+                    void pickSingleImageViaPhotoPicker().then(file => {
+                      // null = user cancelled: nothing to do.
+                      if (file) onSelectPhoto(file)
+                    })
+                    return
+                  }
+                  photoInputRef.current?.click()
+                }}
                 className="mt-4 h-[50px] w-full rounded-[25px] bg-black text-[15px] font-semibold text-white transition-colors duration-200 hover:bg-neutral-800 dark:text-neutral-100"
               >
                 Sélectionner une photo
@@ -755,10 +768,12 @@ function StylePreviewCard({
               <input
                 ref={photoInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
-                // Visually hidden but RENDERED (never display:none): on Android
-                // Chrome a display:none input opened by code falls back to the
-                // Files manager instead of the gallery picker.
+                accept="image/*"
+                // Image-only (never a MIME list): on mobile any deviation
+                // can demote the picker to the Files manager. Visually
+                // hidden but RENDERED (never display:none): on Android
+                // Chrome a display:none input opened by code falls back to
+                // the Files manager instead of the gallery picker.
                 className="pointer-events-none absolute h-px w-px opacity-0"
                 aria-hidden
                 tabIndex={-1}
