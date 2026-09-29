@@ -1958,8 +1958,8 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         setJob(null)
         return
       }
-      // Batch starter (text-to-x or animate): returns a batchId, then poll.
-      let batchId: string
+      // Batch starter (text-to-x or animate): returns batch ids, then poll.
+      let videoBatchIds: string[] = []
       if (ent) {
         setJob({ status: 'working', label: 'Animation de l’image…' })
         const res = await fetchImagineApi('/api/imagine/videos/animate', {
@@ -1977,7 +1977,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         if (!res.ok || !json?.batchId) {
           throw new Error(json?.error || "L'animation a échoué.")
         }
-        batchId = json.batchId
+        videoBatchIds = [json.batchId]
       } else if (params.mode === 'image') {
         if (imagenModel === 'v3') {
           setJob({ status: 'working', label: 'Démarrage V3…' })
@@ -2082,42 +2082,56 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
         setJob(null)
         return
       } else {
-        setJob({ status: 'working', label: 'Démarrage de la vidéo…' })
-        // The videos backend flaps (intermittent fast 502s): retry the
-        // START once when it fails fast. Safe against duplicates — a fast
+        // Fan-out: the backend fails multi-variation video starts, so
+        // start one single-variation job per requested video (same
+        // pattern as V2 images). Each start keeps the fast-retry: a fast
         // 502 means no job was created server-side.
-        let batchJson: { batchId?: string; error?: string } | null = null
-        for (let attempt = 0; attempt <= 1; attempt++) {
-          if (attempt > 0) {
-            setJob({ status: 'working', label: 'Nouvelle tentative…' })
+        const startOneVideo = async (): Promise<string> => {
+          let batchJson: { batchId?: string; error?: string } | null = null
+          for (let attempt = 0; attempt <= 1; attempt++) {
+            const started = Date.now()
+            const res = await fetchImagineApi('/api/imagine/videos', {
+              prompt: fullPrompt,
+              aspectRatio:
+                params.aspectRatio === 'auto' ? '1:1' : params.aspectRatio,
+              resolution: params.resolution,
+              variations: 1
+            })
+            batchJson = (await res.json().catch(() => null)) as {
+              batchId?: string
+              error?: string
+            } | null
+            if (res.ok && batchJson?.batchId) return batchJson.batchId
+            if (Date.now() - started > 20000) break
           }
-          const started = Date.now()
-          const res = await fetchImagineApi('/api/imagine/videos', {
-            prompt: fullPrompt,
-            aspectRatio:
-              params.aspectRatio === 'auto' ? '1:1' : params.aspectRatio,
-            resolution: params.resolution,
-            variations: count
-          })
-          batchJson = (await res.json().catch(() => null)) as {
-            batchId?: string
-            error?: string
-          } | null
-          if (res.ok && batchJson?.batchId) break
-          if (Date.now() - started > 20000) break
-          batchJson = null
-        }
-        if (!batchJson?.batchId) {
           throw new Error(batchJson?.error || 'La génération a échoué.')
         }
-        batchId = batchJson.batchId
+        setJob({ status: 'working', label: 'Démarrage de la vidéo…' })
+        const starts = await Promise.allSettled(
+          Array.from({ length: count }, () => startOneVideo())
+        )
+        videoBatchIds = starts.flatMap(s =>
+          s.status === 'fulfilled' ? [s.value] : []
+        )
+        if (videoBatchIds.length === 0) {
+          const firstRejection = starts.find(
+            (s): s is PromiseRejectedResult => s.status === 'rejected'
+          )
+          throw firstRejection?.reason instanceof Error
+            ? firstRejection.reason
+            : new Error('La génération a échoué.')
+        }
       }
       {
         // Poll every 5s (backend timeout=5s) until enough videoUrls land.
         // Like the original dashboard: urls accumulate across rounds, and
         // a failed round (e.g. expired batch 404) finishes with what was
-        // already collected instead of killing the generation.
+        // already collected instead of killing the generation. Every
+        // pending batch is polled in parallel; dead ones are dropped
+        // after 3 straight failures.
         let attempt = 0
+        const pending = new Set(videoBatchIds)
+        const failures = new Map<string, number>()
         const collected: string[] = []
         const collect = (items: Array<{ videoUrl?: string | null }>) => {
           for (const c of items) {
@@ -2158,40 +2172,45 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
             status: 'working',
             label: 'Génération vidéo…'
           })
-          let batchComplete = false
-          try {
-            const pollRes = await fetchImagineApi(
-              '/api/imagine/videos/poll',
-              { batchId },
-              30000
-            )
-            const pollJson = (await pollRes.json().catch(() => null)) as {
-              batch?: {
-                isComplete?: boolean
-                content?: Array<{ videoUrl?: string | null }>
+          const settled = await Promise.all(
+            [...pending].map(async id => {
+              try {
+                const pollRes = await fetchImagineApi(
+                  '/api/imagine/videos/poll',
+                  { batchId: id },
+                  30000
+                )
+                const pollJson = (await pollRes.json().catch(() => null)) as {
+                  batch?: {
+                    isComplete?: boolean
+                    hasError?: boolean
+                    content?: Array<{ videoUrl?: string | null }>
+                  }
+                  error?: string
+                } | null
+                if (!pollRes.ok || !pollJson?.batch) {
+                  throw new Error(pollJson?.error || 'Le suivi a échoué.')
+                }
+                return { id, ok: true as const, batch: pollJson.batch }
+              } catch {
+                return { id, ok: false as const }
               }
-              error?: string
-            } | null
-            if (!pollRes.ok || !pollJson?.batch) {
-              throw new Error(pollJson?.error || 'Le suivi a échoué.')
+            })
+          )
+          for (const r of settled) {
+            if (!r.ok) {
+              const n = (failures.get(r.id) ?? 0) + 1
+              failures.set(r.id, n)
+              if (n >= 3) pending.delete(r.id)
+              continue
             }
-            collect(pollJson.batch.content ?? [])
-            batchComplete = pollJson.batch.isComplete === true
-          } catch (err) {
-            // Failed round (expired batch, network blip): finish with the
-            // urls already collected, else skip and try the next round for
-            // transient errors, else fail.
-            if (collected.length >= count) {
-              finish()
-              return
+            failures.set(r.id, 0)
+            collect(r.batch.content ?? [])
+            if (r.batch.isComplete === true || r.batch.hasError === true) {
+              pending.delete(r.id)
             }
-            const transient =
-              err instanceof DOMException
-                ? err.name === 'AbortError'
-                : err instanceof TypeError
-            if (!transient) throw err
           }
-          if (collected.length >= count || batchComplete) {
+          if (collected.length >= count || pending.size === 0) {
             finish()
             return
           }
