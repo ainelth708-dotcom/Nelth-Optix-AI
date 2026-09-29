@@ -329,6 +329,35 @@ function VideoOmniChip() {
 // per image — multi-upload: adding a file appends, never replaces).
 // ---------------------------------------------------------------------------
 
+const IMAGE_FILE_EXTENSIONS = new Set([
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'gif',
+  'bmp',
+  'avif',
+  'heic',
+  'heif'
+])
+
+/**
+ * System file managers (Android "Parcourir", Downloads, Drive, BT…) often
+ * hand over perfectly valid photos with an empty or generic MIME type, so
+ * a strict `image/*` check rejects them ("marche sur desktop" uses the
+ * gallery path, which always sets a proper MIME). Sniff the extension as
+ * a fallback: the pipeline below (FileReader → canvas decode →
+ * recompress) is MIME-agnostic, and real non-images still fail at decode
+ * with a clear message.
+ */
+function looksLikeImageFile(file: File): boolean {
+  if (file.type.startsWith('image/')) return true
+  const generic = file.type === '' || file.type === 'application/octet-stream'
+  if (!generic) return false
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  return IMAGE_FILE_EXTENSIONS.has(ext)
+}
+
 function AttachmentChip({
   attachment,
   onRemove,
@@ -1517,7 +1546,20 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       setAttachments(prev =>
         prev.map(a => (a.id === id ? { ...a, ...partial } : a))
       )
-    if (!file.type.startsWith('image/')) {
+    if (file.size === 0) {
+      // Cloud stubs / failed manager handoffs: keep the file so
+      // Réessayer can pick up where it left off.
+      upsert({
+        id,
+        name: file.name,
+        previewUrl: '',
+        status: 'error',
+        error: 'Fichier vide ou illisible.',
+        file
+      })
+      return
+    }
+    if (!looksLikeImageFile(file)) {
       upsert({
         id,
         name: file.name,
