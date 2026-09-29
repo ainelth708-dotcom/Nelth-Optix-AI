@@ -12,12 +12,27 @@ export interface NewModelModalProps {
   modelName: string
   modelDescription: string
   modelImage: string
+  /** Optional video visual (mp4): autoplays muted in a loop. */
+  modelVideo?: string
+  /** Poster shown while the video loads (or if playback is blocked). */
+  modelPoster?: string
   badge: string
   features: string[]
   maxReferenceImages: number
   buttonText: string
   onTryNow: () => void
   onClose: () => void
+}
+
+/**
+ * Stable autoplay helper (module-level so the ref identity never changes
+ * across renders): forces muted (unreliable through React alone) and
+ * starts the infinite loop. A blocked autoplay simply keeps the poster.
+ */
+function autoplayMutedLoop(el: HTMLVideoElement | null) {
+  if (!el) return
+  el.muted = true
+  void el.play().catch(() => {})
 }
 
 /**
@@ -32,6 +47,8 @@ export function NewModelModal({
   modelName,
   modelDescription,
   modelImage,
+  modelVideo,
+  modelPoster,
   badge,
   features,
   maxReferenceImages,
