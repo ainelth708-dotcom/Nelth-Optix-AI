@@ -193,9 +193,10 @@ function VideoPlayer({
       return
     }
 
-    const rootRaw = container.querySelector<HTMLElement>(
-      '[data-media-01-player]'
-    )
+    const rootRaw =
+      document.querySelector<HTMLElement>(
+        `[data-media-01-player="${playerId}"]`
+      ) ?? container.querySelector<HTMLElement>('[data-media-01-player]')
     if (!rootRaw) {
       return
     }
