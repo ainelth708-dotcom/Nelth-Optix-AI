@@ -2593,7 +2593,8 @@ const VIDEO_PLAYER_STYLES = /* css */ `
   }
 
   .video {
-    object-fit: cover;
+    object-fit: contain;
+    object-position: center center;
     opacity: 1;
     filter: blur(0) brightness(1);
     transform: scale(1);
