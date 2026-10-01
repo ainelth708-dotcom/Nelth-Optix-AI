@@ -1,7 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Mic, MicOff, RefreshCw, X as XIcon } from 'lucide-react'
+import {
+  Mic,
+  MicOff,
+  RefreshCw,
+  Send,
+  Volume2,
+  X as XIcon
+} from 'lucide-react'
 import type { OrbState } from 'orb-ui'
 import { Orb } from 'orb-ui'
 
@@ -37,6 +44,8 @@ export function VoiceMode({
 }: VoiceModeProps) {
   const { t } = useI18n()
   const [leaving, setLeaving] = useState(false)
+  const [typedInput, setTypedInput] = useState('')
+  const [showTranscript, setShowTranscript] = useState(false)
   const [selectedVoice, setSelectedVoice] = useState<string>(() =>
     getSavedRealtimeVoice()
   )
@@ -47,16 +56,20 @@ export function VoiceMode({
     errorMessage,
     isMuted,
     micLevel,
-    assistantLevel,
     isAssistantSpeaking,
+    messages: realtimeMessages,
+    currentAssistantText,
+    currentUserText,
+    audioElRef,
     connect,
     disconnect,
-    toggleMute
+    toggleMute,
+    sendTextMessage
   } = useRealtimeVoice({
     voice: selectedVoice
   })
 
-  // Start Realtime connection on mount
+  // Start Realtime WebRTC connection on mount
   useEffect(() => {
     connect(selectedVoice)
     return () => {
@@ -70,7 +83,6 @@ export function VoiceMode({
     (newVoiceId: string) => {
       setSelectedVoice(newVoiceId)
       saveRealtimeVoice(newVoiceId)
-      // Reconnect with new voice
       connect(newVoiceId)
     },
     [connect]
@@ -93,11 +105,17 @@ export function VoiceMode({
     return () => document.removeEventListener('keydown', onKey)
   }, [handleClose])
 
+  const handleSendText = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!typedInput.trim()) return
+    sendTextMessage(typedInput)
+    setTypedInput('')
+  }
+
   // Determine Orb visual state
   const orbState: OrbState =
     realtimeStatus === 'connecting' ||
-    realtimeStatus === 'requesting-permission' ||
-    realtimeStatus === 'reconnecting'
+    realtimeStatus === 'requesting-permission'
       ? 'connecting'
       : realtimeStatus === 'error'
         ? 'error'
@@ -105,13 +123,13 @@ export function VoiceMode({
           ? 'speaking'
           : 'listening'
 
-  // Determine dynamic volume for Orb animation
+  // Dynamic volume for Orb animation
   const orbVolume =
     realtimeStatus === 'error'
       ? 0
       : isAssistantSpeaking
-        ? Math.min(1, Math.max(0.2, assistantLevel * 3.5))
-        : Math.min(1, Math.max(0.08, micLevel * 2.8))
+        ? 0.8
+        : Math.min(1, Math.max(0.08, micLevel * 3))
 
   const activeVoiceObj =
     REALTIME_VOICES.find(v => v.id === selectedVoice) || REALTIME_VOICES[0]
@@ -123,16 +141,19 @@ export function VoiceMode({
       aria-label={t('voice.title')}
       data-testid="voice-mode"
       className={cn(
-        'fixed inset-0 z-[120] flex flex-col items-center justify-between bg-background/95 px-6 py-8 backdrop-blur-xl select-none',
+        'fixed inset-0 z-[120] flex flex-col items-center justify-between bg-background/95 px-4 sm:px-6 py-6 sm:py-8 backdrop-blur-2xl select-none',
         leaving ? 'nelth-voice-leave' : 'nelth-voice-enter'
       )}
     >
+      {/* Hidden audio element for receiving WebRTC assistant voice */}
+      <audio ref={audioElRef} autoPlay playsInline className="hidden" />
+
       {/* Header controls */}
       <div className="flex w-full max-w-2xl items-center justify-between">
         <div className="flex items-center gap-2">
           <div
             className={cn(
-              'flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium border backdrop-blur-md',
+              'flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium border backdrop-blur-md transition-colors',
               realtimeStatus === 'connected'
                 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
                 : realtimeStatus === 'error'
@@ -152,31 +173,46 @@ export function VoiceMode({
             />
             <span>
               {realtimeStatus === 'connected'
-                ? 'Direct WebRTC'
+                ? 'Realtime WebRTC Actif'
                 : realtimeStatus === 'error'
-                  ? 'Erreur'
-                  : 'Connexion...'}
+                  ? 'Erreur de connexion'
+                  : 'Négociation SDP...'}
             </span>
           </div>
 
           <span className="hidden sm:inline text-xs text-muted-foreground">
-            {activeVoiceObj.name} ({activeVoiceObj.tag})
+            {activeVoiceObj.name} · {activeVoiceObj.tag}
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={handleClose}
-          aria-label={t('voice.close')}
-          data-testid="voice-close"
-          className="grid size-10 cursor-pointer place-items-center rounded-full border border-border bg-background/80 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground active:scale-95 shadow-sm"
-        >
-          <XIcon className="size-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowTranscript(!showTranscript)}
+            className={cn(
+              'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
+              showTranscript
+                ? 'border-primary/50 bg-primary/10 text-primary'
+                : 'border-border/60 bg-background/80 text-muted-foreground hover:text-foreground'
+            )}
+          >
+            Transcription
+          </button>
+
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label={t('voice.close')}
+            data-testid="voice-close"
+            className="grid size-10 cursor-pointer place-items-center rounded-full border border-border bg-background/80 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground active:scale-95 shadow-sm"
+          >
+            <XIcon className="size-5" />
+          </button>
+        </div>
       </div>
 
-      {/* Main Orb Center */}
-      <div className="flex flex-col items-center justify-center gap-6 my-auto">
+      {/* Main Center Stage */}
+      <div className="flex flex-col items-center justify-center gap-6 my-auto w-full max-w-xl">
         <div className="relative">
           <Orb
             state={orbState}
@@ -187,8 +223,8 @@ export function VoiceMode({
           />
         </div>
 
-        {/* Dynamic status and hints */}
-        <div className="flex min-h-[3.5rem] w-full max-w-md flex-col items-center gap-2 text-center">
+        {/* Dynamic status / caption */}
+        <div className="flex min-h-[4.5rem] w-full flex-col items-center justify-center gap-2 text-center px-4">
           {errorMessage ? (
             <div className="flex flex-col items-center gap-2">
               <p className="text-sm font-medium text-destructive">
@@ -197,46 +233,87 @@ export function VoiceMode({
               <button
                 type="button"
                 onClick={() => connect(selectedVoice)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-muted/60 text-xs font-medium text-foreground hover:bg-muted transition-colors active:scale-95"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-border bg-muted/60 text-xs font-medium text-foreground hover:bg-muted transition-colors active:scale-95"
               >
                 <RefreshCw className="size-3.5" />
-                <span>Réessayer</span>
+                <span>Réessayer la connexion</span>
               </button>
+            </div>
+          ) : showTranscript && realtimeMessages.length > 0 ? (
+            <div className="w-full max-h-36 overflow-y-auto space-y-1.5 p-3 rounded-2xl bg-muted/30 border border-border/40 text-left text-xs">
+              {realtimeMessages.slice(-6).map(m => (
+                <div
+                  key={m.id}
+                  className={cn(
+                    'px-2.5 py-1.5 rounded-xl max-w-[85%]',
+                    m.role === 'user'
+                      ? 'ml-auto bg-primary text-primary-foreground font-medium'
+                      : m.role === 'assistant'
+                        ? 'mr-auto bg-card text-card-foreground border border-border/50'
+                        : 'mx-auto text-[11px] text-muted-foreground italic text-center'
+                  )}
+                >
+                  {m.text}
+                </div>
+              ))}
             </div>
           ) : (
             <>
               <p
                 aria-live="polite"
-                className="text-base font-medium tracking-tight text-foreground"
+                className="text-base sm:text-lg font-medium tracking-tight text-foreground transition-all line-clamp-3"
               >
                 {realtimeStatus === 'connecting' ||
                 realtimeStatus === 'requesting-permission'
-                  ? 'Connexion au mode vocal temps réel...'
+                  ? 'Connexion audio en direct avec ace-studio...'
                   : isAssistantSpeaking
-                    ? `${activeVoiceObj.name} parle...`
-                    : isMuted
-                      ? 'Microphone coupé'
-                      : 'À votre écoute, parlez naturellement...'}
+                    ? currentAssistantText || `${activeVoiceObj.name} parle...`
+                    : currentUserText ||
+                      (isMuted
+                        ? 'Microphone coupé'
+                        : 'À votre écoute, parlez librement...')}
               </p>
-              <p className="text-xs text-muted-foreground">
-                {realtimeStatus === 'connected'
-                  ? 'Audio bidirectionnel fluide sans délai'
-                  : 'Autorisez le microphone si demandé par le navigateur'}
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Volume2 className="size-3.5 text-emerald-500" />
+                <span>Interruption vocale naturelle (barge-in) activée</span>
               </p>
             </>
           )}
         </div>
       </div>
 
-      {/* Footer controls: Voice Selector & Mic Mute */}
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-xl pb-2">
-        <VoiceSelector
-          selectedVoice={selectedVoice}
-          onSelectVoice={handleSelectVoice}
-          disabled={realtimeStatus === 'connecting'}
-        />
+      {/* Footer controls */}
+      <div className="flex flex-col items-center gap-3 w-full max-w-xl pb-2">
+        {/* Quick text input option */}
+        {realtimeStatus === 'connected' && (
+          <form
+            onSubmit={handleSendText}
+            className="flex items-center gap-2 w-full max-w-md bg-muted/40 border border-border/60 rounded-full px-3 py-1.5 focus-within:ring-2 focus-within:ring-primary/20 backdrop-blur-md"
+          >
+            <input
+              type="text"
+              value={typedInput}
+              onChange={e => setTypedInput(e.target.value)}
+              placeholder="Écrire à l'assistant vocal..."
+              className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none px-1"
+            />
+            <button
+              type="submit"
+              disabled={!typedInput.trim()}
+              className="p-1.5 rounded-full bg-primary text-primary-foreground disabled:opacity-30 transition-opacity"
+            >
+              <Send className="size-3" />
+            </button>
+          </form>
+        )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-3 w-full">
+          <VoiceSelector
+            selectedVoice={selectedVoice}
+            onSelectVoice={handleSelectVoice}
+            disabled={realtimeStatus === 'connecting'}
+          />
+
           <button
             type="button"
             onClick={toggleMute}
