@@ -44,6 +44,15 @@ export async function POST(req: Request) {
     })
   } catch (err) {
     console.error('[imagine] upload failed:', err)
+    // The backend upload routes are currently missing from the vibes
+    // deployment (404): say so plainly instead of a generic retry loop.
+    const raw = err instanceof Error ? err.message : ''
+    if (/\(404\)/.test(raw)) {
+      return NextResponse.json(
+        { error: "Service d'upload indisponible, réessaie plus tard." },
+        { status: 502 }
+      )
+    }
     return NextResponse.json(
       { error: "L'envoi a échoué, réessaie." },
       { status: 502 }
