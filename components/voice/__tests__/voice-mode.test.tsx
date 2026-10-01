@@ -33,7 +33,7 @@ describe('VoiceMode', () => {
     expect(screen.getByTestId('voice-close')).toBeInTheDocument()
   })
 
-  test('shows unsupported message where Web Speech is missing', () => {
+  test('shows unsupported message where WebRTC/microphone is missing in test environment', async () => {
     render(
       <VoiceMode
         onClose={vi.fn()}
@@ -43,10 +43,8 @@ describe('VoiceMode', () => {
         locale="fr"
       />
     )
-    // jsdom has no SpeechRecognition → unsupported error text
-    // (default English locale).
     expect(
-      screen.getByText(/not supported in this browser/)
+      await screen.findByText(/Microphone WebRTC non supporté/i)
     ).toBeInTheDocument()
     expect(screen.getByTestId('voice-orb')).toHaveAttribute(
       'data-state',
