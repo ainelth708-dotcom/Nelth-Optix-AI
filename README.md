@@ -1,10 +1,10 @@
 <div align="center">
 
-# Nelth-IA
+# Nelth-Optix-AI
 
 Your AI assistant for answers, documents, mail and calendar — with your apps connected (Google Drive, Gmail, Calendar, GitHub, Notion).
 
-[![GitHub](https://img.shields.io/badge/GitHub-Nelth_Optix--AI--181717.svg?logo=github)](https://github.com/optixai32-hue/Nelth_Optix-AI-)
+[![GitHub](https://img.shields.io/badge/GitHub-Nelth_Optix--AI--181717.svg?logo=github)](https://github.com/ainelth708-dotcom/Nelth-Optix-AI)
 
 </div>
 
@@ -15,10 +15,10 @@ Your AI assistant for answers, documents, mail and calendar — with your apps c
 - Search modes: Quick and Adaptive
 - Model selector with dynamic provider detection (OpenAI, Anthropic, Google, Ollama, Vercel AI Gateway, OpenAI-compatible providers)
 - Multiple search providers (Tavily, SearXNG, Brave, Exa)
-- Chat history stored in PostgreSQL
+- Chat history stored in PostgreSQL / Firebase
 - Share search results with unique URLs
 - File upload support
-- User authentication with Supabase Auth
+- User authentication with Supabase / Firebase Auth
 - Guest mode for anonymous usage
 - Docker deployment ready
 
@@ -26,11 +26,11 @@ Your AI assistant for answers, documents, mail and calendar — with your apps c
 
 ### Docker (Recommended)
 
-The quickest way to run Nelth-IA locally:
+The quickest way to run Nelth-Optix-AI locally:
 
 ```bash
-git clone https://github.com/optixai32-hue/Nelth_Optix-AI-.git
-cd Nelth_Optix-AI-
+git clone https://github.com/ainelth708-dotcom/Nelth-Optix-AI.git
+cd Nelth-Optix-AI
 ```
 
 Then set up with Docker Compose:
