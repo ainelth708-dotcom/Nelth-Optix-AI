@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Check, Loader2, Play, ShieldAlert, X } from 'lucide-react'
 
@@ -15,7 +15,9 @@ import {
   canTransitionTask,
   createAgentTask,
   isTerminalTaskState,
-  transitionTask} from '@/lib/agent/task'
+  transitionTask
+} from '@/lib/agent/task'
+import type { AgentCapabilities } from '@/lib/agent/worker/types'
 import { cn } from '@/lib/utils'
 
 interface PendingApproval {
@@ -98,8 +100,19 @@ export function PlanPanel({
   const [activity, setActivity] = useState('')
   const [approval, setApproval] = useState<PendingApproval | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [caps, setCaps] = useState<AgentCapabilities | null>(null)
   const transcriptRef = useRef<AgentTranscriptEntry[]>([])
   const abortedRef = useRef(false)
+
+  // Real capabilities (single source of truth) — never hardcoded.
+  useEffect(() => {
+    fetch('/api/agent/capabilities')
+      .then(r => r.json())
+      .then(j => {
+        if (j?.capabilities) setCaps(j.capabilities as AgentCapabilities)
+      })
+      .catch(() => {})
+  }, [])
 
   const busy = planning || running
 
@@ -221,6 +234,20 @@ export function PlanPanel({
     setError(null)
     setApproval(null)
     abortedRef.current = false
+    // Snapshot for server-side persistence (recoverable across HTTP).
+    const snapshot = {
+      id: runTask.id,
+      title: runTask.title,
+      goalId: null,
+      state: 'RUNNING' as const,
+      progress: 0,
+      steps: [],
+      artifacts: [],
+      history: runTask.history,
+      result: null,
+      createdAt: runTask.createdAt,
+      updatedAt: runTask.updatedAt
+    }
     try {
       const res = await fetch('/api/agent/run', {
         method: 'POST',
@@ -228,6 +255,7 @@ export function PlanPanel({
         body: JSON.stringify({
           goal,
           steps: planSteps,
+          task: snapshot,
           ...(resume
             ? { transcript: resume.transcript, startIndex: resume.startIndex }
             : {})
@@ -290,6 +318,37 @@ export function PlanPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-4">
+      {/* Real capabilities — AVAILABLE vs UNAVAILABLE, never faked. */}
+      {caps && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1">
+          {(
+            [
+              ['browser', 'Navigateur'],
+              ['computer', 'Ordinateur'],
+              ['shell', 'Shell'],
+              ['backgroundTasks', 'Tâches fond'],
+              ['scheduling', 'Planification']
+            ] as const
+          ).map(([key, label]) => {
+            const on = caps[key] === true
+            return (
+              <span
+                key={key}
+                title={on ? 'Disponible' : 'Non configuré'}
+                className="flex items-center gap-1.5 text-[11px] font-medium text-neutral-500 dark:text-neutral-400"
+              >
+                <span
+                  className={cn(
+                    'size-1.5 rounded-full',
+                    on ? 'bg-emerald-500' : 'bg-neutral-300 dark:bg-neutral-600'
+                  )}
+                />
+                {label}
+              </span>
+            )
+          })}
+        </div>
+      )}
       {/* Goal input */}
       <div className="w-full overflow-hidden rounded-[18px] border border-[#e3e3e3] bg-white dark:border-border dark:bg-card">
         <textarea

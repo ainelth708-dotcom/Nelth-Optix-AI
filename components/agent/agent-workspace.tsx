@@ -19,7 +19,7 @@ import type { UIMessage } from '@/lib/types/ai'
 import { cn } from '@/lib/utils'
 import { getTextFromParts } from '@/lib/utils/message-utils'
 
-import { type CompanionState,NelthCompanion } from './nelth-companion'
+import { type CompanionState, NelthCompanion } from './nelth-companion'
 import { PlanPanel } from './plan-panel'
 import { TrackingPanel } from './tracking-panel'
 

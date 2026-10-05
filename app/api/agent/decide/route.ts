@@ -1,9 +1,6 @@
-import {
-  executeApprovedFetch,
-  runGoalStream
-} from '@/lib/agent/orchestrator'
-import { agentSseResponse } from '@/lib/agent/sse'
 import type { ApprovalDecision } from '@/lib/agent/approvals'
+import { executeApprovedFetch, runGoalStream } from '@/lib/agent/orchestrator'
+import { agentSseResponse } from '@/lib/agent/sse'
 
 export const maxDuration = 300
 
@@ -21,9 +18,7 @@ export async function POST(req: Request) {
     resume?: unknown
   } | null
 
-  const call = body?.call as
-    | { tool?: unknown; args?: unknown }
-    | undefined
+  const call = body?.call as { tool?: unknown; args?: unknown } | undefined
   const decision = body?.decision as ApprovalDecision | undefined
   const resume = body?.resume as
     | {
@@ -95,7 +90,10 @@ export async function POST(req: Request) {
           ...transcript,
           {
             role: 'observation' as const,
-            text: `Approved fetch ${url} returned:\n${observation}`.slice(0, 4000)
+            text: `Approved fetch ${url} returned:\n${observation}`.slice(
+              0,
+              4000
+            )
           }
         ],
         startIndex:

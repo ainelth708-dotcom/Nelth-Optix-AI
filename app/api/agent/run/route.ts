@@ -1,7 +1,11 @@
-import { getCurrentUserId } from '@/lib/auth/get-current-user'
-import { runGoalStream, type AgentTranscriptEntry } from '@/lib/agent/orchestrator'
+import {
+  type AgentTranscriptEntry,
+  runGoalStream
+} from '@/lib/agent/orchestrator'
 import { agentSseResponse } from '@/lib/agent/sse'
-import { appendFeed } from '@/lib/agent/store'
+import { appendFeed, saveAgentTask } from '@/lib/agent/store'
+import type { AgentTask } from '@/lib/agent/task'
+import { getCurrentUserId } from '@/lib/auth/get-current-user'
 
 export const maxDuration = 300
 
@@ -28,7 +32,8 @@ function cleanTranscript(value: unknown): AgentTranscriptEntry[] {
         typeof e === 'object' && e !== null
     )
     .filter(
-      e => e.role === 'user' || e.role === 'assistant' || e.role === 'observation'
+      e =>
+        e.role === 'user' || e.role === 'assistant' || e.role === 'observation'
     )
     .map(e => ({
       role: e.role as AgentTranscriptEntry['role'],
@@ -43,15 +48,27 @@ export async function POST(req: Request) {
     steps?: unknown
     transcript?: unknown
     startIndex?: unknown
+    task?: unknown
   } | null
   const goal = typeof body?.goal === 'string' ? body.goal.trim() : ''
   const steps = cleanSteps(body?.steps)
   if (!goal || steps.length === 0) {
-    return new Response(JSON.stringify({ error: 'Objectif et étapes requis.' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    })
+    return new Response(
+      JSON.stringify({ error: 'Objectif et étapes requis.' }),
+      {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    )
   }
+  // Optional client task snapshot: persisted on completion so the task
+  // survives HTTP termination and stays resumable (criterion: recoverable).
+  const snapshot =
+    typeof body?.task === 'object' &&
+    body.task !== null &&
+    typeof (body.task as { id?: unknown }).id === 'string'
+      ? (body.task as AgentTask)
+      : null
   const resume =
     typeof body?.startIndex === 'number'
       ? {
@@ -62,16 +79,20 @@ export async function POST(req: Request) {
 
   const uid = await getCurrentUserId().catch(() => null)
   return agentSseResponse(async send => {
+    let completed: boolean | null = null
     try {
       for await (const event of runGoalStream({ goal, steps, resume })) {
         send(event)
-        if (event.type === 'done' && uid) {
-          await appendFeed(uid, {
-            kind: 'task',
-            text: event.completed
-              ? `Tâche terminée : ${goal.slice(0, 140)}`
-              : `Tâche inachevée : ${goal.slice(0, 140)}`
-          }).catch(() => {})
+        if (event.type === 'done') {
+          completed = event.completed
+          if (uid) {
+            await appendFeed(uid, {
+              kind: 'task',
+              text: event.completed
+                ? `Tâche terminée : ${goal.slice(0, 140)}`
+                : `Tâche inachevée : ${goal.slice(0, 140)}`
+            }).catch(() => {})
+          }
         }
       }
     } catch (err) {
@@ -83,6 +104,15 @@ export async function POST(req: Request) {
         }).catch(() => {})
       }
       throw err
+    } finally {
+      if (uid && snapshot && completed !== null) {
+        await saveAgentTask(uid, {
+          ...snapshot,
+          state: completed ? 'COMPLETED' : 'FAILED',
+          progress: completed ? 100 : snapshot.progress,
+          updatedAt: Date.now()
+        }).catch(() => {})
+      }
     }
   })
 }

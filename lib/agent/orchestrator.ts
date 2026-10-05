@@ -24,6 +24,7 @@ import { createQuestionTool } from '@/lib/tools/question'
 import { createSearchTool } from '@/lib/tools/search'
 import { getModel } from '@/lib/utils/registry'
 
+import { getCapabilities } from './worker/capabilities'
 import { requiresApproval } from './approvals'
 
 const agentModelId = `${DEFAULT_MODEL.providerId}:${DEFAULT_MODEL.id}`
@@ -57,11 +58,29 @@ const PLANNER_SYSTEM = [
 export async function planGoal(goal: string): Promise<AgentPlan> {
   const trimmed = goal.trim()
   if (!trimmed) throw new Error('Objectif vide.')
+  // The planner only proposes what REALLY exists: available worker
+  // capabilities are injected live (never hardcoded), so plans never
+  // promise browser/shell/computer work when no worker is configured.
+  const caps = getCapabilities()
+  const available = [
+    'web search',
+    'page fetch (approved)',
+    'document lookup',
+    'direct answering'
+  ]
+  if (caps.browser) available.push('browser automation (worker)')
+  if (caps.computer) available.push('computer control (worker)')
+  if (caps.shell)
+    available.push(
+      `shell commands (worker${caps.proot ? ', proot isolated' : ''})`
+    )
   const { object } = await generateObject({
     model: agentModel(),
     schema: PlanSchema,
     system: PLANNER_SYSTEM,
-    prompt: trimmed
+    prompt:
+      `${trimmed}\n\nAvailable capabilities: ${available.join(', ')}. ` +
+      'Plan ONLY with these — never assume browser, shell or computer access unless listed.'
   })
   return object
 }

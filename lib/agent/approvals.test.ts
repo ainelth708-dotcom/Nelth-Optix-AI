@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  authorizeWorkerAction,
   createApprovalQueue,
   requiresApproval
 } from './approvals'
@@ -33,5 +34,37 @@ describe('approval queue', () => {
   it('rejects unknown requests', () => {
     const queue = createApprovalQueue()
     expect(() => queue.decide('nope', 'DENY')).toThrow(/Unknown/)
+  })
+})
+
+describe('worker gate', () => {
+  it('stops unavailable capabilities honestly', () => {
+    expect(
+      authorizeWorkerAction({
+        capabilityAvailable: false,
+        capability: 'browser',
+        riskClass: 'SAFE',
+        riskTier: 'NOTICE'
+      })
+    ).toEqual({ outcome: 'unavailable', capability: 'browser' })
+  })
+
+  it('requires approval for sensitive actions only', () => {
+    expect(
+      authorizeWorkerAction({
+        capabilityAvailable: true,
+        capability: 'shell',
+        riskClass: 'DESTRUCTIVE',
+        riskTier: 'CONFIRM'
+      }).outcome
+    ).toBe('needs-approval')
+    expect(
+      authorizeWorkerAction({
+        capabilityAvailable: true,
+        capability: 'shell',
+        riskClass: 'SAFE',
+        riskTier: 'NOTICE'
+      }).outcome
+    ).toBe('allowed')
   })
 })

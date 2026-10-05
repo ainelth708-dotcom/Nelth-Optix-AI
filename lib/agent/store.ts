@@ -6,6 +6,9 @@
 
 import { getDb } from '@/lib/firebase/admin'
 
+import type { AgentSchedule } from './scheduling'
+import type { AgentTask } from './task'
+
 export interface AgentGoal {
   id: string
   title: string
@@ -196,4 +199,123 @@ export async function appendFeed(
   }
   await ref.set(item)
   return item
+}
+
+// ---------------------------------------------------------------------------
+// Persisted agent tasks (snapshots for resume-across-HTTP) + schedules.
+// ---------------------------------------------------------------------------
+
+export async function saveAgentTask(
+  uid: string,
+  task: AgentTask
+): Promise<void> {
+  await getDb()
+    .collection('users')
+    .doc(uid)
+    .collection('agentTasks')
+    .doc(task.id)
+    .set({ ...task })
+}
+
+export async function getAgentTask(
+  uid: string,
+  id: string
+): Promise<AgentTask | null> {
+  const snap = await getDb()
+    .collection('users')
+    .doc(uid)
+    .collection('agentTasks')
+    .doc(id)
+    .get()
+  if (!snap.exists) return null
+  return snap.data() as AgentTask
+}
+
+export async function listAgentTasks(
+  uid: string,
+  limit = 20
+): Promise<AgentTask[]> {
+  const snap = await getDb()
+    .collection('users')
+    .doc(uid)
+    .collection('agentTasks')
+    .orderBy('updatedAt', 'desc')
+    .limit(Math.min(50, Math.max(1, limit)))
+    .get()
+  return snap.docs.map(d => d.data() as AgentTask)
+}
+
+export async function listActiveAgentTasks(uid: string): Promise<AgentTask[]> {
+  const snap = await getDb()
+    .collection('users')
+    .doc(uid)
+    .collection('agentTasks')
+    .where('state', 'in', [
+      'PLANNING',
+      'RUNNING',
+      'BROWSING',
+      'USING_TOOL',
+      'VERIFYING',
+      'WAITING_APPROVAL',
+      'WAITING_USER',
+      'PAUSED'
+    ])
+    .orderBy('updatedAt', 'desc')
+    .limit(50)
+    .get()
+  return snap.docs.map(d => d.data() as AgentTask)
+}
+
+export async function listSchedules(uid: string): Promise<AgentSchedule[]> {
+  const snap = await getDb()
+    .collection('users')
+    .doc(uid)
+    .collection('agentSchedules')
+    .orderBy('updatedAt', 'desc')
+    .limit(50)
+    .get()
+  return snap.docs.map(
+    d => ({ id: d.id, ...(d.data() as object) }) as AgentSchedule
+  )
+}
+
+export async function saveSchedule(
+  uid: string,
+  schedule: AgentSchedule
+): Promise<void> {
+  await getDb()
+    .collection('users')
+    .doc(uid)
+    .collection('agentSchedules')
+    .doc(schedule.id)
+    .set({ ...schedule })
+}
+
+export async function getSchedule(
+  uid: string,
+  id: string
+): Promise<AgentSchedule | null> {
+  const snap = await getDb()
+    .collection('users')
+    .doc(uid)
+    .collection('agentSchedules')
+    .doc(id)
+    .get()
+  if (!snap.exists) return null
+  return { id: snap.id, ...(snap.data() as object) } as AgentSchedule
+}
+
+export async function deleteSchedule(
+  uid: string,
+  id: string
+): Promise<boolean> {
+  const ref = getDb()
+    .collection('users')
+    .doc(uid)
+    .collection('agentSchedules')
+    .doc(id)
+  const snap = await ref.get()
+  if (!snap.exists) return false
+  await ref.delete()
+  return true
 }

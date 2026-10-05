@@ -68,6 +68,38 @@ export function requiresApproval(
   return !(riskClass === 'SAFE' && riskTier === 'NOTICE')
 }
 
+export type WorkerGateDecision =
+  | { outcome: 'unavailable'; capability: string }
+  | { outcome: 'allowed' }
+  | {
+      outcome: 'needs-approval'
+      riskClass: ApprovalRiskClass
+      riskTier: ApprovalRiskTier
+    }
+
+/**
+ * RiskGate for worker-bound actions: unavailable capability → honest stop;
+ * sensitive action → approval; otherwise direct execution. Pure (tested).
+ */
+export function authorizeWorkerAction(input: {
+  capabilityAvailable: boolean
+  capability: string
+  riskClass: ApprovalRiskClass
+  riskTier: ApprovalRiskTier
+}): WorkerGateDecision {
+  if (!input.capabilityAvailable) {
+    return { outcome: 'unavailable', capability: input.capability }
+  }
+  if (requiresApproval(input.riskClass, input.riskTier)) {
+    return {
+      outcome: 'needs-approval',
+      riskClass: input.riskClass,
+      riskTier: input.riskTier
+    }
+  }
+  return { outcome: 'allowed' }
+}
+
 export function createApprovalQueue(): ApprovalQueue {
   const store = new Map<string, ApprovalRequest>()
   return {

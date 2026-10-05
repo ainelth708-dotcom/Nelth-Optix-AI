@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 
-import { getCurrentUserId } from '@/lib/auth/get-current-user'
 import { listFeed } from '@/lib/agent/store'
+import { getCurrentUserId } from '@/lib/auth/get-current-user'
 
 export const maxDuration = 30
 
@@ -9,7 +9,8 @@ export const maxDuration = 30
 // (task completions/failures inside /api/agent/run).
 export async function GET() {
   const uid = await getCurrentUserId().catch(() => null)
-  if (!uid) return NextResponse.json({ error: 'Non connecté.' }, { status: 401 })
+  if (!uid)
+    return NextResponse.json({ error: 'Non connecté.' }, { status: 401 })
   try {
     return NextResponse.json({ success: true, feed: await listFeed(uid) })
   } catch (err) {

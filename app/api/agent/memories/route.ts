@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server'
 
-import { getCurrentUserId } from '@/lib/auth/get-current-user'
 import { addMemory, deleteMemory, listMemories } from '@/lib/agent/store'
+import { getCurrentUserId } from '@/lib/auth/get-current-user'
 
 export const maxDuration = 30
 
 async function uidOr401(): Promise<string | NextResponse> {
   const uid = await getCurrentUserId().catch(() => null)
-  if (!uid) return NextResponse.json({ error: 'Non connecté.' }, { status: 401 })
+  if (!uid)
+    return NextResponse.json({ error: 'Non connecté.' }, { status: 401 })
   return uid
 }
 
@@ -15,7 +16,10 @@ export async function GET() {
   const uid = await uidOr401()
   if (uid instanceof NextResponse) return uid
   try {
-    return NextResponse.json({ success: true, memories: await listMemories(uid) })
+    return NextResponse.json({
+      success: true,
+      memories: await listMemories(uid)
+    })
   } catch (err) {
     console.error('[agent] memories list failed:', err)
     return NextResponse.json({ error: 'Lecture impossible.' }, { status: 502 })
@@ -45,10 +49,14 @@ export async function DELETE(req: Request) {
   if (!id) return NextResponse.json({ error: 'ID requis.' }, { status: 400 })
   try {
     const ok = await deleteMemory(uid, id)
-    if (!ok) return NextResponse.json({ error: 'Introuvable.' }, { status: 404 })
+    if (!ok)
+      return NextResponse.json({ error: 'Introuvable.' }, { status: 404 })
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[agent] memories delete failed:', err)
-    return NextResponse.json({ error: 'Suppression impossible.' }, { status: 502 })
+    return NextResponse.json(
+      { error: 'Suppression impossible.' },
+      { status: 502 }
+    )
   }
 }
