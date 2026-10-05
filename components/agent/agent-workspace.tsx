@@ -5,14 +5,7 @@ import { useRouter } from 'next/navigation'
 
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import {
-  ArrowUp,
-  Bot,
-  Image as ImageIcon,
-  Plus,
-  Search,
-  Square
-} from 'lucide-react'
+import { ArrowUp, Image as ImageIcon, Plus, Search, Square } from 'lucide-react'
 
 import {
   type AgentTask,
@@ -20,10 +13,15 @@ import {
   canTransitionTask,
   createAgentTask,
   isTerminalTaskState,
-  transitionTask} from '@/lib/agent/task'
+  transitionTask
+} from '@/lib/agent/task'
 import type { UIMessage } from '@/lib/types/ai'
 import { cn } from '@/lib/utils'
 import { getTextFromParts } from '@/lib/utils/message-utils'
+
+import { type CompanionState,NelthCompanion } from './nelth-companion'
+import { PlanPanel } from './plan-panel'
+import { TrackingPanel } from './tracking-panel'
 
 const TASK_STATE_LABEL: Record<AgentTaskState, string> = {
   IDLE: 'En attente',
@@ -77,6 +75,9 @@ export function AgentWorkspace() {
   const [task, setTask] = useState<AgentTask | null>(null)
   const [input, setInput] = useState('')
   const [clock, setClock] = useState(() => Date.now())
+  const [tab, setTab] = useState<'chat' | 'plan' | 'suivis'>('chat')
+  const [inputFocused, setInputFocused] = useState(false)
+  const [lastActiveAt, setLastActiveAt] = useState(() => Date.now())
 
   const { messages, status, sendMessage, stop, setMessages } = useChat({
     id: chatId,
@@ -123,6 +124,16 @@ export function AgentWorkspace() {
     return () => window.clearInterval(t)
   }, [task])
 
+  // Idle clock for the sleeping companion (cheap 15s tick forces the
+  // sleeping transition to re-evaluate).
+  const [, setIdleTick] = useState(0)
+  useEffect(() => {
+    const t = window.setInterval(() => setIdleTick(v => v + 1), 15000)
+    return () => window.clearInterval(t)
+  }, [])
+
+  const markActive = () => setLastActiveAt(Date.now())
+
   const canSend = input.trim().length > 0 && !busy
 
   const handleSend = () => {
@@ -135,6 +146,7 @@ export function AgentWorkspace() {
     )
     setTask(next)
     setInput('')
+    markActive()
     void sendMessage({ text })
   }
 
@@ -161,13 +173,56 @@ export function AgentWorkspace() {
 
   const taskActive = task !== null && !isTerminalTaskState(task.state)
 
+  const appendAssistantMessage = (text: string) => {
+    const id = `plan-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`
+    setMessages(prev => [
+      ...prev,
+      { id, role: 'assistant', parts: [{ type: 'text', text }] } as UIMessage
+    ])
+    markActive()
+    setTab('chat')
+  }
+
+  // Companion mirrors the REAL agent/task state — never random.
+  const companionState: CompanionState = (() => {
+    if (task && !isTerminalTaskState(task.state)) {
+      switch (task.state) {
+        case 'PLANNING':
+        case 'VERIFYING':
+          return 'thinking'
+        case 'RUNNING':
+          return 'working'
+        case 'USING_TOOL':
+          return 'tool'
+        case 'BROWSING':
+          return 'browsing'
+        case 'WAITING_USER':
+        case 'PAUSED':
+          return 'waiting'
+        case 'WAITING_APPROVAL':
+          return 'approval'
+        default:
+          return 'working'
+      }
+    }
+    if (task?.state === 'COMPLETED') return 'success'
+    if (task?.state === 'FAILED') return 'error'
+    if (
+      messages.length === 0 &&
+      !taskActive &&
+      Date.now() - lastActiveAt > 120000
+    ) {
+      return 'sleeping'
+    }
+    if (inputFocused && input.trim().length > 0) return 'listening'
+    return 'idle'
+  })()
+
   return (
     <div className="relative mx-auto flex h-full min-h-0 w-full max-w-[752px] flex-1 flex-col px-4 pb-4 pt-14 md:pt-8">
-      {/* Workspace header: identity + live task state */}
-      <div className="flex items-center gap-2 pb-3">
-        <span className="flex size-8 items-center justify-center rounded-full bg-black text-white dark:bg-white dark:text-black">
-          <Bot size={16} />
-        </span>
+      {/* Workspace header: companion + identity + live task state */}
+      <div className="flex items-center gap-2 pb-2">
+        <NelthCompanion state={companionState} size={32} />
         <span className="text-[15px] font-semibold">Agent</span>
         {task && (
           <>
@@ -210,12 +265,43 @@ export function AgentWorkspace() {
         )}
       </div>
 
-      {messages.length === 0 ? (
-        /* Home: companion slot + prompt + capability chips */
+      {/* View tabs */}
+      <div className="flex gap-1 pb-3">
+        {(
+          [
+            ['chat', 'Discussion'],
+            ['plan', 'Plan'],
+            ['suivis', 'Suivis']
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={cn(
+              'rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors',
+              tab === id
+                ? 'bg-black text-white dark:bg-white dark:text-black'
+                : 'text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/10'
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'plan' ? (
+        <PlanPanel
+          task={task}
+          onTask={setTask}
+          onAppendMessage={appendAssistantMessage}
+        />
+      ) : tab === 'suivis' ? (
+        <TrackingPanel />
+      ) : messages.length === 0 ? (
+        /* Home: companion + prompt + capability chips */
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center pb-8 text-center">
-          <span className="flex size-14 items-center justify-center rounded-3xl bg-black text-white shadow-lg dark:bg-white dark:text-black">
-            <Bot size={26} />
-          </span>
+          <NelthCompanion state={companionState} size={132} />
           <h1 className="mt-5 text-[22px] font-bold leading-tight">
             How can I help?
           </h1>
@@ -296,34 +382,38 @@ export function AgentWorkspace() {
         </>
       )}
 
-      {/* Composer */}
-      <div className="w-full overflow-hidden rounded-[22px] border border-[#e3e3e3] bg-white dark:border-border dark:bg-card">
-        <textarea
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              handleSend()
-            }
-          }}
-          placeholder="Décris ton objectif…"
-          rows={2}
-          className="max-h-[160px] min-h-[52px] w-full resize-none bg-transparent px-[19px] pt-[14px] text-[15px] leading-[22px] outline-none placeholder:text-[#707070] dark:text-foreground"
-        />
-        <div className="flex items-center justify-end px-[15px] pb-[11px]">
-          <button
-            type="button"
-            onClick={handleSend}
-            aria-label="Envoyer"
-            title="Envoyer"
-            disabled={!canSend}
-            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-black text-white transition-transform hover:scale-105 active:scale-95 disabled:opacity-40 dark:bg-white dark:text-black"
-          >
-            <ArrowUp size={18} strokeWidth={2.5} />
-          </button>
+      {/* Composer (discussion tab only) */}
+      {tab === 'chat' && (
+        <div className="w-full overflow-hidden rounded-[22px] border border-[#e3e3e3] bg-white dark:border-border dark:bg-card">
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                handleSend()
+              }
+            }}
+            placeholder="Décris ton objectif…"
+            rows={2}
+            className="max-h-[160px] min-h-[52px] w-full resize-none bg-transparent px-[19px] pt-[14px] text-[15px] leading-[22px] outline-none placeholder:text-[#707070] dark:text-foreground"
+          />
+          <div className="flex items-center justify-end px-[15px] pb-[11px]">
+            <button
+              type="button"
+              onClick={handleSend}
+              aria-label="Envoyer"
+              title="Envoyer"
+              disabled={!canSend}
+              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-black text-white transition-transform hover:scale-105 active:scale-95 disabled:opacity-40 dark:bg-white dark:text-black"
+            >
+              <ArrowUp size={18} strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
