@@ -6,6 +6,9 @@
 .pnp.js
 .yarn/install-state.gz
 
+# local third-party reference sources (never part of the app bundle)
+/nanoMuse-main/
+
 # testing
 /coverage
 

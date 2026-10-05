@@ -5,7 +5,7 @@ import React from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 
-import { Image as ImageIcon, SquarePen } from 'lucide-react'
+import { Bot, Image as ImageIcon, SquarePen } from 'lucide-react'
 
 import type { AppUser } from '@/lib/firebase/user'
 import { SHORTCUT_EVENTS } from '@/lib/keyboard-shortcuts'
@@ -27,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({ user }) => {
   const { open } = useSidebar()
   const isMobile = useIsMobile()
   const isImagine = pathname === '/imagine'
+  const isAgent = pathname === '/agent'
 
   const handleNewChat = () => {
     window.dispatchEvent(
@@ -37,6 +38,10 @@ export const Header: React.FC<HeaderProps> = ({ user }) => {
 
   const handleImagine = () => {
     router.push('/imagine')
+  }
+
+  const handleAgent = () => {
+    router.push('/agent')
   }
 
   // On /imagine the header chrome floats over the page (by design), but
@@ -50,7 +55,8 @@ export const Header: React.FC<HeaderProps> = ({ user }) => {
       <header
         className={cn(
           'absolute top-0 right-0 p-2 md:p-3 flex justify-between items-center z-10 backdrop-blur-sm lg:backdrop-blur-none bg-background/80 lg:bg-transparent transition-[width] duration-200 ease-linear',
-          isImagineTransparent && 'pointer-events-none bg-transparent backdrop-blur-none',
+          isImagineTransparent &&
+            'pointer-events-none bg-transparent backdrop-blur-none',
           open ? 'md:w-[calc(100%-var(--sidebar-width))]' : 'md:w-full',
           'w-full'
         )}
@@ -84,6 +90,20 @@ export const Header: React.FC<HeaderProps> = ({ user }) => {
               onClick={handleImagine}
             >
               <ImageIcon size={16} />
+            </Button>
+            <div className="w-px h-5 bg-border" aria-hidden />
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'size-8 transition-transform duration-200 ease-[cubic-bezier(.22,1,.36,1)] hover:scale-110 active:scale-95',
+                isAgent ? 'text-primary' : 'text-foreground'
+              )}
+              aria-label="Agent"
+              title="Agent"
+              onClick={handleAgent}
+            >
+              <Bot size={16} />
             </Button>
           </div>
         )}
@@ -126,6 +146,19 @@ export const Header: React.FC<HeaderProps> = ({ user }) => {
               onClick={handleImagine}
             >
               <ImageIcon size={16} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'size-8 transition-transform duration-200 ease-[cubic-bezier(.22,1,.36,1)] hover:scale-110 active:scale-95',
+                isAgent && 'text-primary'
+              )}
+              aria-label="Agent"
+              title="Agent"
+              onClick={handleAgent}
+            >
+              <Bot size={16} />
             </Button>
           </div>
         )}
