@@ -14,7 +14,7 @@
 // approved call and resumes the loop in the same request.
 // ---------------------------------------------------------------------------
 
-import { generateObject, generateText, stepCountIs, streamText, tool } from 'ai'
+import { generateText, stepCountIs, streamText, tool } from 'ai'
 import { z } from 'zod'
 
 import { DEFAULT_MODEL } from '@/lib/config/default-model'
@@ -67,6 +67,100 @@ const PLANNER_SYSTEM = [
   'Keep titles under 80 characters. At most 8 steps.'
 ].join(' ')
 
+/**
+ * Structured output WITHOUT responseFormat: several gateway models don't
+ * support JSON mode (AI_NoObjectGeneratedError), so we ask for raw JSON
+ * via generateText, extract the first {...} block (fenced or not),
+ * validate with zod, and retry once with a stricter nudge. Works with
+ * every existing provider/model.
+ */
+async function generateJsonObject<T>(
+  schema: z.ZodType<T>,
+  system: string,
+  prompt: string
+): Promise<T> {
+  const extract = (text: string): unknown => {
+    const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+    const candidate = (fence?.[1] ?? text).trim()
+    const start = candidate.indexOf('{')
+    const end = candidate.lastIndexOf('}')
+    if (start === -1 || end <= start) throw new Error('no-json-found')
+    return JSON.parse(candidate.slice(start, end + 1))
+  }
+  let lastError: unknown = null
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const { text } = await generateText({
+      model: agentModel(),
+      system:
+        attempt === 0
+          ? `${system} Reply with a single JSON object only, no prose, no code fences.`
+          : `${system} Reply with a single RAW JSON object only. No prose, no markdown, no fences, no commentary.`,
+      prompt
+    })
+    try {
+      const parsed = schema.safeParse(normalizeForSchema(extract(text)))
+      if (parsed.success) return parsed.data
+      lastError = parsed.error
+    } catch (err) {
+      lastError = err
+    }
+  }
+  throw new Error(
+    `Invalid model JSON: ${lastError instanceof Error ? lastError.message : 'unparseable'}`
+  )
+}
+
+/**
+ * Lenient shape coercion: models return the same plan under different
+ * key names ({step, description}, plain strings, nested {plan}). Coerce
+ * to the canonical shape BEFORE zod validation so strict schemas still
+ * apply to real content. Exported for tests.
+ */
+export function normalizeForSchema(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return { title: 'Plan', steps: value.map(coerceStep).filter(Boolean) }
+  }
+  if (typeof value !== 'object' || value === null) return value
+  const v = value as Record<string, unknown>
+  const inner =
+    v.steps ??
+    v.tasks ??
+    (v.plan as Record<string, unknown> | undefined)?.steps ??
+    v.items
+  const steps = Array.isArray(inner)
+    ? inner
+        .map(coerceStep)
+        .filter((s): s is { title: string; detail: string } => s !== null)
+    : []
+  const title =
+    [
+      v.title,
+      v.name,
+      (v.plan as Record<string, unknown> | undefined)?.title
+    ].find(t => typeof t === 'string' && (t as string).trim()) ?? 'Plan'
+  return { ...v, title, steps }
+}
+
+function coerceStep(item: unknown): { title: string; detail: string } | null {
+  if (typeof item === 'string') {
+    const title = item.trim().slice(0, 120)
+    return title ? { title, detail: '' } : null
+  }
+  if (typeof item !== 'object' || item === null) return null
+  const o = item as Record<string, unknown>
+  const title = [o.title, o.step, o.name, o.task, o.action].find(
+    t => typeof t === 'string' && (t as string).trim()
+  ) as string | undefined
+  if (!title) return null
+  const detail = [o.detail, o.description, o.desc, o.summary].find(
+    t => typeof t === 'string'
+  ) as string | undefined
+  return {
+    title: title.trim().slice(0, 120),
+    detail: (detail ?? '').trim().slice(0, 500)
+  }
+}
+
 export async function planGoal(goal: string): Promise<AgentPlan> {
   const trimmed = goal.trim()
   if (!trimmed) throw new Error('Objectif vide.')
@@ -86,14 +180,12 @@ export async function planGoal(goal: string): Promise<AgentPlan> {
     available.push(
       `shell commands (worker${caps.proot ? ', proot isolated' : ''})`
     )
-  const { object } = await generateObject({
-    model: agentModel(),
-    schema: PlanSchema,
-    system: PLANNER_SYSTEM,
-    prompt:
-      `${trimmed}\n\nAvailable capabilities: ${available.join(', ')}. ` +
+  const object = await generateJsonObject(
+    PlanSchema,
+    PLANNER_SYSTEM,
+    `${trimmed}\n\nAvailable capabilities: ${available.join(', ')}. ` +
       'Plan ONLY with these — never assume browser, shell or computer access unless listed.'
-  })
+  )
   return object
 }
 
@@ -280,16 +372,13 @@ async function decideRecovery(
     Object.entries(state.failedSteps)
       .map(([i, e]) => `step ${i}: ${e}`)
       .join('\n') || '(none)'
-  const { object } = await generateObject({
-    model: agentModel(),
-    schema: RecoverySchema,
-    system:
-      'You salvage a stuck autonomous task. Prefer the smallest fix: retry the failed step, revise the remaining plan, ask ONE precise question, or finish as incomplete.',
-    prompt:
-      `Goal: ${goal}\nEvidence so far:\n${evidence || '(none)'}\n` +
+  const object = await generateJsonObject(
+    RecoverySchema,
+    'You salvage a stuck autonomous task. Prefer the smallest fix: retry the failed step, revise the remaining plan, ask ONE precise question, or finish as incomplete.',
+    `Goal: ${goal}\nEvidence so far:\n${evidence || '(none)'}\n` +
       `Failed steps:\n${failures}\n` +
       'Decide: retry (which step index?), replan (revised steps), clarify (one question), or finish.'
-  })
+  )
   return object
 }
 
