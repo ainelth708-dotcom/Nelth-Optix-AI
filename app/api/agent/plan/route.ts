@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 
+import { needsClarification } from '@/lib/agent/autonomy'
 import { planGoal } from '@/lib/agent/orchestrator'
 
 export const maxDuration = 60
@@ -14,6 +15,16 @@ export async function POST(req: Request) {
   }
   if (goal.length > 2000) {
     return NextResponse.json({ error: 'Objectif trop long.' }, { status: 400 })
+  }
+  // Vague-goal gate: ask first instead of planning garbage that fails
+  // verification. Not an error — the UI shows the question card.
+  const check = needsClarification(goal)
+  if (check.vague) {
+    return NextResponse.json({
+      success: true,
+      clarify: true,
+      question: check.question
+    })
   }
   try {
     const plan = await planGoal(goal)

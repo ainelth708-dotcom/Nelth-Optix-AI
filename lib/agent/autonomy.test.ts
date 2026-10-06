@@ -8,6 +8,7 @@ import {
   decideNextAction,
   fromStoredRun,
   MAX_ATTEMPTS_PER_STEP,
+  needsClarification,
   parseVerdict,
   requestClarification,
   routeGoal,
@@ -192,5 +193,25 @@ describe('intelligent routing (fast path preserved)', () => {
 describe('no duplicate todo store', () => {
   it('task machine stays the system of record for chat tasks', () => {
     expect(canTransitionTask('RUNNING', 'USING_TOOL')).toBe(true)
+  })
+})
+
+describe('vague-goal gate', () => {
+  it('asks first on one-word goals instead of planning garbage', () => {
+    const oui = needsClarification('OUI')
+    expect(oui.vague).toBe(true)
+    expect(oui.question).toMatch(/trop vague/)
+    expect(needsClarification('ok').vague).toBe(true)
+    expect(needsClarification('').vague).toBe(true)
+  })
+
+  it('lets clear goals through, short or long', () => {
+    expect(needsClarification('Compare les prix').vague).toBe(false)
+    expect(
+      needsClarification(
+        'Fais une recherche approfondie sur les batteries solides'
+      ).vague
+    ).toBe(false)
+    expect(needsClarification('x'.repeat(300)).vague).toBe(false)
   })
 })

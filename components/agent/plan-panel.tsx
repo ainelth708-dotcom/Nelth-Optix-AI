@@ -103,6 +103,7 @@ export function PlanPanel({
     question: string
     options: string[]
     pausedIndex: number
+    goal: string
   } | null>(null)
   const [answer, setAnswer] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -122,13 +123,14 @@ export function PlanPanel({
 
   const busy = planning || running
 
-  const handlePlan = async () => {
-    const goal = goalInput.trim()
+  const handlePlan = async (goalOverride?: string) => {
+    const goal = (goalOverride ?? goalInput).trim()
     if (!goal || busy) return
     setPlanning(true)
     setError(null)
     setSteps([])
     setPlanTitle('')
+    setClarify(null)
     try {
       const res = await fetch('/api/agent/plan', {
         method: 'POST',
@@ -140,9 +142,25 @@ export function PlanPanel({
           title?: string
           steps?: Array<{ title?: string; detail?: string }>
         }
+        clarify?: boolean
+        question?: string
         error?: string
       } | null
-      if (!res.ok || !json?.plan) {
+      if (!res.ok) {
+        throw new Error(json?.error ?? 'Planification impossible.')
+      }
+      // Vague goal: the backend asks first instead of planning garbage.
+      if (json?.clarify && json.question) {
+        setClarify({
+          question: json.question,
+          options: [],
+          pausedIndex: 0,
+          goal
+        })
+        setActivity('Question pour toi…')
+        return
+      }
+      if (!json?.plan) {
         throw new Error(json?.error ?? 'Planification impossible.')
       }
       setPlanTitle(json.plan.title ?? goal.slice(0, 80))
@@ -211,7 +229,8 @@ export function PlanPanel({
         setClarify({
           question: event.question,
           options: event.options ?? [],
-          pausedIndex: event.index
+          pausedIndex: event.index,
+          goal: lastGoalRef.current
         })
         setAnswer('')
         setActivity('Question pour toi…')
@@ -374,6 +393,16 @@ export function PlanPanel({
     const pending = clarify
     const text = answer.trim()
     if (!pending || !text || running) return
+    // Plan-time clarification (no steps yet): enrich the goal and replan
+    // automatically instead of executing blindly.
+    if (steps.length === 0) {
+      const enriched = `${pending.goal} — ${text}`.slice(0, 2000)
+      setClarify(null)
+      setAnswer('')
+      setGoalInput(enriched)
+      void handlePlan(enriched)
+      return
+    }
     transcriptRef.current.push({ role: 'user', text: text.slice(0, 2000) })
     setClarify(null)
     setAnswer('')
@@ -440,7 +469,7 @@ export function PlanPanel({
         <div className="flex items-center justify-end gap-2 px-[12px] pb-[10px]">
           <button
             type="button"
-            onClick={handlePlan}
+            onClick={() => handlePlan()}
             disabled={!goalInput.trim() || busy}
             className="rounded-full border border-black/10 px-3.5 py-2 text-[13px] font-medium transition-colors hover:bg-black/5 disabled:opacity-40 dark:border-white/15 dark:hover:bg-white/10"
           >

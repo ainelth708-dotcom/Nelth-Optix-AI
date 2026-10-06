@@ -36,6 +36,7 @@ import {
   decideNextAction,
   MAX_ATTEMPTS_PER_STEP,
   MAX_ROUNDS,
+  needsClarification,
   parseVerdict,
   type StepOutcome
 } from './autonomy'
@@ -545,6 +546,23 @@ export async function* runGoalStream(input: {
   const persist = async () => {
     state.updatedAt = Date.now()
     await input.persist?.(state)
+  }
+
+  // Vague-goal gate (fresh runs only): clarify BEFORE burning model
+  // calls on a plan that cannot succeed.
+  if (!input.resume) {
+    const check = needsClarification(goal)
+    if (check.vague) {
+      yield {
+        type: 'clarify',
+        index: 0,
+        question: check.question ?? 'Peux-tu préciser ton objectif ?',
+        options: []
+      }
+      state.status = 'waiting-user'
+      await persist()
+      return
+    }
   }
 
   let outcome: StepOutcome | null = null

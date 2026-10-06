@@ -274,6 +274,35 @@ export function routeGoal(goal: string): {
   return { route: 'agent', reason: 'default-complex' }
 }
 
+/**
+ * Vague-goal gate: a one-word goal ("OUI", "ok") must clarify FIRST
+ * instead of planning garbage that fails verification. Short + no task
+ * intent = genuinely needs a question. Used by /api/agent/plan and at
+ * fresh run start (never on resume).
+ */
+const VAGUE_MAX_CHARS = 24
+
+export function needsClarification(goal: string): {
+  vague: boolean
+  question: string | null
+} {
+  const text = goal.trim()
+  if (!text) {
+    return {
+      vague: true,
+      question: 'Que veux-tu que je planifie ? Donne un objectif concret.'
+    }
+  }
+  if (text.length >= VAGUE_MAX_CHARS) return { vague: false, question: null }
+  if (TASK_SIGNALS.some(re => re.test(text))) {
+    return { vague: false, question: null }
+  }
+  return {
+    vague: true,
+    question: `Ton objectif (« ${text} ») est trop vague pour planifier. Que veux-tu que je fasse exactement ? Par exemple : « compare les prix des vols Paris–Tokyo en septembre ».`
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Persistence shape (Firestore agentRuns collection via store.ts).
 // ---------------------------------------------------------------------------
