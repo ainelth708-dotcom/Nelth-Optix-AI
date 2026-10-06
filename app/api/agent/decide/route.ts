@@ -1,6 +1,9 @@
 import type { ApprovalDecision } from '@/lib/agent/approvals'
+import type { AgentRunState } from '@/lib/agent/autonomy'
 import { executeApprovedFetch, runGoalStream } from '@/lib/agent/orchestrator'
 import { agentSseResponse } from '@/lib/agent/sse'
+import { saveAgentRun } from '@/lib/agent/store'
+import { getCurrentUserId } from '@/lib/auth/get-current-user'
 
 export const maxDuration = 300
 
@@ -16,6 +19,7 @@ export async function POST(req: Request) {
     call?: unknown
     decision?: unknown
     resume?: unknown
+    taskId?: unknown
   } | null
 
   const call = body?.call as { tool?: unknown; args?: unknown } | undefined
@@ -85,6 +89,10 @@ export async function POST(req: Request) {
     for await (const event of runGoalStream({
       goal: String(resume.goal),
       steps,
+      taskId:
+        typeof (resume as { taskId?: unknown }).taskId === 'string'
+          ? (resume as { taskId: string }).taskId
+          : undefined,
       resume: {
         transcript: [
           ...transcript,
@@ -98,6 +106,14 @@ export async function POST(req: Request) {
         ],
         startIndex:
           typeof resume.startIndex === 'number' ? resume.startIndex : 0
+      },
+      persist: async state => {
+        const uid = await getCurrentUserId().catch(() => null)
+        const tid =
+          typeof (resume as { taskId?: unknown }).taskId === 'string'
+            ? ((resume as { taskId: string }).taskId as string)
+            : null
+        if (uid && tid) await saveAgentRun(uid, tid, state).catch(() => {})
       }
     })) {
       send(event)

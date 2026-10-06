@@ -99,6 +99,12 @@ export function PlanPanel({
   const [running, setRunning] = useState(false)
   const [activity, setActivity] = useState('')
   const [approval, setApproval] = useState<PendingApproval | null>(null)
+  const [clarify, setClarify] = useState<{
+    question: string
+    options: string[]
+    pausedIndex: number
+  } | null>(null)
+  const [answer, setAnswer] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [caps, setCaps] = useState<AgentCapabilities | null>(null)
   const transcriptRef = useRef<AgentTranscriptEntry[]>([])
@@ -169,6 +175,47 @@ export function PlanPanel({
       case 'step-text':
         markStep(event.index, { live: event.text })
         break
+      case 'decide':
+        setActivity(
+          event.decision === 'RETRY'
+            ? 'Nouvelle tentative…'
+            : event.decision === 'REPLAN'
+              ? 'Révision du plan…'
+              : event.decision === 'FINISH'
+                ? 'Clôture…'
+                : `Décision : ${event.reason || 'continuer'}`
+        )
+        break
+      case 'retry':
+        markStep(event.index, { state: 'active', live: '' })
+        onTask(safeTransition(runTask, 'RUNNING'))
+        setActivity(`Nouvelle tentative (essai ${event.attempt})…`)
+        break
+      case 'replan':
+        setSteps(
+          event.steps.map(s => ({
+            title: s.title,
+            detail: s.detail,
+            state: 'pending' as const,
+            live: ''
+          }))
+        )
+        setActivity('Plan révisé, reprise…')
+        break
+      case 'verify':
+        setActivity('Vérification des preuves…')
+        break
+      case 'clarify':
+        markStep(event.index, { state: 'active' })
+        onTask(safeTransition(runTask, 'WAITING_USER'))
+        setClarify({
+          question: event.question,
+          options: event.options ?? [],
+          pausedIndex: event.index
+        })
+        setAnswer('')
+        setActivity('Question pour toi…')
+        break
       case 'tool-call':
         markStep(event.index, { state: 'active' })
         onTask(safeTransition(runTask, 'USING_TOOL'))
@@ -223,9 +270,13 @@ export function PlanPanel({
   const runStream = async (
     goal: string,
     planSteps: AgentPlanStep[],
-    resume?: { transcript: AgentTranscriptEntry[]; startIndex: number }
+    resume?: { transcript: AgentTranscriptEntry[]; startIndex: number },
+    existingTask?: AgentTask | null
   ) => {
-    const runTask = transitionTask(createAgentTask(goal), 'RUNNING')
+    const runTask =
+      existingTask && !isTerminalTaskState(existingTask.state)
+        ? existingTask
+        : transitionTask(createAgentTask(goal), 'RUNNING')
     onTask(runTask)
     lastGoalRef.current = goal
     lastStepsRef.current = planSteps
@@ -233,6 +284,7 @@ export function PlanPanel({
     setRunning(true)
     setError(null)
     setApproval(null)
+    setClarify(null)
     abortedRef.current = false
     // Snapshot for server-side persistence (recoverable across HTTP).
     const snapshot = {
@@ -255,6 +307,7 @@ export function PlanPanel({
         body: JSON.stringify({
           goal,
           steps: planSteps,
+          taskId: runTask.id,
           task: snapshot,
           ...(resume
             ? { transcript: resume.transcript, startIndex: resume.startIndex }
@@ -298,6 +351,7 @@ export function PlanPanel({
           body: JSON.stringify({
             call: pending.call,
             decision,
+            taskId: runTask.id,
             resume: {
               goal: pending.goal,
               steps: pending.steps,
@@ -314,6 +368,30 @@ export function PlanPanel({
         setRunning(false)
       }
     })()
+  }
+
+  const handleAnswerClarify = () => {
+    const pending = clarify
+    const text = answer.trim()
+    if (!pending || !text || running) return
+    transcriptRef.current.push({ role: 'user', text: text.slice(0, 2000) })
+    setClarify(null)
+    setAnswer('')
+    const runTask =
+      task && !isTerminalTaskState(task.state)
+        ? task
+        : transitionTask(createAgentTask(lastGoalRef.current), 'RUNNING')
+    onTask(safeTransition(runTask, 'RUNNING'))
+    markStep(pending.pausedIndex, { state: 'active', live: '' })
+    void runStream(
+      lastGoalRef.current,
+      lastStepsRef.current,
+      {
+        transcript: transcriptRef.current,
+        startIndex: pending.pausedIndex
+      },
+      runTask
+    )
   }
 
   return (
@@ -480,6 +558,51 @@ export function PlanPanel({
             >
               <X size={14} />
               Refuser
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Clarification request: the agent genuinely needs an answer. */}
+      {clarify && (
+        <div className="w-full rounded-[18px] border border-sky-500/40 bg-sky-500/[0.07] p-4 dark:bg-sky-400/10">
+          <p className="text-[14px] font-semibold text-sky-700 dark:text-sky-300">
+            L’agent a besoin de toi
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-neutral-700 dark:text-neutral-200">
+            {clarify.question}
+          </p>
+          {clarify.options.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {clarify.options.map(opt => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setAnswer(opt)}
+                  className="rounded-full border border-sky-500/40 px-2.5 py-1 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-500/10 dark:text-sky-300"
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="mt-2 flex gap-2">
+            <input
+              value={answer}
+              onChange={e => setAnswer(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleAnswerClarify()
+              }}
+              placeholder="Ta réponse…"
+              className="min-w-0 flex-1 rounded-full border border-black/10 bg-white px-3 py-2 text-[13px] outline-none placeholder:text-neutral-400 dark:border-white/15 dark:bg-black/20"
+            />
+            <button
+              type="button"
+              onClick={handleAnswerClarify}
+              disabled={!answer.trim() || running}
+              className="shrink-0 rounded-full bg-black px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-40 dark:bg-white dark:text-black"
+            >
+              Envoyer
             </button>
           </div>
         </div>

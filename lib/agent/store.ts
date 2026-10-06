@@ -6,6 +6,7 @@
 
 import { getDb } from '@/lib/firebase/admin'
 
+import { type AgentRunState,fromStoredRun } from './autonomy'
 import type { AgentSchedule } from './scheduling'
 import type { AgentTask } from './task'
 
@@ -318,4 +319,37 @@ export async function deleteSchedule(
   if (!snap.exists) return false
   await ref.delete()
   return true
+}
+
+// ---------------------------------------------------------------------------
+// Autonomous run snapshots (agentRuns collection): the loop persists its
+// full AgentRunState after every step, so any worker can resume across
+// HTTP requests without repeating completed work.
+// ---------------------------------------------------------------------------
+
+export async function saveAgentRun(
+  uid: string,
+  taskId: string,
+  state: AgentRunState
+): Promise<void> {
+  await getDb()
+    .collection('users')
+    .doc(uid)
+    .collection('agentRuns')
+    .doc(taskId)
+    .set({ ...state, taskId, updatedAt: Date.now() })
+}
+
+export async function getAgentRun(
+  uid: string,
+  taskId: string
+): Promise<AgentRunState | null> {
+  const snap = await getDb()
+    .collection('users')
+    .doc(uid)
+    .collection('agentRuns')
+    .doc(taskId)
+    .get()
+  if (!snap.exists) return null
+  return fromStoredRun({ ...snap.data(), taskId })
 }

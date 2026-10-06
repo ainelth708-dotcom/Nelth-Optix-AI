@@ -3,7 +3,7 @@ import {
   runGoalStream
 } from '@/lib/agent/orchestrator'
 import { agentSseResponse } from '@/lib/agent/sse'
-import { appendFeed, saveAgentTask } from '@/lib/agent/store'
+import { appendFeed, saveAgentRun, saveAgentTask } from '@/lib/agent/store'
 import type { AgentTask } from '@/lib/agent/task'
 import { getCurrentUserId } from '@/lib/auth/get-current-user'
 
@@ -49,6 +49,7 @@ export async function POST(req: Request) {
     transcript?: unknown
     startIndex?: unknown
     task?: unknown
+    taskId?: unknown
   } | null
   const goal = typeof body?.goal === 'string' ? body.goal.trim() : ''
   const steps = cleanSteps(body?.steps)
@@ -78,10 +79,24 @@ export async function POST(req: Request) {
       : undefined
 
   const uid = await getCurrentUserId().catch(() => null)
+  // Persist the full run state per step when the client provides a
+  // taskId: any worker can then resume across HTTP requests.
+  const taskId =
+    typeof body?.taskId === 'string' && body.taskId ? body.taskId : undefined
   return agentSseResponse(async send => {
     let completed: boolean | null = null
     try {
-      for await (const event of runGoalStream({ goal, steps, resume })) {
+      for await (const event of runGoalStream({
+        goal,
+        steps,
+        taskId,
+        resume,
+        persist: async state => {
+          if (uid && taskId) {
+            await saveAgentRun(uid, taskId, state).catch(() => {})
+          }
+        }
+      })) {
         send(event)
         if (event.type === 'done') {
           completed = event.completed

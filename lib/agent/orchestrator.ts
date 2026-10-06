@@ -27,15 +27,25 @@ import { getModel } from '@/lib/utils/registry'
 
 import { getCapabilities } from './worker/capabilities'
 import { requiresApproval } from './approvals'
+import {
+  type AgentPlanStep,
+  type AgentRunState,
+  type AgentTranscriptEntry,
+  applyReplan,
+  createRunState,
+  decideNextAction,
+  MAX_ATTEMPTS_PER_STEP,
+  MAX_ROUNDS,
+  parseVerdict,
+  type StepOutcome
+} from './autonomy'
 import { createSkillTool } from './skills'
+
+// Re-exported for existing importers (plan panel, routes).
+export type { AgentPlanStep, AgentTranscriptEntry } from './autonomy'
 
 const agentModelId = `${DEFAULT_MODEL.providerId}:${DEFAULT_MODEL.id}`
 const agentModel = () => getModel(agentModelId)
-
-export interface AgentPlanStep {
-  title: string
-  detail: string
-}
 
 export interface AgentPlan {
   title: string
@@ -119,12 +129,52 @@ const gatedFetchTool = tool({
   }
 })
 
+export class QuestionNeededError extends Error {
+  readonly question: string
+  readonly options: string[]
+  constructor(question: string, options: string[] = []) {
+    super(`Clarification needed: ${question}`)
+    this.name = 'QuestionNeededError'
+    this.question = question
+    this.options = options
+  }
+}
+
+// question = genuine clarification: the model explicitly asks instead of
+// guessing. Thrown (like approvals) so the run pauses for a real answer
+// instead of stalling on a tool without execute.
+const questionToolInstance = createQuestionTool(agentModelId)
+const gatedQuestionTool = tool({
+  description: questionToolInstance.description,
+  inputSchema: z.object({
+    question: z.string(),
+    options: z.array(z.string()).optional()
+  }),
+  execute: async (args: unknown): Promise<unknown> => {
+    const a = (typeof args === 'object' && args !== null ? args : {}) as {
+      question?: unknown
+      options?: unknown
+      text?: unknown
+    }
+    const question =
+      typeof a.question === 'string' && a.question.trim()
+        ? a.question.trim()
+        : typeof a.text === 'string' && a.text.trim()
+          ? a.text.trim()
+          : 'Peux-tu préciser ta demande ?'
+    const options = Array.isArray(a.options)
+      ? a.options.filter((o): o is string => typeof o === 'string').slice(0, 6)
+      : []
+    throw new QuestionNeededError(question, options)
+  }
+})
+
 function agentTools() {
   return {
     search: createSearchTool(agentModelId),
     fetch: gatedFetchTool,
     document: documentTool,
-    question: createQuestionTool(agentModelId),
+    question: gatedQuestionTool,
     skill: createSkillTool(),
     ...createTodoTools()
   }
@@ -147,11 +197,6 @@ export function toolNeedsApproval(toolName: string): boolean {
   )
 }
 
-export interface AgentTranscriptEntry {
-  role: 'user' | 'assistant' | 'observation'
-  text: string
-}
-
 export interface AgentRunResume {
   transcript: AgentTranscriptEntry[]
   startIndex: number
@@ -167,6 +212,11 @@ export type AgentRunEvent =
       auto: boolean
     }
   | { type: 'step-done'; index: number; text: string }
+  | { type: 'decide'; decision: string; reason: string }
+  | { type: 'retry'; index: number; attempt: number }
+  | { type: 'replan'; steps: AgentPlanStep[] }
+  | { type: 'verify' }
+  | { type: 'clarify'; index: number; question: string; options: string[] }
   | {
       type: 'approval-needed'
       index: number
@@ -203,101 +253,290 @@ const VERIFIER_SYSTEM = [
   'Format exactly: "VERDICT: <COMPLETED|INCOMPLETE>" on the first line, then the summary.'
 ].join(' ')
 
+const RecoverySchema = z.object({
+  decision: z.enum(['retry', 'replan', 'finish', 'clarify']),
+  reason: z.string(),
+  retryIndex: z.number().int().min(0).max(7).nullable().optional(),
+  revisedSteps: z
+    .array(z.object({ title: z.string(), detail: z.string() }))
+    .min(1)
+    .max(8)
+    .nullable()
+    .optional(),
+  question: z.string().nullable().optional()
+})
+
+type Recovery = z.infer<typeof RecoverySchema>
+
+async function decideRecovery(
+  goal: string,
+  state: AgentRunState
+): Promise<Recovery> {
+  const evidence = state.evidence
+    .map(e => `step ${e.step} [${e.tool}]: ${e.summary}`)
+    .join('\n')
+    .slice(-3000)
+  const failures =
+    Object.entries(state.failedSteps)
+      .map(([i, e]) => `step ${i}: ${e}`)
+      .join('\n') || '(none)'
+  const { object } = await generateObject({
+    model: agentModel(),
+    schema: RecoverySchema,
+    system:
+      'You salvage a stuck autonomous task. Prefer the smallest fix: retry the failed step, revise the remaining plan, ask ONE precise question, or finish as incomplete.',
+    prompt:
+      `Goal: ${goal}\nEvidence so far:\n${evidence || '(none)'}\n` +
+      `Failed steps:\n${failures}\n` +
+      'Decide: retry (which step index?), replan (revised steps), clarify (one question), or finish.'
+  })
+  return object
+}
+
+async function* executeStep(
+  goal: string,
+  transcript: AgentTranscriptEntry[],
+  steps: AgentPlanStep[],
+  index: number
+): AsyncGenerator<AgentRunEvent, StepOutcome, void> {
+  const step = steps[index]
+  const stepPrompt =
+    `${transcriptPrompt(goal, transcript)}\n` +
+    `Current step ${index + 1}/${steps.length}: ${step.title}. ${step.detail}\n` +
+    'Execute it now.'
+  const stream = streamText({
+    model: agentModel(),
+    system: RUNNER_SYSTEM,
+    prompt: stepPrompt,
+    tools: agentTools(),
+    stopWhen: stepCountIs(3)
+  })
+  let stepText = ''
+  const tools: string[] = []
+  const toolNotes: string[] = []
+  for await (const part of stream.fullStream) {
+    if (part.type === 'text-delta') {
+      stepText += (part as { text?: string }).text ?? ''
+      if (stepText.length % 240 < 60) {
+        yield { type: 'step-text', index, text: stepText.slice(-240) }
+      }
+    } else if (part.type === 'tool-call') {
+      const name = (part as { toolName?: string }).toolName ?? 'outil'
+      tools.push(name)
+      yield {
+        type: 'tool-call',
+        index,
+        tool: name,
+        auto: !toolNeedsApproval(name)
+      }
+    } else if (part.type === 'tool-result') {
+      const r = part as { toolName?: string; output?: unknown }
+      const out =
+        typeof r.output === 'string'
+          ? r.output
+          : JSON.stringify(r.output ?? null)
+      toolNotes.push(`${r.toolName ?? 'outil'}: ${out.slice(0, 800)}`)
+    }
+  }
+  const text =
+    stepText.trim() +
+    (toolNotes.length > 0 ? `\nTool notes: ${toolNotes.join(' | ')}` : '')
+  return { ok: true, text: text.trim(), tools }
+}
+
 /**
- * Bounded run generator: yields live events per planned step. Throws
- * ApprovalNeededError as an `approval-needed` event (never raw). Pure
- * orchestration over existing models/tools — no new provider.
+ * Autonomous loop: PLAN → EXECUTE → OBSERVE → DECIDE → CONTINUE / RETRY
+ * / REPLAN / CLARIFY / FINISH → VERIFY → VERIFIED RESULT.
+ *
+ * No fixed step count: MAX_ROUNDS and per-step attempt caps are safety
+ * budgets, not plan length. Approval/question pauses surface as events;
+ * the caller resumes through the same entrypoint. Pure orchestration
+ * over existing models/tools — no new provider.
  */
 export async function* runGoalStream(input: {
   goal: string
   steps: AgentPlanStep[]
+  taskId?: string
   resume?: AgentRunResume
+  persist?: (state: AgentRunState) => Promise<void> | void
 }): AsyncGenerator<AgentRunEvent> {
   const goal = input.goal.trim()
   if (!goal) throw new Error('Objectif vide.')
   const steps = input.steps.slice(0, MAX_STEPS_PER_RUN)
   if (steps.length === 0) throw new Error('Aucune étape à exécuter.')
 
-  const transcript: AgentTranscriptEntry[] = [
-    ...(input.resume?.transcript ?? [])
-  ]
-  const startIndex = Math.min(input.resume?.startIndex ?? 0, steps.length)
+  const state = createRunState(
+    typeof input.taskId === 'string' && input.taskId
+      ? input.taskId
+      : `run-${Date.now().toString(36)}`,
+    goal,
+    steps
+  )
+  for (const e of input.resume?.transcript ?? []) {
+    state.transcript.push({
+      role: e.role,
+      text: String(e.text ?? '').slice(0, 3000)
+    })
+  }
+  if (input.resume) {
+    const idx = Math.min(Math.max(0, input.resume.startIndex), steps.length - 1)
+    state.currentStep = idx
+    state.doneSteps = Array.from({ length: idx }, (_, i) => i)
+  }
+  const persist = async () => {
+    state.updatedAt = Date.now()
+    await input.persist?.(state)
+  }
 
-  for (let i = startIndex; i < steps.length; i++) {
-    const step = steps[i]
-    yield { type: 'step-start', index: i, title: step.title }
-    const stepPrompt =
-      `${transcriptPrompt(goal, transcript)}\n` +
-      `Current step ${i + 1}/${steps.length}: ${step.title}. ${step.detail}\n` +
-      `Execute it now.`
+  let outcome: StepOutcome | null = null
+  while (true) {
+    if (state.rounds >= MAX_ROUNDS) break
+    const next = decideNextAction(state, outcome)
+    if (next.action === 'FINISH') break
+    yield {
+      type: 'decide',
+      decision: next.action,
+      reason:
+        next.action === 'RETRY'
+          ? `tentative ${next.attempt}`
+          : `étape ${next.step + 1}`
+    }
+    const stepIdx = next.step
+    if (next.action === 'RETRY') {
+      yield { type: 'retry', index: stepIdx, attempt: next.attempt }
+    }
+    const step = state.plan[stepIdx]
+    state.rounds += 1
+    await persist()
+    yield { type: 'step-start', index: stepIdx, title: step.title }
     try {
-      const stream = streamText({
-        model: agentModel(),
-        system: RUNNER_SYSTEM,
-        prompt: stepPrompt,
-        tools: agentTools(),
-        stopWhen: stepCountIs(3)
-      })
-      let stepText = ''
-      const toolNotes: string[] = []
-      for await (const part of stream.fullStream) {
-        if (part.type === 'text-delta') {
-          stepText += (part as { text?: string }).text ?? ''
-          if (stepText.length % 240 < 60) {
-            yield { type: 'step-text', index: i, text: stepText.slice(-240) }
-          }
-        } else if (part.type === 'tool-call') {
-          const call = part as { toolName?: string }
-          yield {
-            type: 'tool-call',
-            index: i,
-            tool: call.toolName ?? 'outil',
-            auto: !toolNeedsApproval(call.toolName ?? '')
-          }
-        } else if (part.type === 'tool-result') {
-          const r = part as { toolName?: string; output?: unknown }
-          const out =
-            typeof r.output === 'string'
-              ? r.output
-              : JSON.stringify(r.output ?? null)
-          toolNotes.push(`${r.toolName ?? 'outil'}: ${out.slice(0, 800)}`)
+      const it = executeStep(goal, state.transcript, state.plan, stepIdx)
+      for (;;) {
+        const n = await it.next()
+        if (n.done) {
+          outcome = n.value
+          break
         }
-      }
-      const finalText = stepText.trim()
-      transcript.push({
-        role: 'assistant',
-        text:
-          `Step "${step.title}": ${finalText || '(no text output)'}` +
-          (toolNotes.length > 0 ? `\nTool notes: ${toolNotes.join(' | ')}` : '')
-      })
-      yield {
-        type: 'step-done',
-        index: i,
-        text: transcript[transcript.length - 1]?.text ?? ''
+        yield n.value
       }
     } catch (err) {
       if (err instanceof ApprovalNeededError) {
         yield {
           type: 'approval-needed',
-          index: i,
+          index: stepIdx,
           call: err.call,
-          resume: { transcript, startIndex: i }
+          resume: { transcript: state.transcript, startIndex: stepIdx }
         }
+        state.status = 'waiting-approval'
+        await persist()
         return
       }
-      throw err
+      if (err instanceof QuestionNeededError) {
+        yield {
+          type: 'clarify',
+          index: stepIdx,
+          question: err.question,
+          options: err.options
+        }
+        state.status = 'waiting-user'
+        await persist()
+        return
+      }
+      outcome = {
+        ok: false,
+        text: '',
+        tools: [],
+        error: err instanceof Error ? err.message : 'step failed'
+      }
     }
   }
 
-  const { text: verdictRaw } = await verifyGoal(goal, transcript)
-  const completed = /^VERDICT:\s*COMPLETED/i.test(verdictRaw.trim())
-  yield {
-    type: 'done',
-    verdict:
-      verdictRaw.replace(/^VERDICT:\s*(COMPLETED|INCOMPLETE)\s*/i, '').trim() ||
-      verdictRaw.trim(),
-    completed
+  // VERIFY against collected evidence; on FAIL with budget left, ask the
+  // model to recover (retry a step / replan / clarify / finish).
+  yield { type: 'verify' }
+  const { text: verdictRaw } = await verifyGoal(goal, state.transcript)
+  const parsed = parseVerdict(verdictRaw)
+  state.verification = parsed
+  if (!parsed.passed && state.rounds < MAX_ROUNDS) {
+    const fix = await decideRecovery(goal, state)
+    if (fix.decision === 'clarify' && fix.question) {
+      yield {
+        type: 'clarify',
+        index: state.currentStep,
+        question: fix.question,
+        options: []
+      }
+      state.status = 'waiting-user'
+      await persist()
+      return
+    }
+    if (
+      fix.decision === 'replan' &&
+      fix.revisedSteps &&
+      fix.revisedSteps.length > 0
+    ) {
+      const revised = fix.revisedSteps
+        .map(s => ({
+          title: String(s.title ?? '').slice(0, 120),
+          detail: String(s.detail ?? '').slice(0, 500)
+        }))
+        .filter(s => s.title.length > 0)
+      if (revised.length > 0) {
+        const applied = applyReplan(state, revised)
+        state.plan = applied.plan
+        state.failedSteps = applied.failedSteps
+        yield { type: 'replan', steps: state.plan }
+        yield {
+          type: 'decide',
+          decision: 'REPLAN',
+          reason: fix.reason.slice(0, 200)
+        }
+        await persist()
+        yield* runGoalStream({
+          goal,
+          steps: state.plan,
+          taskId: state.taskId,
+          resume: {
+            transcript: state.transcript,
+            startIndex: state.currentStep
+          },
+          persist: input.persist
+        })
+        return
+      }
+    }
+    if (fix.decision === 'retry' && fix.retryIndex != null) {
+      const idx = Math.min(Math.max(0, fix.retryIndex), state.plan.length - 1)
+      state.currentStep = idx
+      state.retries[idx] = Math.max(0, MAX_ATTEMPTS_PER_STEP - 1)
+      delete state.failedSteps[idx]
+      yield {
+        type: 'decide',
+        decision: 'RETRY',
+        reason: fix.reason.slice(0, 200)
+      }
+      await persist()
+      yield* runGoalStream({
+        goal,
+        steps: state.plan,
+        taskId: state.taskId,
+        resume: { transcript: state.transcript, startIndex: idx },
+        persist: input.persist
+      })
+      return
+    }
+    yield {
+      type: 'decide',
+      decision: 'FINISH',
+      reason: fix.reason.slice(0, 200)
+    }
   }
+
+  const notes = parsed.notes || verdictRaw.trim()
+  state.status = 'done'
+  state.result = parsed.passed ? notes : null
+  await persist()
+  yield { type: 'done', verdict: notes, completed: parsed.passed }
 }
 
 async function verifyGoal(
