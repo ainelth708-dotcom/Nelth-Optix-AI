@@ -13,7 +13,8 @@ import {
   Plus,
   Search,
   Square,
-  X
+  X,
+  Zap
 } from 'lucide-react'
 
 import {
@@ -232,59 +233,61 @@ export function AgentWorkspace() {
   })()
 
   return (
-    <div className="relative mx-auto flex h-full min-h-0 w-full max-w-[752px] flex-1 flex-col px-4 pb-4 pt-14 md:pt-8">
+    <div className="agent-ambient relative mx-auto flex h-full min-h-0 w-full max-w-[752px] flex-1 flex-col px-4 pb-4 pt-14 md:pt-8">
       {/* Workspace header: companion + identity + live task state */}
-      <div className="flex items-center gap-2 pb-2">
-        <NelthCompanion state={companionState} size={32} />
-        <span className="text-[15px] font-semibold">Agent</span>{' '}
-        {task && (
-          <>
-            <span
-              className={cn(
-                'ml-1 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                task.state === 'FAILED'
-                  ? 'bg-red-500/10 text-red-600 dark:text-red-400'
-                  : task.state === 'COMPLETED'
-                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                    : 'bg-black/[0.06] text-neutral-600 dark:bg-white/10 dark:text-neutral-300'
-              )}
-            >
-              {TASK_STATE_LABEL[task.state]}
-            </span>
-            {taskActive && (
-              <span className="text-xs tabular-nums text-neutral-500 dark:text-neutral-400">
-                {formatElapsed(clock - task.createdAt)}
-              </span>
-            )}
-            {taskActive && (
-              <button
-                type="button"
-                onClick={() => {
-                  try {
-                    stop()
-                  } finally {
-                    setTask(prev =>
-                      prev ? safeTransition(prev, 'PAUSED') : prev
-                    )
-                  }
-                }}
-                className="ml-auto flex items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
+      <div className="sticky top-0 z-10 -mx-4 bg-transparent px-4 pb-2 pt-1 backdrop-blur-md">
+        <div className="flex items-center gap-2">
+          <NelthCompanion state={companionState} size={32} />
+          <span className="text-[15px] font-semibold">Agent</span>{' '}
+          {task && (
+            <>
+              <span
+                className={cn(
+                  'ml-1 rounded-full px-2.5 py-0.5 text-xs font-medium',
+                  task.state === 'FAILED'
+                    ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+                    : task.state === 'COMPLETED'
+                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                      : 'bg-black/[0.06] text-neutral-600 dark:bg-white/10 dark:text-neutral-300'
+                )}
               >
-                <Square size={11} />
-                Stop
-              </button>
-            )}
-          </>
-        )}
-        <button
-          type="button"
-          onClick={() => setSuivisOpen(true)}
-          aria-label="Suivis"
-          title="Objectifs, mémoire, fil"
-          className="ml-auto flex size-8 items-center justify-center rounded-full text-neutral-500 transition-colors hover:bg-black/5 hover:text-foreground dark:text-neutral-400 dark:hover:bg-white/10"
-        >
-          <ClipboardList size={16} />
-        </button>
+                {TASK_STATE_LABEL[task.state]}
+              </span>
+              {taskActive && (
+                <span className="text-xs tabular-nums text-neutral-500 dark:text-neutral-400">
+                  {formatElapsed(clock - task.createdAt)}
+                </span>
+              )}
+              {taskActive && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      stop()
+                    } finally {
+                      setTask(prev =>
+                        prev ? safeTransition(prev, 'PAUSED') : prev
+                      )
+                    }
+                  }}
+                  className="ml-auto flex items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
+                >
+                  <Square size={11} />
+                  Stop
+                </button>
+              )}
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => setSuivisOpen(true)}
+            aria-label="Suivis"
+            title="Objectifs, mémoire, fil"
+            className="ml-auto flex size-8 items-center justify-center rounded-full text-neutral-500 transition-colors hover:bg-black/5 hover:text-foreground dark:text-neutral-400 dark:hover:bg-white/10"
+          >
+            <ClipboardList size={16} />
+          </button>
+        </div>
       </div>
 
       {mode === 'task' ? (
@@ -304,32 +307,60 @@ export function AgentWorkspace() {
             Confie un objectif à l’agent : il planifie, agit avec tes outils et
             vérifie le résultat.
           </p>
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <div className="mt-6 grid w-full max-w-[520px] grid-cols-1 gap-2 sm:grid-cols-3">
             <button
               type="button"
               onClick={() => setInput('Fais une recherche approfondie : ')}
-              className="flex items-center gap-1.5 rounded-full border border-black/10 px-3.5 py-2 text-[13px] font-medium transition-colors hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
+              className="agent-fade-in group rounded-2xl border border-black/10 bg-white/70 p-3.5 text-left shadow-[0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(0,0,0,0.10)] dark:border-white/10 dark:bg-white/[0.06]"
             >
-              <Search size={14} />
-              Rechercher
+              <Search size={16} className="text-sky-600 dark:text-sky-300" />
+              <p className="mt-2 text-[13px] font-semibold leading-snug">
+                Rechercher
+              </p>
+              <p className="mt-0.5 text-[11.5px] leading-snug text-neutral-500 dark:text-neutral-400">
+                Web en profondeur, sources citées
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('task')
+              }}
+              className="agent-fade-in group rounded-2xl border border-black/10 bg-white/70 p-3.5 text-left shadow-[0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(0,0,0,0.10)] dark:border-white/10 dark:bg-white/[0.06]"
+            >
+              <Zap size={16} className="text-violet-600 dark:text-violet-300" />
+              <p className="mt-2 text-[13px] font-semibold leading-snug">
+                Exécuter une tâche
+              </p>
+              <p className="mt-0.5 text-[11.5px] leading-snug text-neutral-500 dark:text-neutral-400">
+                Plan, outils, vérification
+              </p>
             </button>
             <button
               type="button"
               onClick={() => router.push('/imagine')}
-              className="flex items-center gap-1.5 rounded-full border border-black/10 px-3.5 py-2 text-[13px] font-medium transition-colors hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
+              className="agent-fade-in group rounded-2xl border border-black/10 bg-white/70 p-3.5 text-left shadow-[0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(0,0,0,0.10)] dark:border-white/10 dark:bg-white/[0.06]"
             >
-              <ImageIcon size={14} />
-              Générer une image
-            </button>
-            <button
-              type="button"
-              onClick={handleNewSession}
-              className="flex items-center gap-1.5 rounded-full border border-black/10 px-3.5 py-2 text-[13px] font-medium transition-colors hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
-            >
-              <Plus size={14} />
-              Nouvelle session
+              <ImageIcon
+                size={16}
+                className="text-emerald-600 dark:text-emerald-300"
+              />
+              <p className="mt-2 text-[13px] font-semibold leading-snug">
+                Générer une image
+              </p>
+              <p className="mt-0.5 text-[11.5px] leading-snug text-neutral-500 dark:text-neutral-400">
+                Studio Imagine, 55 presets
+              </p>
             </button>
           </div>
+          <button
+            type="button"
+            onClick={handleNewSession}
+            className="mt-4 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-neutral-500 transition-colors hover:bg-black/5 hover:text-foreground dark:text-neutral-400 dark:hover:bg-white/10"
+          >
+            <Plus size={13} />
+            Nouvelle session
+          </button>
         </div>
       ) : (
         /* Active session: messages + live activity */
@@ -339,8 +370,8 @@ export function AgentWorkspace() {
               {messages.map(m => {
                 if (m.role === 'user') {
                   return (
-                    <div key={m.id} className="flex justify-end">
-                      <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-black px-4 py-2.5 text-[14px] leading-relaxed text-white dark:bg-white dark:text-black">
+                    <div key={m.id} className="agent-fade-in flex justify-end">
+                      <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-black px-4 py-2.5 text-[14px] leading-relaxed text-white shadow-[0_6px_20px_rgba(0,0,0,0.12)] dark:bg-white dark:text-black">
                         {getTextFromParts(m.parts)}
                       </p>
                     </div>
@@ -349,7 +380,7 @@ export function AgentWorkspace() {
                 const text = assistantText.get(m.id) ?? ''
                 if (!text.trim()) return null
                 return (
-                  <div key={m.id} className="flex justify-start">
+                  <div key={m.id} className="agent-fade-in flex justify-start">
                     <p className="max-w-[95%] whitespace-pre-wrap text-[14.5px] leading-relaxed">
                       {text}
                     </p>
@@ -401,7 +432,7 @@ export function AgentWorkspace() {
         ))}
       </div>
       {mode === 'chat' && (
-        <div className="w-full overflow-hidden rounded-[22px] border border-[#e3e3e3] bg-white dark:border-border dark:bg-card">
+        <div className="w-full overflow-hidden rounded-[26px] border border-black/10 bg-white shadow-[0_16px_48px_rgba(0,0,0,0.10)] transition-shadow focus-within:border-black/20 focus-within:shadow-[0_20px_60px_rgba(0,0,0,0.14)] dark:border-white/10 dark:bg-card dark:shadow-[0_16px_48px_rgba(0,0,0,0.45)]">
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}

@@ -39,7 +39,7 @@ import {
   parseVerdict,
   type StepOutcome
 } from './autonomy'
-import { createSkillTool } from './skills'
+import { createSkillTool, listAgentSkills } from './skills'
 
 // Re-exported for existing importers (plan panel, routes).
 export type { AgentPlanStep, AgentTranscriptEntry } from './autonomy'
@@ -161,6 +161,64 @@ function coerceStep(item: unknown): { title: string; detail: string } | null {
   }
 }
 
+/**
+ * Formats the lazy skill index for prompts (bounded, pure, tested).
+ * Bodies stay unloaded until the model invokes the `skill` tool.
+ */
+export function formatSkillsContext(
+  skills: Array<{ id: string; description: string }>,
+  maxChars = 600
+): string {
+  const lines: string[] = []
+  let used = 0
+  for (const s of skills) {
+    const line = `- ${s.id}: ${(s.description || '').slice(0, 120)}`
+    if (used + line.length > maxChars) break
+    lines.push(line)
+    used += line.length
+  }
+  return lines.join('\n')
+}
+
+/** True when the transcript should be compacted before growing further. */
+export function needsCompaction(
+  transcript: Array<{ text?: unknown }>,
+  thresholdChars = 9000
+): boolean {
+  let total = 0
+  for (const e of transcript) {
+    total += typeof e.text === 'string' ? e.text.length : 0
+    if (total > thresholdChars) return true
+  }
+  return false
+}
+
+/** Summarize the oldest entries, keep the recent tail verbatim. */
+export async function compactTranscript(
+  transcript: AgentTranscriptEntry[]
+): Promise<AgentTranscriptEntry[]> {
+  if (!needsCompaction(transcript)) return transcript
+  const keepFrom = Math.max(0, transcript.length - 4)
+  const old = transcript.slice(0, keepFrom)
+  const recent = transcript.slice(keepFrom)
+  if (old.length === 0) return transcript
+  const { text } = await generateText({
+    model: agentModel(),
+    system:
+      'Summarize the following agent transcript tail into 5-8 dense bullet lines. Keep tool findings, numbers, URLs and decisions. No preamble.',
+    prompt: old
+      .map(e => `${e.role.toUpperCase()}: ${e.text}`.slice(0, 1200))
+      .join('\n')
+  })
+  return [
+    {
+      role: 'observation',
+      text: `Résumé compacté:\n${text.trim().slice(0, 2500)}`
+    },
+    ...recent
+  ]
+}
+
 export async function planGoal(goal: string): Promise<AgentPlan> {
   const trimmed = goal.trim()
   if (!trimmed) throw new Error('Objectif vide.')
@@ -180,11 +238,22 @@ export async function planGoal(goal: string): Promise<AgentPlan> {
     available.push(
       `shell commands (worker${caps.proot ? ', proot isolated' : ''})`
     )
+  // Lazy skill index (bodies stay unloaded until the `skill` tool runs).
+  let skillsNote = ''
+  try {
+    const formatted = formatSkillsContext(await listAgentSkills())
+    if (formatted) {
+      skillsNote = `\n\nAvailable skills (invoke via the skill tool when relevant):\n${formatted}`
+    }
+  } catch {
+    // Skill index unavailable — plan without it.
+  }
   const object = await generateJsonObject(
     PlanSchema,
     PLANNER_SYSTEM,
     `${trimmed}\n\nAvailable capabilities: ${available.join(', ')}. ` +
-      'Plan ONLY with these — never assume browser, shell or computer access unless listed.'
+      'Plan ONLY with these — never assume browser, shell or computer access unless listed.' +
+      skillsNote
   )
   return object
 }
@@ -497,6 +566,11 @@ export async function* runGoalStream(input: {
     }
     const step = state.plan[stepIdx]
     state.rounds += 1
+    // Transcript compaction (eve-style): summarize the tail before it
+    // eats the context window; recent entries stay verbatim.
+    if (needsCompaction(state.transcript)) {
+      state.transcript = await compactTranscript(state.transcript)
+    }
     await persist()
     yield { type: 'step-start', index: stepIdx, title: step.title }
     try {

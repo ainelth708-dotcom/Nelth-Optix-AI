@@ -470,7 +470,7 @@ export function PlanPanel({
               {planTitle}
             </p>
           )}
-          <ul className="flex flex-col gap-2">
+          <ul className="agent-timeline-rail relative flex flex-col gap-3 text-neutral-700 dark:text-neutral-300">
             {steps.map((s, i) => (
               <li key={`${i}-${s.title}`} className="flex items-start gap-2.5">
                 <span
