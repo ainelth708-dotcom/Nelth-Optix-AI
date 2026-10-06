@@ -2,24 +2,25 @@ import { SearchResultImage, SearchResultItem, SearchResults } from '@/lib/types'
 
 import { SearchProvider } from './base'
 
-// Instance chain (user-requested order, 2026-10-01):
-// 1. https://search.yonderly.org (primary)
-// 2. https://s.307200.xyz (fallback)
-// 3. https://4get.eloy.ar (last resort — previous default, kept so search
-//    never dies entirely if the first two block us; each is skipped fast
-//    on block/challenge markers, so a dead instance costs seconds, not
-//    minutes).
-// Measured from here (2026-10-01): yonderly IP-blocks non-browser
-// backends ("Tshh, blocked!"), s.307200.xyz serves a CSSWAF JS challenge
-// (unusable server-side), eloy.ar times out — behavior varies by egress
-// IP, hence the chain: first instance with real results wins.
-// Override the whole chain with the FOURGET_BASE_URL environment variable.
+// Instance chain benchmarked 2026-10-01 across all 22 public 4get
+// instances (official list: https://4get.ca/instances — web yep/ddg +
+// images brave, real parsed result divs, latency):
+// 1. https://4.nboeck.de — web 100 divs ~2.4s (yep), images 200 divs ~1.5s.
+// 2. https://4get.sudovanilla.org — web 100 divs ~2.8s (yep; back from 502).
+// 3. https://search.yonderly.org — web 10 divs ~3-4s, images 200 divs
+//    (IP-blocks some backends intermittently — chain skips it fast then).
+// Dropped: https://s.307200.xyz (CSSWAF JS challenge, unusable
+// server-side), https://4get.eloy.ar (connection timeout), all others
+// (empty result pages from here).
+// NOTE: results depend on egress IP — Vercel may rank differently; the
+// chain + block-skip design absorbs that (first instance with real
+// results wins). Override everything with FOURGET_BASE_URL.
 const FOURGET_BASE_URLS = process.env.FOURGET_BASE_URL
   ? [process.env.FOURGET_BASE_URL]
   : [
-      'https://search.yonderly.org',
-      'https://s.307200.xyz',
-      'https://4get.eloy.ar'
+      'https://4.nboeck.de',
+      'https://4get.sudovanilla.org',
+      'https://search.yonderly.org'
     ]
 const DEFAULT_TIMEOUT_MS = 10000
 
