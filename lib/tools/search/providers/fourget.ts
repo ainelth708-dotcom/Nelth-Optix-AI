@@ -2,17 +2,41 @@ import { SearchResultImage, SearchResultItem, SearchResults } from '@/lib/types'
 
 import { SearchProvider } from './base'
 
-// Default instance benchmarked 2026-09-19 across 22 public 4get
-// instances (web + images, scrapers yep/yandex/brave/ddg):
-// - https://4get.eloy.ar wins: web 10-20 results in ~4s on
-//   yep/yandex/ddg, images 83 hits in ~3-6s on yep/brave.
-// - https://search.yonderly.org runner-up (works, slightly slower).
-// - https://4get.sudovanilla.org (previous default) returns HTTP 502.
-// - Most other instances return empty result pages on every scraper.
-// Override with the FOURGET_BASE_URL environment variable.
-const FOURGET_BASE_URL =
-  process.env.FOURGET_BASE_URL || 'https://4get.eloy.ar'
+// Instance chain (user-requested order, 2026-10-01):
+// 1. https://search.yonderly.org (primary)
+// 2. https://s.307200.xyz (fallback)
+// 3. https://4get.eloy.ar (last resort — previous default, kept so search
+//    never dies entirely if the first two block us; each is skipped fast
+//    on block/challenge markers, so a dead instance costs seconds, not
+//    minutes).
+// Measured from here (2026-10-01): yonderly IP-blocks non-browser
+// backends ("Tshh, blocked!"), s.307200.xyz serves a CSSWAF JS challenge
+// (unusable server-side), eloy.ar times out — behavior varies by egress
+// IP, hence the chain: first instance with real results wins.
+// Override the whole chain with the FOURGET_BASE_URL environment variable.
+const FOURGET_BASE_URLS = process.env.FOURGET_BASE_URL
+  ? [process.env.FOURGET_BASE_URL]
+  : [
+      'https://search.yonderly.org',
+      'https://s.307200.xyz',
+      'https://4get.eloy.ar'
+    ]
 const DEFAULT_TIMEOUT_MS = 10000
+
+/**
+ * Detects instance-level blocks (IP ban, anti-bot challenge) so the
+ * chain skips to the next instance instead of burning all scrapers.
+ * Exported for tests.
+ */
+export function isInstanceBlocked(html: string): boolean {
+  return (
+    html.includes('blocked from this 4get instance') ||
+    html.includes('Tshh, blocked') ||
+    html.includes('csswaf') ||
+    html.includes('Challenge: please wait') ||
+    html.includes('challenge-platform')
+  )
+}
 
 function stripHtml(html: string): string {
   return html
@@ -52,12 +76,13 @@ function cleanResultUrl(raw: string): string {
 }
 
 /**
- * 4get Search Provider (default instance https://4get.eloy.ar).
+ * 4get Search Provider (instance chain: yonderly → s.307200 → eloy.ar).
  * Open-source, high-privacy, fast metasearch engine supporting both
- * web text search and high-resolution image search with multi-scraper fallback.
+ * web text search and high-resolution image search with multi-scraper
+ * + multi-instance fallback.
  */
 export class FourGetSearchProvider implements SearchProvider {
-  private baseUrl = FOURGET_BASE_URL
+  private bases = FOURGET_BASE_URLS
 
   private async fetchWithTimeout(
     url: string,
@@ -86,17 +111,19 @@ export class FourGetSearchProvider implements SearchProvider {
   }
 
   /**
-   * Performs a web search on 4get with multi-scraper fallback (yep, yandex, brave, ddg).
+   * Performs a web search on one 4get instance with multi-scraper
+   * fallback (yep, yandex, brave, ddg).
    */
   private async searchWeb(
     query: string,
-    maxResults: number
+    maxResults: number,
+    baseUrl: string
   ): Promise<SearchResultItem[]> {
     const scrapers = ['yep', 'yandex', 'brave', 'ddg']
 
     for (const scraper of scrapers) {
       try {
-        const url = `${this.baseUrl}/web?s=${encodeURIComponent(query)}&scraper=${scraper}`
+        const url = `${baseUrl}/web?s=${encodeURIComponent(query)}&scraper=${scraper}`
         const res = await this.fetchWithTimeout(url)
 
         if (!res.ok) continue
@@ -104,6 +131,11 @@ export class FourGetSearchProvider implements SearchProvider {
         const html = await res.text()
         if (html.includes('This scraper returned an error')) {
           continue
+        }
+        if (isInstanceBlocked(html)) {
+          // IP ban / anti-bot challenge: no scraper on this instance
+          // will work — bail to the next instance immediately.
+          return []
         }
 
         const results: SearchResultItem[] = []
@@ -182,17 +214,19 @@ export class FourGetSearchProvider implements SearchProvider {
   }
 
   /**
-   * Performs an image search on 4get with multi-scraper fallback.
+   * Performs an image search on one 4get instance with multi-scraper
+   * fallback.
    */
   private async searchImages(
     query: string,
-    maxResults: number
+    maxResults: number,
+    baseUrl: string
   ): Promise<SearchResultImage[]> {
     const scrapers = ['brave', 'yep', 'ddg', 'unsplash', 'yandex']
 
     for (const scraper of scrapers) {
       try {
-        const url = `${this.baseUrl}/images?s=${encodeURIComponent(query)}&scraper=${scraper}`
+        const url = `${baseUrl}/images?s=${encodeURIComponent(query)}&scraper=${scraper}`
         const res = await this.fetchWithTimeout(url)
 
         if (!res.ok) continue
@@ -200,6 +234,9 @@ export class FourGetSearchProvider implements SearchProvider {
         const html = await res.text()
         if (html.includes('This scraper returned an error')) {
           continue
+        }
+        if (isInstanceBlocked(html)) {
+          return []
         }
 
         const images: SearchResultImage[] = []
@@ -302,33 +339,42 @@ export class FourGetSearchProvider implements SearchProvider {
     let results: SearchResultItem[] = []
     let images: SearchResultImage[] = []
 
-    const tasks: Promise<void>[] = []
+    // Instance chain: first base with real results wins.
+    for (const baseUrl of this.bases) {
+      const tasks: Promise<void>[] = []
 
-    if (wantsWeb || !wantsImages) {
-      tasks.push(
-        (async () => {
-          try {
-            results = await this.searchWeb(effectiveQuery, maxResults)
-          } catch (err) {
-            console.warn('[4get] Web search error:', err)
-          }
-        })()
-      )
+      if (wantsWeb || !wantsImages) {
+        tasks.push(
+          (async () => {
+            try {
+              results = await this.searchWeb(
+                effectiveQuery,
+                maxResults,
+                baseUrl
+              )
+            } catch (err) {
+              console.warn('[4get] Web search error:', err)
+            }
+          })()
+        )
+      }
+
+      if (wantsImages) {
+        tasks.push(
+          (async () => {
+            try {
+              images = await this.searchImages(effectiveQuery, 20, baseUrl)
+            } catch (err) {
+              console.warn('[4get] Image search error:', err)
+            }
+          })()
+        )
+      }
+
+      await Promise.all(tasks)
+
+      if (results.length > 0 || images.length > 0) break
     }
-
-    if (wantsImages) {
-      tasks.push(
-        (async () => {
-          try {
-            images = await this.searchImages(effectiveQuery, 20)
-          } catch (err) {
-            console.warn('[4get] Image search error:', err)
-          }
-        })()
-      )
-    }
-
-    await Promise.all(tasks)
 
     return {
       query,
