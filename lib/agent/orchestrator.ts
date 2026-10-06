@@ -22,10 +22,12 @@ import { documentTool } from '@/lib/tools/document'
 import { fetchTool } from '@/lib/tools/fetch'
 import { createQuestionTool } from '@/lib/tools/question'
 import { createSearchTool } from '@/lib/tools/search'
+import { createTodoTools } from '@/lib/tools/todo'
 import { getModel } from '@/lib/utils/registry'
 
 import { getCapabilities } from './worker/capabilities'
 import { requiresApproval } from './approvals'
+import { createSkillTool } from './skills'
 
 const agentModelId = `${DEFAULT_MODEL.providerId}:${DEFAULT_MODEL.id}`
 const agentModel = () => getModel(agentModelId)
@@ -122,7 +124,9 @@ function agentTools() {
     search: createSearchTool(agentModelId),
     fetch: gatedFetchTool,
     document: documentTool,
-    question: createQuestionTool(agentModelId)
+    question: createQuestionTool(agentModelId),
+    skill: createSkillTool(),
+    ...createTodoTools()
   }
 }
 
@@ -188,7 +192,7 @@ function transcriptPrompt(
 
 const RUNNER_SYSTEM = [
   'You are Nelth-IA, an autonomous agent executing ONE step now.',
-  'Use the available tools when they help (search the web, fetch a page, look up documents).',
+  'Use the available tools when they help (search the web, fetch a page, look up documents, load a skill playbook, track todos).',
   'Be concise: report what you did and the key finding in a few sentences.',
   'Never claim actions you did not take. No chain-of-thought, only the outcome.'
 ].join(' ')

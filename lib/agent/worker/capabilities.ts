@@ -19,13 +19,16 @@ export function getCapabilities(): AgentCapabilities {
   const advertised = new Set(parseList(process.env.WORKER_CAPABILITIES))
   const has = (name: WorkerCapabilityName): boolean =>
     endpoint !== null && advertised.has(name)
+  // A Vercel Sandbox runtime (explicit opt-in) genuinely provides an
+  // isolated shell even with no external worker endpoint configured.
+  const sandboxShell = process.env.VERCEL_SANDBOX_ENABLED === 'true'
   const scheduler = process.env.AGENT_SCHEDULER_CONFIGURED === 'true'
   const persistentBrowser = has('browser') && scheduler
   return {
     browser: has('browser'),
     persistentBrowser,
     computer: has('computer'),
-    shell: has('shell'),
+    shell: has('shell') || sandboxShell,
     proot: has('proot'),
     backgroundTasks: scheduler,
     scheduling: scheduler,

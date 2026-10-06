@@ -2,6 +2,7 @@
 // interface — never on a vendor SDK. HttpWorkerAdapter talks to any
 // worker host implementing the job/event protocol over HTTPS.
 import type { WorkerJob } from './types'
+import { VercelSandboxWorkerAdapter } from './vercel-sandbox'
 
 export interface DispatchResult {
   accepted: boolean
@@ -94,12 +95,18 @@ export class HttpWorkerAdapter implements WorkerAdapter {
   }
 }
 
-/** Null when no worker endpoint is configured → UNAVAILABLE, never fake. */
+/** Null when nothing can execute: HTTP endpoint first, then the
+    Vercel Sandbox runtime (explicit opt-in), else UNAVAILABLE. */
 export function getWorkerAdapter(): WorkerAdapter | null {
   const endpoint = process.env.WORKER_ENDPOINT?.trim()
-  if (!endpoint) return null
-  return new HttpWorkerAdapter(
-    endpoint,
-    process.env.WORKER_API_KEY || undefined
-  )
+  if (endpoint) {
+    return new HttpWorkerAdapter(
+      endpoint,
+      process.env.WORKER_API_KEY || undefined
+    )
+  }
+  if (process.env.VERCEL_SANDBOX_ENABLED === 'true') {
+    return new VercelSandboxWorkerAdapter()
+  }
+  return null
 }

@@ -2,7 +2,7 @@
 // plus a fake control plane, dispatches a genuine shell job through the
 // adapter, and verifies the HMAC-signed callbacks. No mocks, no fakes —
 // a real child_process spawn, real HTTP, real crypto verification.
-import { type ChildProcess,spawn } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
