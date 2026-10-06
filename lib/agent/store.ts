@@ -6,7 +6,7 @@
 
 import { getDb } from '@/lib/firebase/admin'
 
-import { type AgentRunState,fromStoredRun } from './autonomy'
+import { type AgentRunState, fromStoredRun } from './autonomy'
 import type { AgentSchedule } from './scheduling'
 import type { AgentTask } from './task'
 

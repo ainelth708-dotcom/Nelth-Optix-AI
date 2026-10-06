@@ -346,16 +346,17 @@ const VERIFIER_SYSTEM = [
 ].join(' ')
 
 const RecoverySchema = z.object({
-  decision: z.enum(['retry', 'replan', 'finish', 'clarify']),
-  reason: z.string(),
-  retryIndex: z.number().int().min(0).max(7).nullable().optional(),
+  decision: z.enum(['retry', 'replan', 'finish', 'clarify']).catch('finish'),
+  reason: z.string().catch(''),
+  retryIndex: z.number().int().min(0).max(7).nullable().optional().catch(null),
   revisedSteps: z
     .array(z.object({ title: z.string(), detail: z.string() }))
     .min(1)
     .max(8)
     .nullable()
-    .optional(),
-  question: z.string().nullable().optional()
+    .optional()
+    .catch(null),
+  question: z.string().nullable().optional().catch(null)
 })
 
 type Recovery = z.infer<typeof RecoverySchema>

@@ -1,11 +1,20 @@
 'use client'
 
 import { useEffect, useId, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { ArrowUp, Image as ImageIcon, Plus, Search, Square } from 'lucide-react'
+import {
+  ArrowUp,
+  ClipboardList,
+  Image as ImageIcon,
+  Plus,
+  Search,
+  Square,
+  X
+} from 'lucide-react'
 
 import {
   type AgentTask,
@@ -75,7 +84,11 @@ export function AgentWorkspace() {
   const [task, setTask] = useState<AgentTask | null>(null)
   const [input, setInput] = useState('')
   const [clock, setClock] = useState(() => Date.now())
-  const [tab, setTab] = useState<'chat' | 'plan' | 'suivis'>('chat')
+  // Single flow, two modes (no separate sections): Discussion for fast
+  // chat, Tâche for the autonomous plan→run loop. Suivis lives in an
+  // overlay sheet, one tap away.
+  const [mode, setMode] = useState<'chat' | 'task'>('chat')
+  const [suivisOpen, setSuivisOpen] = useState(false)
   const [inputFocused, setInputFocused] = useState(false)
   const [lastActiveAt, setLastActiveAt] = useState(() => Date.now())
 
@@ -180,7 +193,7 @@ export function AgentWorkspace() {
       { id, role: 'assistant', parts: [{ type: 'text', text }] } as UIMessage
     ])
     markActive()
-    setTab('chat')
+    setMode('chat')
   }
 
   // Companion mirrors the REAL agent/task state — never random.
@@ -223,7 +236,7 @@ export function AgentWorkspace() {
       {/* Workspace header: companion + identity + live task state */}
       <div className="flex items-center gap-2 pb-2">
         <NelthCompanion state={companionState} size={32} />
-        <span className="text-[15px] font-semibold">Agent</span>
+        <span className="text-[15px] font-semibold">Agent</span>{' '}
         {task && (
           <>
             <span
@@ -263,41 +276,23 @@ export function AgentWorkspace() {
             )}
           </>
         )}
+        <button
+          type="button"
+          onClick={() => setSuivisOpen(true)}
+          aria-label="Suivis"
+          title="Objectifs, mémoire, fil"
+          className="ml-auto flex size-8 items-center justify-center rounded-full text-neutral-500 transition-colors hover:bg-black/5 hover:text-foreground dark:text-neutral-400 dark:hover:bg-white/10"
+        >
+          <ClipboardList size={16} />
+        </button>
       </div>
 
-      {/* View tabs */}
-      <div className="flex gap-1 pb-3">
-        {(
-          [
-            ['chat', 'Discussion'],
-            ['plan', 'Plan'],
-            ['suivis', 'Suivis']
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            className={cn(
-              'rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors',
-              tab === id
-                ? 'bg-black text-white dark:bg-white dark:text-black'
-                : 'text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/10'
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'plan' ? (
+      {mode === 'task' ? (
         <PlanPanel
           task={task}
           onTask={setTask}
           onAppendMessage={appendAssistantMessage}
         />
-      ) : tab === 'suivis' ? (
-        <TrackingPanel />
       ) : messages.length === 0 ? (
         /* Home: companion + prompt + capability chips */
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center pb-8 text-center">
@@ -382,8 +377,30 @@ export function AgentWorkspace() {
         </>
       )}
 
-      {/* Composer (discussion tab only) */}
-      {tab === 'chat' && (
+      {/* Mode pills + composer (chat mode only; task mode has its own flow) */}
+      <div className="flex justify-center gap-1 pb-2">
+        {(
+          [
+            ['chat', 'Discussion'],
+            ['task', 'Tâche']
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setMode(id)}
+            className={cn(
+              'rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors',
+              mode === id
+                ? 'bg-black text-white dark:bg-white dark:text-black'
+                : 'text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/10'
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {mode === 'chat' && (
         <div className="w-full overflow-hidden rounded-[22px] border border-[#e3e3e3] bg-white dark:border-border dark:bg-card">
           <textarea
             value={input}
@@ -414,6 +431,42 @@ export function AgentWorkspace() {
           </div>
         </div>
       )}
+
+      {/* Suivis sheet (goals / memory / feed, one tap away) */}
+      {suivisOpen && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Suivis"
+              onClick={() => setSuivisOpen(false)}
+              className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/55 backdrop-blur-md"
+            >
+              <div className="flex min-h-full items-end justify-center sm:items-center sm:p-4">
+                <div
+                  onClick={e => e.stopPropagation()}
+                  className="w-full max-w-[560px] rounded-t-[24px] bg-white p-4 pb-6 text-neutral-800 shadow-[0_24px_90px_rgba(0,0,0,0.5)] sm:rounded-[24px] dark:bg-[#202020] dark:text-neutral-200"
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-[15px] font-semibold">Suivis</p>
+                    <button
+                      type="button"
+                      onClick={() => setSuivisOpen(false)}
+                      aria-label="Fermer"
+                      className="rounded-full p-1.5 transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                    >
+                      <X size={16} strokeWidth={2} />
+                    </button>
+                  </div>
+                  <div className="max-h-[70dvh] overflow-y-auto">
+                    <TrackingPanel />
+                  </div>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   )
 }

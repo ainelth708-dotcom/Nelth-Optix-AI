@@ -12,7 +12,8 @@ import {
   requestClarification,
   routeGoal,
   runStateToTodos,
-  toStoredRun} from './autonomy'
+  toStoredRun
+} from './autonomy'
 import { canTransitionTask } from './task'
 
 function runningState(): AgentRunState {
