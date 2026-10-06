@@ -10,7 +10,7 @@ export interface DispatchResult {
 
 export interface WorkerAdapter {
   readonly name: string
-  dispatch(job: WorkerJob): Promise<DispatchResult>
+  dispatch(job: WorkerJob, opts?: { uid?: string }): Promise<DispatchResult>
   cancel(job: WorkerJob): Promise<void>
 }
 
@@ -50,7 +50,10 @@ export class HttpWorkerAdapter implements WorkerAdapter {
     return headers
   }
 
-  async dispatch(job: WorkerJob): Promise<DispatchResult> {
+  async dispatch(
+    job: WorkerJob,
+    opts?: { uid?: string }
+  ): Promise<DispatchResult> {
     const res = await workerFetch(
       this.endpoint,
       '/jobs',
@@ -64,7 +67,10 @@ export class HttpWorkerAdapter implements WorkerAdapter {
           capability: job.capability,
           action: job.action,
           input: job.input,
-          timeoutMs: job.timeoutMs
+          timeoutMs: job.timeoutMs,
+          // Routing hint so the worker can echo it back in callbacks
+          // (the control plane binds job→uid before trusting anything).
+          ...(opts?.uid ? { uid: opts.uid } : {})
         })
       },
       Math.min(30000, job.timeoutMs)

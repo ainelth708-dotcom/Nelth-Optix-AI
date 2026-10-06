@@ -18,7 +18,7 @@ export async function submitWorkerJob(
     throw new WorkerUnavailableError(input.capability)
   }
   try {
-    const result = await adapter.dispatch(job)
+    const result = await adapter.dispatch(job, { uid })
     const updated =
       (await updateJobRecord(uid, job.id, {
         status: 'DISPATCHED',
