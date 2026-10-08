@@ -1,11 +1,11 @@
-import { BrowserAgentChat } from '@/components/browser-agent/browser-agent-chat'
+import { AgentChat } from '@/components/agent/agent-chat'
 
 export const metadata = {
   title: 'Agent — Nelth-IA',
   description:
-    'Agent navigateur Nelth-IA : discutez et visualisez le navigateur en direct (design browser-agent-template).'
+    'Nelth Agent : conversation, recherche web, calculs et sous-agent de recherche — 100 % serverless.'
 }
 
 export default function AgentPage() {
-  return <BrowserAgentChat />
+  return <AgentChat />
 }

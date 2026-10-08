@@ -442,8 +442,6 @@
   }
 }
 
-/* Browser agent (browser-agent-template design): split chat + live browser view. */
-
 /* Animation utilities for dropdown menu */
 @utility animate-in {
   animation-name: enter;
