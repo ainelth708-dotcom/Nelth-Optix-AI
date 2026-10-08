@@ -8,6 +8,8 @@
 
 # local third-party reference sources (never part of the app bundle)
 /nanoMuse-main/
+/browser-agent-template-main/
+/skills-main/
 
 # testing
 /coverage
