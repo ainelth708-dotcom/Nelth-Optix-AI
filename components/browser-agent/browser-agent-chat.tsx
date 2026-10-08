@@ -50,17 +50,45 @@ function extractLiveUrl(messages: readonly ChatMessage[]): string | null {
   return found
 }
 
-function extractAnyUrl(text: string): string | null {
-  const match = text.match(/https?:\/\/[^\s"'\\]+/i)
-  if (!match) return null
-  try {
-    const parsed = new URL(match[0])
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')
-      return null
-    return match[0]
-  } catch {
-    return null
+const BARE_DOMAIN_TLDS =
+  'com|org|net|io|fr|mg|dev|ai|app|co|tv|info|news|site|online|tech|be|de|uk|es|it|ca|us|yt|me|so|gg'
+
+// Trouve une URL à ouvrir dans le panneau : URL complète, ou domaine nu
+// ("youtube.com", "www.youtube.com") normalisé en https. Les faux positifs
+// type "fichier.txt" sont écartés via la liste de TLDs courants.
+function extractOpenableUrl(text: string): string | null {
+  const withScheme = text.match(/https?:\/\/[^\s"'\\<>]+/i)
+  if (withScheme) {
+    try {
+      const parsed = new URL(withScheme[0])
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        return withScheme[0].replace(/[,.;:!?]+$/, '')
+      }
+    } catch {
+      // tombe sur la détection de domaine nu ci-dessous
+    }
   }
+  const bare = text.match(
+    new RegExp(
+      `(?:www\\.)?[a-z0-9-]+\\.(?:${BARE_DOMAIN_TLDS})\\b[^\\s"'\\\\<>]*`,
+      'i'
+    )
+  )
+  if (bare) return `https://${bare[0].replace(/[,.;:!?]+$/, '')}`
+  return null
+}
+
+// Les modèles peuvent fuir des faux appels d'outils en XML
+// (<dots_function_call>…browser_navigate…). On les retire de l'affichage
+// en gardant l'URL qu'ils contiennent (le panneau l'ouvre déjà).
+function cleanAssistantText(text: string): string {
+  const withoutBlocks = text
+    .replace(/<dots_function_call>[\s\S]*?<\/dots_function_call>/gi, match => {
+      const url = extractOpenableUrl(match)
+      return url ?? ''
+    })
+    .replace(/<invoke[\s\S]*?<\/invoke>/gi, '')
+  return withoutBlocks.replace(/\n{3,}/g, '\n\n').trim()
 }
 
 function createId(): string {
@@ -97,9 +125,9 @@ export function BrowserAgentChat() {
     setMessages(prev => [...prev, userMessage])
     setInput('')
 
-    // Ouvre le panneau navigateur si le message contient une URL
-    // (même comportement visuel que le template : split chat + iframe).
-    const foundUrl = extractAnyUrl(text)
+    // Ouvre le panneau navigateur si le message contient une URL ou un
+    // domaine nu ("youtube.com") — même split chat + iframe que le template.
+    const foundUrl = extractOpenableUrl(text)
     if (foundUrl) setManualUrl(foundUrl)
 
     try {
@@ -136,10 +164,18 @@ export function BrowserAgentChat() {
         if (!authRequired) setError(serverError)
         return
       }
-      const assistantText =
-        typeof (data as { text?: unknown } | null)?.text === 'string' &&
-        ((data as { text: string }).text.trim() !== '')
+      const rawText =
+        typeof (data as { text?: unknown } | null)?.text === 'string'
           ? (data as { text: string }).text
+          : ''
+      const cleanedText = cleanAssistantText(rawText)
+      // Si la réponse contient une URL (panneau pas encore ouvert), on
+      // l'ouvre : ex. "va sur youtube" → le modèle cite l'URL en clair.
+      const replyUrl = extractOpenableUrl(cleanedText)
+      if (replyUrl && !foundUrl) setManualUrl(replyUrl)
+      const assistantText =
+        cleanedText !== ''
+          ? cleanedText
           : foundUrl
             ? `J'ouvre ${foundUrl} dans le navigateur de l'agent (panneau de droite). Décrivez-moi ce que vous voulez y faire : naviguer, lire, extraire…`
             : 'Je n’ai pas pu générer de réponse, réessayez.'
