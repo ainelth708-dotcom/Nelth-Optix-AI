@@ -17,8 +17,29 @@ import {
   Wrench
 } from 'lucide-react'
 
+import type {
+  ArxivData,
+  CryptoData,
+  CurrencyData,
+  DictionaryData,
+  GithubData,
+  NewsData,
+  WeatherData,
+  WikipediaData
+} from '@/agent/bricks'
 import { AGENT_NAME } from '@/agent/rules'
 import { cn } from '@/lib/utils'
+
+import {
+  ArxivCard,
+  CryptoCard,
+  CurrencyCard,
+  DictionaryCard,
+  GithubCard,
+  NewsCard,
+  WeatherCard,
+  WikipediaCard
+} from './tool-cards'
 
 const SUGGESTIONS = [
   {
@@ -41,6 +62,16 @@ const SUGGESTIONS = [
     icon: Clock,
     title: 'Explique-moi',
     prompt: 'Explique simplement comment fonctionne un agent IA avec outils'
+  },
+  {
+    icon: Globe,
+    title: 'Météo',
+    prompt: 'Quelle est la météo à Paris et Antananarivo cette semaine ?'
+  },
+  {
+    icon: Search,
+    title: 'GitHub',
+    prompt: 'Donne-moi les stats du dépôt vercel/ai sur GitHub'
   }
 ]
 
@@ -69,24 +100,62 @@ function toolQuery(input: unknown): string | null {
   return null
 }
 
+function RichOutput({ part }: { part: LoosePart }) {
+  if (part.state !== 'output-available') return null
+  const output = part.output as { kind?: unknown } | null
+  if (typeof output !== 'object' || output === null) return null
+  switch (output.kind) {
+    case 'weather':
+      return <WeatherCard data={output as WeatherData} />
+    case 'currency':
+      return <CurrencyCard data={output as CurrencyData} />
+    case 'crypto':
+      return <CryptoCard data={output as CryptoData} />
+    case 'dictionary':
+      return <DictionaryCard data={output as DictionaryData} />
+    case 'wikipedia':
+      return <WikipediaCard data={output as WikipediaData} />
+    case 'news':
+      return <NewsCard data={output as NewsData} />
+    case 'github':
+      return <GithubCard data={output as GithubData} />
+    case 'arxiv':
+      return <ArxivCard data={output as ArxivData} />
+    default:
+      return null
+  }
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  web_search: 'Recherche web',
+  delegate_research: 'Sous-agent recherche',
+  calculator: 'Calculatrice',
+  datetime: 'Date et heure',
+  weather: 'Météo',
+  currency: 'Devises',
+  crypto: 'Crypto',
+  dictionary: 'Dictionnaire',
+  wikipedia: 'Wikipédia',
+  tech_news: 'Tech news',
+  github: 'GitHub',
+  arxiv: 'arXiv'
+}
+
 function ToolCard({ part }: { part: LoosePart }) {
   const name =
     part.type === 'dynamic-tool'
       ? (part.toolName ?? 'outil')
       : part.type.replace(/^tool-/, '')
-  const label =
-    name === 'web_search'
-      ? 'Recherche web'
-      : name === 'delegate_research'
-        ? 'Sous-agent recherche'
-        : name === 'calculator'
-          ? 'Calculatrice'
-          : name === 'datetime'
-            ? 'Date et heure'
-            : name
+  const label = TOOL_LABELS[name] ?? name
   const running =
     part.state === 'input-streaming' || part.state === 'input-available'
   const failed = part.state === 'output-error'
+  const rich = RichOutput({ part })
+  if (rich) return rich
+  const fallback =
+    part.state === 'output-available' && typeof part.output === 'string'
+      ? part.output
+      : null
   const query = toolQuery(part.input)
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
@@ -96,7 +165,9 @@ function ToolCard({ part }: { part: LoosePart }) {
         <Wrench size={13} className="shrink-0" />
       )}
       <span className="font-medium text-foreground">{label}</span>
-      {query ? (
+      {fallback ? (
+        <span className="min-w-0 flex-1 truncate">{fallback}</span>
+      ) : query ? (
         <span className="min-w-0 flex-1 truncate">« {query} »</span>
       ) : (
         <span className="flex-1" />
@@ -211,8 +282,8 @@ export function AgentChat() {
               {AGENT_NAME}
             </h1>
             <p className="max-w-md text-sm text-muted-foreground">
-              Un agent qui cherche sur le web, calcule et délègue — comme
-              ChatGPT, 100 % serverless.
+              Météo, devises, crypto, dico, wiki, news, GitHub, arXiv —
+              recherche web et sous-agent, 100 % serverless.
             </p>
           </div>
           <div className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">

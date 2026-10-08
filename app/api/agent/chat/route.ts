@@ -8,6 +8,16 @@ import {
 } from 'ai'
 
 import {
+  arxivTool,
+  cryptoTool,
+  currencyTool,
+  dictionaryTool,
+  githubTool,
+  newsTool,
+  weatherTool,
+  wikipediaTool
+} from '@/agent/bricks'
+import {
   AGENT_MAX_HISTORY_TURNS,
   AGENT_MAX_OUTPUT_TOKENS,
   AGENT_MAX_STEPS,
@@ -98,7 +108,15 @@ export async function POST(req: Request) {
         web_search: createWebSearchTool(),
         calculator: calculatorTool,
         datetime: datetimeTool,
-        delegate_research: createDelegateResearchTool(model)
+        delegate_research: createDelegateResearchTool(model),
+        weather: weatherTool,
+        currency: currencyTool,
+        crypto: cryptoTool,
+        dictionary: dictionaryTool,
+        wikipedia: wikipediaTool,
+        tech_news: newsTool,
+        github: githubTool,
+        arxiv: arxivTool
       },
       stopWhen: stepCountIs(AGENT_MAX_STEPS),
       maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS
