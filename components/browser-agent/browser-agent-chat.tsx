@@ -104,13 +104,45 @@ export function BrowserAgentChat() {
 
     try {
       setStatus('streaming')
-      // Réponse locale — le runtime cloud eve/browser-use sera branché
-      // ici dès que BROWSER_USE_API_KEY + eve seront configurés.
-      // On garde le même design (conversation + panneau live).
-      await new Promise(resolve => setTimeout(resolve, 450))
-      const assistantText = foundUrl
-        ? `J'ouvre ${foundUrl} dans le navigateur de l'agent (panneau de droite). Décrivez-moi ce que vous voulez y faire : naviguer, lire, extraire, remplir un formulaire…`
-        : `Message reçu : « ${text} ».\n\nCollez une URL (ex. https://news.ycombinator.com) pour l'ouvrir dans le navigateur de l'agent, comme dans le template browser-agent. Le runtime cloud (eve + browser-use) sera branché à cette interface dès que les clés seront configurées.`
+      // Backend interne : la route /api/agent/chat répond avec le modèle
+      // configuré du projet (mêmes providers et gardes que le chat).
+      const history = [...messages, userMessage]
+        .slice(-20)
+        .map(m => ({ role: m.role, text: m.text }))
+      const response = await fetch('/api/agent/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history })
+      })
+      const data: unknown = await response.json().catch(() => null)
+      if (!response.ok) {
+        const serverError =
+          typeof (data as { error?: unknown } | null)?.error === 'string'
+            ? ((data as { error: string }).error)
+            : `Request failed (${response.status})`
+        const authRequired =
+          (data as { authRequired?: unknown } | null)?.authRequired === true
+        setMessages(prev => [
+          ...prev,
+          {
+            id: createId(),
+            role: 'assistant',
+            text: authRequired
+              ? 'Connectez-vous pour utiliser l’agent navigateur.'
+              : serverError
+          }
+        ])
+        setStatus(authRequired ? 'ready' : 'error')
+        if (!authRequired) setError(serverError)
+        return
+      }
+      const assistantText =
+        typeof (data as { text?: unknown } | null)?.text === 'string' &&
+        ((data as { text: string }).text.trim() !== '')
+          ? (data as { text: string }).text
+          : foundUrl
+            ? `J'ouvre ${foundUrl} dans le navigateur de l'agent (panneau de droite). Décrivez-moi ce que vous voulez y faire : naviguer, lire, extraire…`
+            : 'Je n’ai pas pu générer de réponse, réessayez.'
       setMessages(prev => [
         ...prev,
         { id: createId(), role: 'assistant', text: assistantText }
