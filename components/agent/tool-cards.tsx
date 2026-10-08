@@ -10,6 +10,13 @@ import type {
   WeatherData,
   WikipediaData
 } from '@/agent/bricks'
+import type {
+  BookData,
+  CountryData,
+  EntityData,
+  MediaData,
+  PackageData
+} from '@/agent/adapters'
 
 function CardShell({
   title,
@@ -196,6 +203,178 @@ export function GithubCard({ data }: { data: GithubData }) {
       >
         Voir sur GitHub ↗
       </a>
+    </CardShell>
+  )
+}
+
+export function PackageCard({ data }: { data: PackageData }) {
+  return (
+    <CardShell title={`📦 ${data.eco} · ${data.name}`}>
+      <p>
+        <span className="font-semibold">v{data.version}</span>
+        {data.extra ? (
+          <span className="text-muted-foreground"> · {data.extra}</span>
+        ) : null}
+      </p>
+      {data.description ? <p>{data.description}</p> : null}
+      <a
+        href={data.url}
+        target="_blank"
+        rel="noreferrer"
+        className="text-xs text-primary underline underline-offset-2"
+      >
+        Voir le paquet ↗
+      </a>
+    </CardShell>
+  )
+}
+
+export function BookCard({ data }: { data: BookData }) {
+  return (
+    <CardShell title={`📚 ${data.title}`}>
+      <div className="flex gap-3">
+        {data.cover ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={data.cover}
+            alt={`Couverture de ${data.title}`}
+            className="h-28 w-auto shrink-0 rounded-md border border-border"
+            loading="lazy"
+          />
+        ) : null}
+        <div className="flex min-w-0 flex-col gap-1">
+          {data.author ? <p className="font-medium">{data.author}</p> : null}
+          {data.year ? (
+            <p className="text-xs text-muted-foreground">{data.year}</p>
+          ) : null}
+          {data.url ? (
+            <a
+              href={data.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-primary underline underline-offset-2"
+            >
+              Fiche Open Library ↗
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </CardShell>
+  )
+}
+
+export function CountryCard({ data }: { data: CountryData }) {
+  return (
+    <CardShell title={`${data.name}`}>
+      <div className="flex items-center gap-3">
+        {data.flag ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={data.flag}
+            alt={`Drapeau ${data.name}`}
+            className="h-10 w-auto shrink-0 rounded border border-border"
+            loading="lazy"
+          />
+        ) : null}
+        <div className="text-xs leading-5 text-muted-foreground">
+          {data.capital ? <p>🏛️ {data.capital}</p> : null}
+          {data.region ? <p>🌍 {data.region}</p> : null}
+          {data.population ? <p>👥 {fmtNum(data.population)} hab.</p> : null}
+          {data.languages ? <p>🗣️ {data.languages}</p> : null}
+          {data.currencies ? <p>💰 {data.currencies}</p> : null}
+        </div>
+      </div>
+      {data.url ? (
+        <a
+          href={data.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs text-primary underline underline-offset-2"
+        >
+          Voir la carte ↗
+        </a>
+      ) : null}
+    </CardShell>
+  )
+}
+
+export function MediaCard({ data }: { data: MediaData }) {
+  return (
+    <CardShell title={`🎵 ${data.title}`}>
+      <div className="flex items-center gap-3">
+        {data.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={data.image}
+            alt={data.title}
+            className="size-14 shrink-0 rounded-lg border border-border"
+            loading="lazy"
+          />
+        ) : null}
+        <div className="min-w-0">
+          {data.subtitle ? (
+            <p className="truncate font-medium">{data.subtitle}</p>
+          ) : null}
+          {data.extra ? (
+            <p className="text-xs text-muted-foreground">{data.extra}</p>
+          ) : null}
+          {data.url ? (
+            <a
+              href={data.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-primary underline underline-offset-2"
+            >
+              Écouter / voir ↗
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </CardShell>
+  )
+}
+
+export function EntityCard({ data }: { data: EntityData }) {
+  return (
+    <CardShell title={data.title}>
+      {data.items.map((item, i) => {
+        const body = (
+          <>
+            {item.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={item.image}
+                alt=""
+                className="size-10 shrink-0 rounded-lg border border-border object-contain"
+                loading="lazy"
+              />
+            ) : null}
+            <span className="min-w-0">
+              <span className="block truncate font-medium">{item.title}</span>
+              {item.subtitle ? (
+                <span className="block truncate text-xs text-muted-foreground">
+                  {item.subtitle}
+                </span>
+              ) : null}
+            </span>
+          </>
+        )
+        return item.url ? (
+          <a
+            key={i}
+            href={item.url}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2.5 rounded-lg px-1 py-1 transition-colors hover:bg-accent"
+          >
+            {body}
+          </a>
+        ) : (
+          <div key={i} className="flex items-center gap-2.5 px-1 py-1">
+            {body}
+          </div>
+        )
+      })}
     </CardShell>
   )
 }

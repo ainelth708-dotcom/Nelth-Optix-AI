@@ -8,25 +8,30 @@ import { z } from 'zod'
  * échec = message propre (jamais d'exception qui casse le stream).
  */
 
-const FETCH_TIMEOUT_MS = 12_000
-const UA = { 'User-Agent': 'Nelth-Agent/1.0 (+https://nelth-ai-mg.vercel.app)' }
+import { safeFetchJson, safeFetchText } from './fetch'
+
+// Fixed public hosts this file's tools may call (SSRF allowlist, §12).
+// User input only ever fills query/path params — never the host.
+const HOSTS = [
+  'geocoding-api.open-meteo.com',
+  'api.open-meteo.com',
+  'wttr.in',
+  'api.frankfurter.app',
+  'api.coingecko.com',
+  'api.dictionaryapi.dev',
+  'fr.wikipedia.org',
+  'en.wikipedia.org',
+  'hn.algolia.com',
+  'api.github.com',
+  'export.arxiv.org'
+]
 
 async function fetchJson(url: string): Promise<unknown> {
-  const response = await fetch(url, {
-    headers: UA,
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
-  })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  return (await response.json()) as unknown
+  return safeFetchJson(url, { allowedHosts: HOSTS })
 }
 
 async function fetchText(url: string): Promise<string> {
-  const response = await fetch(url, {
-    headers: UA,
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
-  })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  return response.text()
+  return safeFetchText(url, { allowedHosts: HOSTS })
 }
 
 // ---------------------------------------------------------------- météo ---
@@ -115,7 +120,38 @@ export const weatherTool = tool({
       }
       return data
     } catch {
-      return 'Météo indisponible pour le moment.'
+      // Fallback automatique (§14) : wttr.in accepte les noms de villes.
+      try {
+        const wttr = (await fetchJson(
+          `https://wttr.in/${encodeURIComponent(city)}?format=j1`
+        )) as {
+          current_condition?: Array<{ temp_C?: string; FeelsLikeC?: string; humidity?: string; windspeedKmph?: string; weatherDesc?: Array<{ value?: string }> }>
+          weather?: Array<{ date?: string; mintempC?: string; maxtempC?: string }>
+        }
+        const now = wttr.current_condition?.[0]
+        if (!now?.temp_C) throw new Error('empty')
+        const daily: WeatherDay[] = (wttr.weather ?? []).slice(0, 6).map(d => ({
+          date: d.date ?? '',
+          tmin: Number(d.mintempC ?? 0),
+          tmax: Number(d.maxtempC ?? 0),
+          icon: '🌡️',
+          label: ''
+        }))
+        const data: WeatherData = {
+          kind: 'weather',
+          place: city,
+          temp: Number(now.temp_C),
+          feelsLike: Number(now.FeelsLikeC ?? now.temp_C),
+          humidity: Number(now.humidity ?? 0),
+          wind: Number(now.windspeedKmph ?? 0),
+          icon: '🌡️',
+          label: now.weatherDesc?.[0]?.value ?? '',
+          daily
+        }
+        return data
+      } catch {
+        return 'Météo indisponible pour le moment.'
+      }
     }
   }
 })

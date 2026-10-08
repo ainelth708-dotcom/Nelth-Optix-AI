@@ -7,28 +7,15 @@ import {
   type UIMessage
 } from 'ai'
 
-import {
-  arxivTool,
-  cryptoTool,
-  currencyTool,
-  dictionaryTool,
-  githubTool,
-  newsTool,
-  weatherTool,
-  wikipediaTool
-} from '@/agent/bricks'
+import { getCatalog } from '@/agent/catalog/store'
+import { buildAgentTools } from '@/agent/catalog/router'
 import {
   AGENT_MAX_HISTORY_TURNS,
+  AGENT_MAX_MESSAGE_CHARS,
   AGENT_MAX_OUTPUT_TOKENS,
   AGENT_MAX_STEPS,
   buildAgentSystemPrompt
 } from '@/agent/rules'
-import {
-  calculatorTool,
-  createDelegateResearchTool,
-  createWebSearchTool,
-  datetimeTool
-} from '@/agent/tools'
 import { getCurrentUserId } from '@/lib/auth/get-current-user'
 import { checkAndEnforceOverallChatLimit } from '@/lib/rate-limit/chat-limits'
 import { checkAndEnforceGuestLimit } from '@/lib/rate-limit/guest-limit'
@@ -100,24 +87,27 @@ export async function POST(req: Request) {
     }
 
     const model = getModel(createModelId(selectedModel))
+    // Tool Router (§3, §13): capabilities → catalog discovery → only the
+    // relevant executable tools are loaded into this request. The catalog
+    // can hold thousands of entries; the prompt never sees more than ~10.
+    const lastUserText = [...uiMessages]
+      .reverse()
+      .find(m => m.role === 'user')
+    const requestText =
+      lastUserText?.parts
+        ?.filter(
+          (p): p is { type: 'text'; text: string } => p.type === 'text'
+        )
+        .map(p => p.text)
+        .join('\n')
+        .slice(0, AGENT_MAX_MESSAGE_CHARS) ?? ''
+    const { index } = await getCatalog()
+    const { tools } = buildAgentTools(index, requestText, model)
     const result = streamText({
       model,
       system: buildAgentSystemPrompt(),
       messages: await convertToModelMessages(uiMessages),
-      tools: {
-        web_search: createWebSearchTool(),
-        calculator: calculatorTool,
-        datetime: datetimeTool,
-        delegate_research: createDelegateResearchTool(model),
-        weather: weatherTool,
-        currency: currencyTool,
-        crypto: cryptoTool,
-        dictionary: dictionaryTool,
-        wikipedia: wikipediaTool,
-        tech_news: newsTool,
-        github: githubTool,
-        arxiv: arxivTool
-      },
+      tools,
       stopWhen: stepCountIs(AGENT_MAX_STEPS),
       maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS
     })

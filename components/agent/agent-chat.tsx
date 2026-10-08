@@ -27,16 +27,28 @@ import type {
   WeatherData,
   WikipediaData
 } from '@/agent/bricks'
+import type {
+  BookData,
+  CountryData,
+  EntityData,
+  MediaData,
+  PackageData
+} from '@/agent/adapters'
 import { AGENT_NAME } from '@/agent/rules'
 import { cn } from '@/lib/utils'
 
 import {
   ArxivCard,
+  BookCard,
+  CountryCard,
   CryptoCard,
   CurrencyCard,
   DictionaryCard,
+  EntityCard,
   GithubCard,
+  MediaCard,
   NewsCard,
+  PackageCard,
   WeatherCard,
   WikipediaCard
 } from './tool-cards'
@@ -72,6 +84,16 @@ const SUGGESTIONS = [
     icon: Search,
     title: 'GitHub',
     prompt: 'Donne-moi les stats du dépôt vercel/ai sur GitHub'
+  },
+  {
+    icon: Globe,
+    title: 'Pays',
+    prompt: 'Fiche pays de Madagascar : capitale, population, langues, drapeau'
+  },
+  {
+    icon: Search,
+    title: 'Livre',
+    prompt: 'Trouve le livre Dune de Frank Herbert avec sa couverture'
   }
 ]
 
@@ -121,6 +143,16 @@ function RichOutput({ part }: { part: LoosePart }) {
       return <GithubCard data={output as GithubData} />
     case 'arxiv':
       return <ArxivCard data={output as ArxivData} />
+    case 'package':
+      return <PackageCard data={output as PackageData} />
+    case 'book':
+      return <BookCard data={output as BookData} />
+    case 'country':
+      return <CountryCard data={output as CountryData} />
+    case 'media':
+      return <MediaCard data={output as MediaData} />
+    case 'entity':
+      return <EntityCard data={output as EntityData} />
     default:
       return null
   }
@@ -138,7 +170,17 @@ const TOOL_LABELS: Record<string, string> = {
   wikipedia: 'Wikipédia',
   tech_news: 'Tech news',
   github: 'GitHub',
-  arxiv: 'arXiv'
+  arxiv: 'arXiv',
+  npm: 'npm',
+  pypi: 'PyPI',
+  book: 'Livre',
+  music: 'Musique',
+  country: 'Pays',
+  spacex: 'SpaceX',
+  quake: 'Séismes',
+  holidays: 'Fériés',
+  pokemon: 'Pokémon',
+  wikidata: 'Wikidata'
 }
 
 function ToolCard({ part }: { part: LoosePart }) {
