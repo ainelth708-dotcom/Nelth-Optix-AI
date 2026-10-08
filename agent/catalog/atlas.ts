@@ -91,6 +91,11 @@ export function normalizeAtlasEntry(raw: AtlasEntry, now: string): ToolCatalogEn
     free,
     verified: false,
     https,
+    executableNow: false,
+    requiresCredential: auth !== 'none',
+    credentialConfigured: false,
+    verificationStatus: 'unverified',
+    requiresExternalHost: isMcp,
     cors: raw.cors === 'Yes' ? true : undefined,
     // MCP servers need a host process → not Vercel-executable as-is.
     vercelCompatible: isMcp ? false : https && auth === 'none' ? true : undefined,

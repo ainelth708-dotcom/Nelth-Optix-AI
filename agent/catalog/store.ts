@@ -2,7 +2,12 @@ import { getDb } from '@/lib/firebase/admin'
 
 import { buildIndex, type IndexedEntry } from './index'
 import { SEED_ALL } from './seed'
-import type { CatalogStats, ToolCatalogEntry } from './types'
+import type {
+  CatalogStats,
+  ExtendedStats,
+  ToolCatalogEntry,
+  VerificationStatus
+} from './types'
 
 /**
  * Cache tiers (§10), compatible Vercel (no daemon, no local files):
@@ -92,6 +97,32 @@ export async function writeMeta(lastSync: string): Promise<void> {
     .set({ lastSync }, { merge: true })
 }
 
+export async function updateVerification(
+  entryId: string,
+  fields: {
+    verificationStatus: VerificationStatus
+    executableNow?: boolean
+    requiresCredential?: boolean
+    requiresExternalHost?: boolean
+    failureReason?: string
+  }
+): Promise<void> {
+  const db = dbOrNull()
+  if (!db) return
+  await db
+    .collection(COLLECTION)
+    .doc(entryId)
+    .set(
+      {
+        ...fields,
+        lastVerifiedAt: new Date().toISOString(),
+        lastChecked: new Date().toISOString()
+      },
+      { merge: true }
+    )
+  globals.__nelthCatalogCache = undefined
+}
+
 export function computeStats(
   entries: ToolCatalogEntry[],
   lastSync: string | null,
@@ -110,6 +141,94 @@ export function computeStats(
     lastSync,
     source
   }
+}
+
+export function computeExtendedStats(
+  entries: ToolCatalogEntry[],
+  lastSync: string | null,
+  source: 'firestore' | 'seed'
+): ExtendedStats {
+  const base = computeStats(entries, lastSync, source)
+  const isMcp = (e: ToolCatalogEntry) => e.type === 'mcp'
+  return {
+    ...base,
+    executableNow: entries.filter(e => e.executableNow === true).length,
+    requiresAuth: entries.filter(e => e.auth !== 'none').length,
+    dead: entries.filter(e => e.verificationStatus === 'dead').length,
+    unverified: entries.filter(
+      e => !e.verificationStatus || e.verificationStatus === 'unverified'
+    ).length,
+    mcpExecutable: entries.filter(e => isMcp(e) && e.executableNow === true).length,
+    mcpRequiresExternalHost: entries.filter(
+      e => isMcp(e) && e.requiresExternalHost !== false
+    ).length,
+    testedOk: entries.filter(e => e.verificationStatus === 'verified').length
+  }
+}
+
+/**
+ * Quota-safe live index (§10): ONE small doc holding the entries the agent
+ * actually needs (verified/executable + top no-auth by reliability). The
+ * agent hot path reads this single doc instead of scanning 10k+ docs.
+ * Refreshed by sync/verify jobs, never per request.
+ */
+const LIVE_COLLECTION = 'tool_catalog_live'
+const LIVE_DOC = 'index'
+const LIVE_TOP_N = 400
+
+export async function refreshLiveIndex(): Promise<{ kept: number }> {
+  const db = dbOrNull()
+  if (!db) return { kept: 0 }
+  const snap = await db.collection(COLLECTION).get()
+  const all: ToolCatalogEntry[] = []
+  snap.forEach(d => all.push({ ...(d.data() as ToolCatalogEntry), id: d.id }))
+  const priority = all
+    .filter(e => e.type !== 'mcp')
+    .sort((a, b) => {
+      const rank = (e: ToolCatalogEntry) =>
+        (e.executableNow === true ? 100 : 0) +
+        (e.verificationStatus === 'verified' ? 50 : 0) +
+        (e.free && e.auth === 'none' ? 10 : 0) +
+        (e.reliability ?? 0.5)
+      return rank(b) - rank(a)
+    })
+    .slice(0, LIVE_TOP_N)
+  const clean = JSON.parse(JSON.stringify(priority)) as ToolCatalogEntry[]
+  await db.collection(LIVE_COLLECTION).doc(LIVE_DOC).set(
+    { updatedAt: new Date().toISOString(), entries: clean },
+    { merge: false }
+  )
+  globals.__nelthCatalogCache = undefined
+  return { kept: clean.length }
+}
+
+export async function getLiveCatalog(): Promise<{
+  entries: ToolCatalogEntry[]
+  index: IndexedEntry[]
+  source: 'firestore' | 'seed'
+}> {
+  const cached = globals.__nelthCatalogCache
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+    return { entries: cached.entries, index: cached.index, source: cached.source }
+  }
+  try {
+    const db = dbOrNull()
+    if (db) {
+      const snap = await db.collection(LIVE_COLLECTION).doc(LIVE_DOC).get()
+      const data = snap.data() as { entries?: ToolCatalogEntry[] } | undefined
+      if (data?.entries?.length) {
+        const merged = dedupe([...SEED_ALL, ...data.entries])
+        const index = buildIndex(merged)
+        globals.__nelthCatalogCache = { at: Date.now(), entries: merged, index, source: 'firestore' }
+        return { entries: merged, index, source: 'firestore' as const }
+      }
+    }
+  } catch {
+    // Fall through to seed (also covers quota exhaustion).
+  }
+  const index = buildIndex(SEED_ALL)
+  globals.__nelthCatalogCache = { at: Date.now(), entries: SEED_ALL, index, source: 'seed' }
+  return { entries: SEED_ALL, index, source: 'seed' }
 }
 
 export async function getCatalog(): Promise<{

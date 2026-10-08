@@ -7,7 +7,7 @@ import {
   type UIMessage
 } from 'ai'
 
-import { getCatalog } from '@/agent/catalog/store'
+import { getLiveCatalog } from '@/agent/catalog/store'
 import { buildAgentTools } from '@/agent/catalog/router'
 import {
   AGENT_MAX_HISTORY_TURNS,
@@ -101,8 +101,8 @@ export async function POST(req: Request) {
         .map(p => p.text)
         .join('\n')
         .slice(0, AGENT_MAX_MESSAGE_CHARS) ?? ''
-    const { index } = await getCatalog()
-    const { tools } = buildAgentTools(index, requestText, model)
+    const { entries, index } = await getLiveCatalog()
+    const { tools } = buildAgentTools(index, entries, requestText, model)
     const result = streamText({
       model,
       system: buildAgentSystemPrompt(),

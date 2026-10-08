@@ -15,7 +15,12 @@ const V = {
   vercelCompatible: true,
   reliability: 1,
   auth: 'none' as const,
-  free: true
+  free: true,
+  executableNow: true,
+  requiresCredential: false,
+  credentialConfigured: false,
+  verificationStatus: 'verified' as const,
+  lastVerifiedAt: new Date().toISOString()
 }
 
 function local(
@@ -130,6 +135,9 @@ export const SEED_MCP: ToolCatalogEntry[] = (
   vercelCompatible: false,
   capabilities,
   keywords: [],
+  executableNow: false,
+  requiresExternalHost: true,
+  verificationStatus: 'unverified' as const,
   lastChecked: new Date().toISOString()
 }))
 

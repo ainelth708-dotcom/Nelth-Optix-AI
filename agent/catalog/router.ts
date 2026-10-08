@@ -32,6 +32,7 @@ import {
   createWebSearchTool,
   datetimeTool
 } from '../tools'
+import { createOpenApiTool } from './exec'
 import { searchIndex, tokenize, type IndexedEntry } from './index'
 import type { ToolCatalogEntry } from './types'
 
@@ -157,6 +158,9 @@ function localId(entry: ToolCatalogEntry): string | null {
   return entry.id.startsWith('local:') ? entry.id.slice('local:'.length) : null
 }
 
+// Re-exported so routes can build dynamic tools without extra imports.
+export { createOpenApiTool }
+
 export function discoverRelevant(
   index: IndexedEntry[],
   text: string,
@@ -202,6 +206,7 @@ export function discoverRelevant(
 
 export function buildAgentTools(
   index: IndexedEntry[],
+  entries: ToolCatalogEntry[],
   text: string,
   model: LanguageModel,
   maxTools = MAX_ROUTER_TOOLS
@@ -235,5 +240,32 @@ export function buildAgentTools(
     take(id)
   }
   if (capabilities.includes('research')) take('delegate_research')
+  // Dynamic catalog tools (§6): previously VERIFIED Atlas entries carrying a
+  // stored execution plan execute via the generic REST executor — no wrapper
+  // written by hand. Unverified entries are never loaded here.
+  const byId = new Map(entries.map(e => [e.id, e]))
+  for (const candidate of relevant) {
+    if (picked.length >= maxTools) break
+    const entry = byId.get(candidate.id)
+    if (
+      !entry ||
+      entry.source === 'local' ||
+      entry.type === 'mcp' ||
+      entry.executableNow !== true ||
+      !entry.executionPlan
+    ) {
+      continue
+    }
+    const key = `catalog_${entry.id.replace(/[^a-z0-9]+/gi, '_').slice(0, 40)}`
+    if (picked.includes(key)) continue
+    const dynamic = createOpenApiTool(entry, {
+      baseUrl: entry.executionPlan.baseUrl,
+      operations: [entry.executionPlan.operation]
+    }, entry.executionPlan.operation)
+    if (dynamic) {
+      tools[key] = dynamic as never
+      picked.push(key)
+    }
+  }
   return { tools, pickedIds: picked, capabilities }
 }

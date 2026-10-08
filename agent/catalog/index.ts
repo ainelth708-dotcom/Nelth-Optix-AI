@@ -67,12 +67,15 @@ function matchesFilters(entry: ToolCatalogEntry, f: SearchFilters): boolean {
 }
 
 function priorityBoost(entry: ToolCatalogEntry): number {
-  // §6: free + no-auth + HTTPS + reliable first.
+  // §6–§7: executableNow first, then free + no-auth + HTTPS + verified.
   let score = 0
+  if (entry.executableNow === true) score += 8
   if (entry.free) score += 4
   if (entry.auth === 'none') score += 5
   if (entry.https) score += 2
   if (entry.verified) score += 3
+  if (entry.verificationStatus === 'verified') score += 3
+  if (entry.verificationStatus === 'dead') score -= 6
   score += (entry.reliability ?? 0.5) * 4
   return score
 }

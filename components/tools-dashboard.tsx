@@ -10,6 +10,13 @@ type Stats = {
   noAuth: number
   verified: number
   executable: number
+  executableNow?: number
+  requiresAuth?: number
+  dead?: number
+  unverified?: number
+  mcpExecutable?: number
+  mcpRequiresExternalHost?: number
+  testedOk?: number
   categories: number
   lastSync: string | null
   source: 'firestore' | 'seed'
@@ -181,7 +188,13 @@ export function ToolsDashboard() {
         <StatCard label="No-auth" value={stats?.noAuth ?? '…'} />
         <StatCard label="MCP servers" value={stats?.mcp ?? '…'} />
         <StatCard label="Exécutables" value={stats?.executable ?? '…'} />
+        <StatCard label="Exécutables now" value={stats?.executableNow ?? '…'} />
         <StatCard label="Vérifiés" value={stats?.verified ?? '…'} />
+        <StatCard label="Testés OK" value={stats?.testedOk ?? stats?.verified ?? '…'} />
+        <StatCard label="Requièrent clé" value={stats?.requiresAuth ?? '…'} />
+        <StatCard label="Morts" value={stats?.dead ?? '…'} />
+        <StatCard label="MCP exécutables" value={stats?.mcpExecutable ?? '…'} />
+        <StatCard label="MCP host externe" value={stats?.mcpRequiresExternalHost ?? stats?.mcp ?? '…'} />
         <StatCard label="Gratuits" value={stats?.free ?? '…'} />
         <StatCard label="Catégories" value={stats?.categories ?? '…'} />
         <StatCard label="Total entrées" value={stats?.total ?? '…'} />

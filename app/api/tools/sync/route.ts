@@ -1,6 +1,6 @@
 import { fetchAtlasType, type AtlasType } from '@/agent/catalog/atlas'
 import {
-  computeStats,
+  computeExtendedStats,
   getCatalog,
   readMeta,
   saveEntries,
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
       failed,
       nextCursors,
       done,
-      stats: computeStats(entries, lastSync, source)
+      stats: computeExtendedStats(entries, lastSync, source)
     })
   } catch (error) {
     console.error('Tools sync API error:', error)

@@ -62,6 +62,27 @@ export type SafeFetchOptions = {
   timeoutMs?: number
 }
 
+/**
+ * Standalone guards for callers with custom request shapes (MCP handshake):
+ * same allowlist + private-IP resolution checks as safeFetch.
+ */
+export async function assertPublicHttpsUrl(
+  url: string,
+  allowedHosts: string[]
+): Promise<string> {
+  const parsed = new URL(url)
+  if (parsed.protocol !== 'https:') throw new Error('Only https URLs allowed.')
+  if (parsed.username || parsed.password) throw new Error('Credentials in URL are not allowed.')
+  if (!hostAllowed(parsed.hostname, allowedHosts)) {
+    throw new Error(`Host not allowlisted: ${parsed.hostname}`)
+  }
+  const records = await lookup(parsed.hostname, { all: true })
+  if (records.length === 0 || records.some(r => isPrivateIp(r.address))) {
+    throw new Error(`Host resolves to a private address: ${parsed.hostname}`)
+  }
+  return parsed.hostname
+}
+
 async function safeFetch(
   url: string,
   opts: SafeFetchOptions

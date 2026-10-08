@@ -1,4 +1,4 @@
-import { computeStats, getCatalog } from '@/agent/catalog/store'
+import { computeExtendedStats, getCatalog } from '@/agent/catalog/store'
 
 export const maxDuration = 60
 
@@ -10,7 +10,7 @@ export const maxDuration = 60
 export async function GET() {
   try {
     const { entries, source, lastSync } = await getCatalog()
-    return Response.json(computeStats(entries, lastSync, source))
+    return Response.json(computeExtendedStats(entries, lastSync, source))
   } catch (error) {
     console.error('Tools stats API error:', error)
     return Response.json({ error: 'Stats unavailable' }, { status: 500 })
