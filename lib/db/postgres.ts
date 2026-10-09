@@ -23,7 +23,13 @@ function resolveDatabaseUrl(): string {
 }
 
 function createDb(): PostgresDb {
-  const client = postgres(resolveDatabaseUrl(), {
+  // Strip unknown query params the pooler URL may carry
+  // (?sslmode=require&supa=...): only the host/db/user/password matter,
+  // TLS is enforced via `ssl: 'require'` below.
+  const raw = resolveDatabaseUrl()
+  const qmark = raw.indexOf('?')
+  const url = qmark === -1 ? raw : raw.slice(0, qmark)
+  const client = postgres(url, {
     prepare: false,
     max: 5,
     idle_timeout: 20,
