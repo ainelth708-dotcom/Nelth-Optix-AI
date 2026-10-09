@@ -31,7 +31,7 @@ export async function GET(req: Request) {
     return Response.json({
       query: q,
       count: entries.length,
-      backend: process.env.CATALOG_DB_BACKEND === 'supabase' ? 'supabase' : 'firestore',
+      backend: 'supabase',
       lastSync,
       tools: entries
     })

@@ -1,5 +1,4 @@
 import type { CatalogBackend } from './backend'
-import { firestoreBackend } from './firestore'
 import { buildIndex, searchIndex, type IndexedEntry } from './index'
 import { postgresBackend } from './postgres'
 import { SEED_ALL } from './seed'
@@ -33,14 +32,10 @@ const globals = globalThis as unknown as {
   __nelthCatalogBackend?: string
 }
 
-function backendName(): 'firestore' | 'supabase' {
-  return process.env.CATALOG_DB_BACKEND === 'supabase' ? 'supabase' : 'firestore'
-}
-
 export function getBackend(): CatalogBackend {
-  // 'supabase' = Supabase PostgreSQL via Drizzle (transaction pooler).
-  // Default 'firestore' = legacy backend, instant rollback.
-  return backendName() === 'supabase' ? postgresBackend : firestoreBackend
+  // Supabase PostgreSQL via Drizzle, always (the Firestore backend was
+  // removed with the database). Seed stays as the offline fallback layer.
+  return postgresBackend
 }
 
 export function invalidateCatalogCache(): void {

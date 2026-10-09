@@ -1,7 +1,7 @@
 import {
-  incrementFirestoreRateLimit,
+  incrementRateLimit,
   isEnforced
-} from '@/lib/rate-limit/firestore'
+} from '@/lib/rate-limit/store'
 
 const DEFAULT_GUEST_DAILY_LIMIT = 10
 
@@ -28,7 +28,7 @@ async function checkGuestLimit(ip: string): Promise<{
   const dateKey = new Date().toISOString().split('T')[0]
   const key = `rl:guest:chat:${ip}:${dateKey}`
 
-  return incrementFirestoreRateLimit(key, limit)
+  return incrementRateLimit(key, limit)
 }
 
 export async function checkAndEnforceGuestLimit(

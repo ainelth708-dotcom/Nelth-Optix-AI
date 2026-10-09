@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, sql } from 'drizzle-orm'
 
 import type { UIMessage } from '@/lib/types/ai'
 import type { PersistableUIMessage } from '@/lib/types/message-persistence'
@@ -15,15 +15,28 @@ import { perfLog, perfTime } from '@/lib/utils/perf-logging'
 import { incrementDbOperationCount } from '@/lib/utils/perf-tracking'
 
 import { getPostgresDb } from './postgres'
-import type { Chat, Message } from './schema'
+import type {
+  Chat,
+  LibraryFile,
+  Message,
+  NewLibraryFile,
+  NewNote,
+  Note
+} from './schema'
 import { generateId } from './schema'
 import { chatMessages, chats, type ChatMessageRow, type ChatRow } from './chat-schema'
+import {
+  feedback,
+  libraryFiles,
+  userNotes,
+  type LibraryFileRow,
+  type UserNoteRow
+} from './user-schema'
 
 /**
  * Chat persistence on PostgreSQL. Same signatures and semantics as the
- * Firestore implementation (actions-firestore.ts). Every read/write is
- * scoped by the server-verified Firebase UID — one account only ever
- * touches its own rows.
+ * former Firestore implementation. Every read/write is scoped by the
+ * server-verified Firebase UID — one account only ever touches its own rows.
  */
 
 function toChat(row: ChatRow): Chat {
@@ -481,4 +494,388 @@ export async function createChatWithFirstMessageTransaction({
       metadata: messageData.metadata ?? null
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Notes (per-account, Firebase UID scoped)
+// ---------------------------------------------------------------------------
+
+function toNote(row: UserNoteRow): Note {
+  return {
+    id: row.id,
+    userId: row.userId,
+    chatId: row.chatId,
+    sourceMessageId: row.sourceMessageId,
+    title: row.title,
+    content: row.content,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  }
+}
+
+export async function createNote(
+  note: Omit<NewNote, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<Note> {
+  const db = getPostgresDb()
+  const id = generateId()
+  const now = new Date()
+  await db.insert(userNotes).values({
+    id,
+    userId: note.userId,
+    chatId: note.chatId,
+    sourceMessageId: note.sourceMessageId,
+    title: note.title,
+    content: note.content,
+    createdAt: now,
+    updatedAt: now
+  })
+  return {
+    id,
+    userId: note.userId,
+    chatId: note.chatId,
+    sourceMessageId: note.sourceMessageId,
+    title: note.title,
+    content: note.content,
+    createdAt: now,
+    updatedAt: now
+  }
+}
+
+export type NotesPageCursor = {
+  updatedAt: string
+  id: string
+}
+
+export async function getNotes(
+  userId: string,
+  {
+    limit = 25,
+    cursor
+  }: {
+    limit?: number
+    cursor?: NotesPageCursor
+  } = {}
+): Promise<{
+  notes: Note[]
+  nextCursor: NotesPageCursor | null
+  hasMore: boolean
+}> {
+  const db = getPostgresDb()
+  const pageLimit = Math.max(1, Math.min(limit, 50))
+  const conditions = [eq(userNotes.userId, userId)]
+  if (cursor) {
+    const curDate = new Date(cursor.updatedAt)
+    if (!isNaN(curDate.getTime())) {
+      conditions.push(
+        sql`(${userNotes.updatedAt}, ${userNotes.id}) < (${curDate}, ${cursor.id})`
+      )
+    }
+  }
+  const rows = await db
+    .select()
+    .from(userNotes)
+    .where(and(...conditions))
+    .orderBy(desc(userNotes.updatedAt), desc(userNotes.id))
+    .limit(pageLimit + 1)
+  const hasMore = rows.length > pageLimit
+  const page = rows.slice(0, pageLimit)
+  const last = page[page.length - 1]
+  return {
+    notes: page.map(toNote),
+    nextCursor:
+      hasMore && last
+        ? { updatedAt: last.updatedAt.toISOString(), id: last.id }
+        : null,
+    hasMore
+  }
+}
+
+export async function searchNotes(
+  userId: string,
+  query: string,
+  { limit = 20 }: { limit?: number } = {}
+): Promise<Note[]> {
+  const db = getPostgresDb()
+  const trimmed = query.trim().toLowerCase()
+  const pageLimit = Math.max(1, Math.min(limit, 50))
+  const rows = await db
+    .select()
+    .from(userNotes)
+    .where(eq(userNotes.userId, userId))
+    .orderBy(desc(userNotes.updatedAt))
+  const notes = rows.map(toNote)
+  if (!trimmed) return notes.slice(0, pageLimit)
+  return notes
+    .filter(n => n.title.toLowerCase().includes(trimmed))
+    .slice(0, pageLimit)
+}
+
+export async function getNote(
+  noteId: string,
+  userId: string
+): Promise<Note | null> {
+  const db = getPostgresDb()
+  const rows = await db
+    .select()
+    .from(userNotes)
+    .where(and(eq(userNotes.id, noteId), eq(userNotes.userId, userId)))
+    .limit(1)
+  return rows[0] ? toNote(rows[0]) : null
+}
+
+export async function deleteNote(
+  noteId: string,
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const db = getPostgresDb()
+    const deleted = await db
+      .delete(userNotes)
+      .where(and(eq(userNotes.id, noteId), eq(userNotes.userId, userId)))
+      .returning({ id: userNotes.id })
+    if (!deleted[0]) return { success: false, error: 'Note not found' }
+    return { success: true }
+  } catch (error) {
+    console.error('Error deleting note:', error)
+    return { success: false, error: 'Failed to delete note' }
+  }
+}
+
+export async function deleteUserNotes(
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const db = getPostgresDb()
+    await db.delete(userNotes).where(eq(userNotes.userId, userId))
+    return { success: true }
+  } catch (error) {
+    console.error('Error deleting user notes:', error)
+    return { success: false, error: 'Failed to delete user notes' }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Library files (per-account, Firebase UID scoped)
+// ---------------------------------------------------------------------------
+
+function toLibraryFile(row: LibraryFileRow): LibraryFile {
+  return {
+    id: row.id,
+    userId: row.userId,
+    chatId: row.chatId,
+    filename: row.filename,
+    objectKey: row.objectKey,
+    mediaType: row.mediaType,
+    size: row.size,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  }
+}
+
+export async function createLibraryFile(
+  file: Omit<NewLibraryFile, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<LibraryFile> {
+  const db = getPostgresDb()
+  let chatId = file.chatId ?? null
+  if (chatId) {
+    const chat = await getChat(chatId)
+    if (!chat || chat.userId !== file.userId) chatId = null
+  }
+  const id = generateId()
+  const now = new Date()
+  await db.insert(libraryFiles).values({
+    id,
+    userId: file.userId,
+    chatId,
+    filename: file.filename,
+    objectKey: file.objectKey,
+    mediaType: file.mediaType,
+    size: file.size,
+    createdAt: now,
+    updatedAt: now
+  })
+  return {
+    id,
+    userId: file.userId,
+    chatId,
+    filename: file.filename,
+    objectKey: file.objectKey,
+    mediaType: file.mediaType,
+    size: file.size ?? null,
+    createdAt: now,
+    updatedAt: now
+  }
+}
+
+export type FilesPageCursor = {
+  updatedAt: string
+  id: string
+}
+
+export async function getLibraryFiles(
+  userId: string,
+  {
+    limit = 25,
+    cursor
+  }: {
+    limit?: number
+    cursor?: FilesPageCursor
+  } = {}
+): Promise<{
+  files: LibraryFile[]
+  nextCursor: FilesPageCursor | null
+  hasMore: boolean
+}> {
+  const db = getPostgresDb()
+  const pageLimit = Math.max(1, Math.min(limit, 50))
+  const conditions = [eq(libraryFiles.userId, userId)]
+  if (cursor) {
+    const curDate = new Date(cursor.updatedAt)
+    if (!isNaN(curDate.getTime())) {
+      conditions.push(
+        sql`(${libraryFiles.updatedAt}, ${libraryFiles.id}) < (${curDate}, ${cursor.id})`
+      )
+    }
+  }
+  const rows = await db
+    .select()
+    .from(libraryFiles)
+    .where(and(...conditions))
+    .orderBy(desc(libraryFiles.updatedAt), desc(libraryFiles.id))
+    .limit(pageLimit + 1)
+  const hasMore = rows.length > pageLimit
+  const page = rows.slice(0, pageLimit)
+  const last = page[page.length - 1]
+  return {
+    files: page.map(toLibraryFile),
+    nextCursor:
+      hasMore && last
+        ? { updatedAt: last.updatedAt.toISOString(), id: last.id }
+        : null,
+    hasMore
+  }
+}
+
+export async function searchLibraryFiles(
+  userId: string,
+  query: string,
+  { limit = 20 }: { limit?: number } = {}
+): Promise<LibraryFile[]> {
+  const db = getPostgresDb()
+  const trimmed = query.trim().toLowerCase()
+  const pageLimit = Math.max(1, Math.min(limit, 50))
+  const rows = await db
+    .select()
+    .from(libraryFiles)
+    .where(eq(libraryFiles.userId, userId))
+    .orderBy(desc(libraryFiles.updatedAt))
+  const files = rows.map(toLibraryFile)
+  if (!trimmed) return files.slice(0, pageLimit)
+  return files
+    .filter(f => f.filename.toLowerCase().includes(trimmed))
+    .slice(0, pageLimit)
+}
+
+export async function deleteLibraryFile(
+  fileId: string,
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const db = getPostgresDb()
+    const deleted = await db
+      .delete(libraryFiles)
+      .where(and(eq(libraryFiles.id, fileId), eq(libraryFiles.userId, userId)))
+      .returning({ id: libraryFiles.id })
+    if (!deleted[0]) return { success: false, error: 'File not found' }
+    return { success: true }
+  } catch (error) {
+    console.error('Error deleting file:', error)
+    return { success: false, error: 'Failed to delete file' }
+  }
+}
+
+export async function deleteUserLibraryFiles(
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const db = getPostgresDb()
+    await db.delete(libraryFiles).where(eq(libraryFiles.userId, userId))
+    return { success: true }
+  } catch (error) {
+    console.error('Error deleting user files:', error)
+    return { success: false, error: 'Failed to delete user files' }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Feedback
+// ---------------------------------------------------------------------------
+
+export async function anonymizeUserFeedback(
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const db = getPostgresDb()
+    await db
+      .update(feedback)
+      .set({ userId: null })
+      .where(eq(feedback.userId, userId))
+    return { success: true }
+  } catch (error) {
+    console.error('Error anonymizing user feedback:', error)
+    return { success: false, error: 'Failed to anonymize user feedback' }
+  }
+}
+
+export async function updateMessageFeedback(
+  messageId: string,
+  score: number
+): Promise<void> {
+  const db = getPostgresDb()
+  const rows = await db
+    .select()
+    .from(chatMessages)
+    .where(eq(chatMessages.id, messageId))
+    .limit(1)
+  const row = rows[0]
+  if (!row) return
+  const metadata = { ...((row.metadata as Record<string, unknown> | null) ?? {}), feedbackScore: score }
+  await db
+    .update(chatMessages)
+    .set({ metadata: metadata as unknown as Record<string, unknown> })
+    .where(eq(chatMessages.id, messageId))
+}
+
+export async function getMessageFeedbackScore(
+  messageId: string
+): Promise<number | null> {
+  const db = getPostgresDb()
+  const rows = await db
+    .select()
+    .from(chatMessages)
+    .where(eq(chatMessages.id, messageId))
+    .limit(1)
+  const metadata = rows[0]?.metadata as Record<string, unknown> | null | undefined
+  const score = metadata?.feedbackScore
+  return typeof score === 'number' ? score : null
+}
+
+export async function submitSiteFeedback(input: {
+  sentiment: 'positive' | 'neutral' | 'negative'
+  message: string
+  pageUrl: string
+  userId?: string | null
+  userAgent?: string | null
+}): Promise<{ id: string }> {
+  const db = getPostgresDb()
+  const id = generateId()
+  await db.insert(feedback).values({
+    id,
+    userId: input.userId ?? null,
+    sentiment: input.sentiment,
+    message: input.message,
+    pageUrl: input.pageUrl,
+    userAgent: input.userAgent ?? null
+  })
+  return { id }
 }

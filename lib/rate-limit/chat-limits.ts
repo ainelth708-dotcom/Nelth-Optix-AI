@@ -2,9 +2,9 @@ import { after } from 'next/server'
 
 import { trackChatLimitEvent } from '@/lib/analytics'
 import {
-  incrementFirestoreRateLimit,
+  incrementRateLimit,
   isEnforced
-} from '@/lib/rate-limit/firestore'
+} from '@/lib/rate-limit/store'
 import { perfLog } from '@/lib/utils/perf-logging'
 
 const DEFAULT_DAILY_CHAT_LIMIT = 100
@@ -25,7 +25,7 @@ async function checkOverallChatLimit(userId: string): Promise<{
   limit: number
   /** Current daily usage count after the check (incl. this attempt) */
   used: number
-  /** True when the check ran against Firestore (i.e. enforced) */
+  /** True when the check ran against Postgres (i.e. enforced) */
   enforced: boolean
 }> {
   const limit = getDailyChatLimit()
@@ -45,7 +45,7 @@ async function checkOverallChatLimit(userId: string): Promise<{
   const dateKey = new Date().toISOString().split('T')[0] // YYYY-MM-DD
   const key = `rl:chat:${userId}:${dateKey}`
 
-  return incrementFirestoreRateLimit(key, limit)
+  return incrementRateLimit(key, limit)
 }
 
 /**

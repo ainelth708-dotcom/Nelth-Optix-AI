@@ -1,13 +1,9 @@
 'use server'
 
-import { FieldPath } from 'firebase-admin/firestore'
-
-import { getDb } from '@/lib/firebase/admin'
-import type { UIMessageMetadata } from '@/lib/types/ai'
-
-function firestore() {
-  return getDb()
-}
+import {
+  getMessageFeedbackScore,
+  updateMessageFeedback as updateMessageFeedbackPg
+} from '@/lib/db/actions-pg'
 
 export async function updateMessageFeedback(
   messageId: string,
@@ -15,24 +11,7 @@ export async function updateMessageFeedback(
   _userId: string | null = null
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const snap = await firestore()
-      .collectionGroup('messages')
-      .where(FieldPath.documentId(), '==', messageId)
-      .limit(1)
-      .get()
-
-    if (snap.empty) {
-      return { success: false, error: 'Message not found' }
-    }
-
-    const ref = snap.docs[0].ref
-    const data = snap.docs[0].data()
-    const updatedMetadata = {
-      ...(data.metadata || {}),
-      feedbackScore: score
-    }
-
-    await ref.update({ metadata: updatedMetadata })
+    await updateMessageFeedbackPg(messageId, score)
     return { success: true }
   } catch (error) {
     console.error('Error updating message feedback:', error)
@@ -49,18 +28,7 @@ export async function getMessageFeedback(
   _userId: string | null = null
 ): Promise<number | null> {
   try {
-    const snap = await firestore()
-      .collectionGroup('messages')
-      .where(FieldPath.documentId(), '==', messageId)
-      .limit(1)
-      .get()
-
-    if (snap.empty) return null
-
-    const metadata = snap.docs[0].data()?.metadata as
-      | UIMessageMetadata
-      | undefined
-    return (metadata as any)?.feedbackScore ?? null
+    return await getMessageFeedbackScore(messageId)
   } catch (error) {
     console.error('Error getting message feedback:', error)
     return null

@@ -1,15 +1,13 @@
 'use server'
 
-import * as firestoreImpl from './actions-firestore'
 import * as pgImpl from './actions-pg'
 
 /**
- * Chat persistence dispatcher. Chat + message functions run on PostgreSQL
- * (Supabase, Drizzle) when CHAT_DB_BACKEND=supabase, otherwise on the legacy
- * Firestore implementation. Notes, library files and feedback stay on
- * Firestore (unchanged). Firebase Authentication is untouched everywhere:
- * every function below receives only server-verified Firebase UIDs and all
- * rows remain keyed by that UID.
+ * Persistence entry point. Everything runs on PostgreSQL (Supabase,
+ * Drizzle); Firebase Authentication is untouched: every function below
+ * receives only server-verified Firebase UIDs and all rows remain keyed by
+ * that UID. (The legacy Firestore implementation was removed; notes,
+ * library files and feedback moved to PostgreSQL with it.)
  */
 
 export type NotesPageCursor = {
@@ -22,195 +20,175 @@ export type FilesPageCursor = {
   id: string
 }
 
-function usePostgres(): boolean {
-  return process.env.CHAT_DB_BACKEND === 'supabase'
-}
-
 // ---------------------------------------------------------------------------
-// Chats (backend-switchable)
+// Chats
 // ---------------------------------------------------------------------------
 
 export async function createChat(
-  ...args: Parameters<typeof firestoreImpl.createChat>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.createChat>>> {
-  if (usePostgres()) return pgImpl.createChat(...args) as never
-  return firestoreImpl.createChat(...args)
+  ...args: Parameters<typeof pgImpl.createChat>
+): Promise<Awaited<ReturnType<typeof pgImpl.createChat>>> {
+  return pgImpl.createChat(...args)
 }
 
 export async function getChat(
-  ...args: Parameters<typeof firestoreImpl.getChat>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.getChat>>> {
-  if (usePostgres()) return pgImpl.getChat(...args) as never
-  return firestoreImpl.getChat(...args)
+  ...args: Parameters<typeof pgImpl.getChat>
+): Promise<Awaited<ReturnType<typeof pgImpl.getChat>>> {
+  return pgImpl.getChat(...args)
 }
 
 export async function upsertMessage(
-  ...args: Parameters<typeof firestoreImpl.upsertMessage>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.upsertMessage>>> {
-  if (usePostgres()) return pgImpl.upsertMessage(...args) as never
-  return firestoreImpl.upsertMessage(...args)
+  ...args: Parameters<typeof pgImpl.upsertMessage>
+): Promise<Awaited<ReturnType<typeof pgImpl.upsertMessage>>> {
+  return pgImpl.upsertMessage(...args)
 }
 
 export async function loadChat(
-  ...args: Parameters<typeof firestoreImpl.loadChat>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.loadChat>>> {
-  if (usePostgres()) return pgImpl.loadChat(...args) as never
-  return firestoreImpl.loadChat(...args)
+  ...args: Parameters<typeof pgImpl.loadChat>
+): Promise<Awaited<ReturnType<typeof pgImpl.loadChat>>> {
+  return pgImpl.loadChat(...args)
 }
 
 export async function findExistingAssistantId(
-  ...args: Parameters<typeof firestoreImpl.findExistingAssistantId>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.findExistingAssistantId>>> {
-  if (usePostgres()) return pgImpl.findExistingAssistantId(...args) as never
-  return firestoreImpl.findExistingAssistantId(...args)
+  ...args: Parameters<typeof pgImpl.findExistingAssistantId>
+): Promise<Awaited<ReturnType<typeof pgImpl.findExistingAssistantId>>> {
+  return pgImpl.findExistingAssistantId(...args)
 }
 
 export async function loadChatWithMessages(
-  ...args: Parameters<typeof firestoreImpl.loadChatWithMessages>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.loadChatWithMessages>>> {
-  if (usePostgres()) return pgImpl.loadChatWithMessages(...args) as never
-  return firestoreImpl.loadChatWithMessages(...args)
+  ...args: Parameters<typeof pgImpl.loadChatWithMessages>
+): Promise<Awaited<ReturnType<typeof pgImpl.loadChatWithMessages>>> {
+  return pgImpl.loadChatWithMessages(...args)
 }
 
 export async function deleteMessagesAfter(
-  ...args: Parameters<typeof firestoreImpl.deleteMessagesAfter>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.deleteMessagesAfter>>> {
-  if (usePostgres()) return pgImpl.deleteMessagesAfter(...args) as never
-  return firestoreImpl.deleteMessagesAfter(...args)
+  ...args: Parameters<typeof pgImpl.deleteMessagesAfter>
+): Promise<Awaited<ReturnType<typeof pgImpl.deleteMessagesAfter>>> {
+  return pgImpl.deleteMessagesAfter(...args)
 }
 
 export async function deleteMessagesFromIndex(
-  ...args: Parameters<typeof firestoreImpl.deleteMessagesFromIndex>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.deleteMessagesFromIndex>>> {
-  if (usePostgres()) return pgImpl.deleteMessagesFromIndex(...args) as never
-  return firestoreImpl.deleteMessagesFromIndex(...args)
+  ...args: Parameters<typeof pgImpl.deleteMessagesFromIndex>
+): Promise<Awaited<ReturnType<typeof pgImpl.deleteMessagesFromIndex>>> {
+  return pgImpl.deleteMessagesFromIndex(...args)
 }
 
 export async function getChats(
-  ...args: Parameters<typeof firestoreImpl.getChats>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.getChats>>> {
-  if (usePostgres()) return pgImpl.getChats(...args) as never
-  return firestoreImpl.getChats(...args)
+  ...args: Parameters<typeof pgImpl.getChats>
+): Promise<Awaited<ReturnType<typeof pgImpl.getChats>>> {
+  return pgImpl.getChats(...args)
 }
 
 export async function getChatsPage(
-  ...args: Parameters<typeof firestoreImpl.getChatsPage>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.getChatsPage>>> {
-  if (usePostgres()) return pgImpl.getChatsPage(...args) as never
-  return firestoreImpl.getChatsPage(...args)
+  ...args: Parameters<typeof pgImpl.getChatsPage>
+): Promise<Awaited<ReturnType<typeof pgImpl.getChatsPage>>> {
+  return pgImpl.getChatsPage(...args)
 }
 
 export async function deleteChat(
-  ...args: Parameters<typeof firestoreImpl.deleteChat>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.deleteChat>>> {
-  if (usePostgres()) return pgImpl.deleteChat(...args) as never
-  return firestoreImpl.deleteChat(...args)
+  ...args: Parameters<typeof pgImpl.deleteChat>
+): Promise<Awaited<ReturnType<typeof pgImpl.deleteChat>>> {
+  return pgImpl.deleteChat(...args)
 }
 
 export async function deleteUserChats(
-  ...args: Parameters<typeof firestoreImpl.deleteUserChats>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.deleteUserChats>>> {
-  if (usePostgres()) return pgImpl.deleteUserChats(...args) as never
-  return firestoreImpl.deleteUserChats(...args)
+  ...args: Parameters<typeof pgImpl.deleteUserChats>
+): Promise<Awaited<ReturnType<typeof pgImpl.deleteUserChats>>> {
+  return pgImpl.deleteUserChats(...args)
 }
 
 export async function updateChatVisibility(
-  ...args: Parameters<typeof firestoreImpl.updateChatVisibility>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.updateChatVisibility>>> {
-  if (usePostgres()) return pgImpl.updateChatVisibility(...args) as never
-  return firestoreImpl.updateChatVisibility(...args)
+  ...args: Parameters<typeof pgImpl.updateChatVisibility>
+): Promise<Awaited<ReturnType<typeof pgImpl.updateChatVisibility>>> {
+  return pgImpl.updateChatVisibility(...args)
 }
 
 export async function updateChatTitle(
-  ...args: Parameters<typeof firestoreImpl.updateChatTitle>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.updateChatTitle>>> {
-  if (usePostgres()) return pgImpl.updateChatTitle(...args) as never
-  return firestoreImpl.updateChatTitle(...args)
+  ...args: Parameters<typeof pgImpl.updateChatTitle>
+): Promise<Awaited<ReturnType<typeof pgImpl.updateChatTitle>>> {
+  return pgImpl.updateChatTitle(...args)
 }
 
 export async function createChatWithFirstMessageTransaction(
-  ...args: Parameters<typeof firestoreImpl.createChatWithFirstMessageTransaction>
+  ...args: Parameters<typeof pgImpl.createChatWithFirstMessageTransaction>
 ): Promise<
-  Awaited<ReturnType<typeof firestoreImpl.createChatWithFirstMessageTransaction>>
+  Awaited<ReturnType<typeof pgImpl.createChatWithFirstMessageTransaction>>
 > {
-  if (usePostgres()) {
-    return pgImpl.createChatWithFirstMessageTransaction(...args) as never
-  }
-  return firestoreImpl.createChatWithFirstMessageTransaction(...args)
+  return pgImpl.createChatWithFirstMessageTransaction(...args)
 }
 
 // ---------------------------------------------------------------------------
-// Notes / library files / feedback (Firestore, unchanged)
+// Notes / library files / feedback
 // ---------------------------------------------------------------------------
 
 export async function createNote(
-  ...args: Parameters<typeof firestoreImpl.createNote>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.createNote>>> {
-  return firestoreImpl.createNote(...args)
+  ...args: Parameters<typeof pgImpl.createNote>
+): Promise<Awaited<ReturnType<typeof pgImpl.createNote>>> {
+  return pgImpl.createNote(...args)
 }
 
 export async function getNotes(
-  ...args: Parameters<typeof firestoreImpl.getNotes>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.getNotes>>> {
-  return firestoreImpl.getNotes(...args)
+  ...args: Parameters<typeof pgImpl.getNotes>
+): Promise<Awaited<ReturnType<typeof pgImpl.getNotes>>> {
+  return pgImpl.getNotes(...args)
 }
 
 export async function searchNotes(
-  ...args: Parameters<typeof firestoreImpl.searchNotes>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.searchNotes>>> {
-  return firestoreImpl.searchNotes(...args)
+  ...args: Parameters<typeof pgImpl.searchNotes>
+): Promise<Awaited<ReturnType<typeof pgImpl.searchNotes>>> {
+  return pgImpl.searchNotes(...args)
 }
 
 export async function getNote(
-  ...args: Parameters<typeof firestoreImpl.getNote>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.getNote>>> {
-  return firestoreImpl.getNote(...args)
+  ...args: Parameters<typeof pgImpl.getNote>
+): Promise<Awaited<ReturnType<typeof pgImpl.getNote>>> {
+  return pgImpl.getNote(...args)
 }
 
 export async function deleteNote(
-  ...args: Parameters<typeof firestoreImpl.deleteNote>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.deleteNote>>> {
-  return firestoreImpl.deleteNote(...args)
+  ...args: Parameters<typeof pgImpl.deleteNote>
+): Promise<Awaited<ReturnType<typeof pgImpl.deleteNote>>> {
+  return pgImpl.deleteNote(...args)
 }
 
 export async function deleteUserNotes(
-  ...args: Parameters<typeof firestoreImpl.deleteUserNotes>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.deleteUserNotes>>> {
-  return firestoreImpl.deleteUserNotes(...args)
+  ...args: Parameters<typeof pgImpl.deleteUserNotes>
+): Promise<Awaited<ReturnType<typeof pgImpl.deleteUserNotes>>> {
+  return pgImpl.deleteUserNotes(...args)
 }
 
 export async function createLibraryFile(
-  ...args: Parameters<typeof firestoreImpl.createLibraryFile>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.createLibraryFile>>> {
-  return firestoreImpl.createLibraryFile(...args)
+  ...args: Parameters<typeof pgImpl.createLibraryFile>
+): Promise<Awaited<ReturnType<typeof pgImpl.createLibraryFile>>> {
+  return pgImpl.createLibraryFile(...args)
 }
 
 export async function getLibraryFiles(
-  ...args: Parameters<typeof firestoreImpl.getLibraryFiles>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.getLibraryFiles>>> {
-  return firestoreImpl.getLibraryFiles(...args)
+  ...args: Parameters<typeof pgImpl.getLibraryFiles>
+): Promise<Awaited<ReturnType<typeof pgImpl.getLibraryFiles>>> {
+  return pgImpl.getLibraryFiles(...args)
 }
 
 export async function searchLibraryFiles(
-  ...args: Parameters<typeof firestoreImpl.searchLibraryFiles>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.searchLibraryFiles>>> {
-  return firestoreImpl.searchLibraryFiles(...args)
+  ...args: Parameters<typeof pgImpl.searchLibraryFiles>
+): Promise<Awaited<ReturnType<typeof pgImpl.searchLibraryFiles>>> {
+  return pgImpl.searchLibraryFiles(...args)
 }
 
 export async function deleteLibraryFile(
-  ...args: Parameters<typeof firestoreImpl.deleteLibraryFile>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.deleteLibraryFile>>> {
-  return firestoreImpl.deleteLibraryFile(...args)
+  ...args: Parameters<typeof pgImpl.deleteLibraryFile>
+): Promise<Awaited<ReturnType<typeof pgImpl.deleteLibraryFile>>> {
+  return pgImpl.deleteLibraryFile(...args)
 }
 
 export async function deleteUserLibraryFiles(
-  ...args: Parameters<typeof firestoreImpl.deleteUserLibraryFiles>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.deleteUserLibraryFiles>>> {
-  return firestoreImpl.deleteUserLibraryFiles(...args)
+  ...args: Parameters<typeof pgImpl.deleteUserLibraryFiles>
+): Promise<Awaited<ReturnType<typeof pgImpl.deleteUserLibraryFiles>>> {
+  return pgImpl.deleteUserLibraryFiles(...args)
 }
 
 export async function anonymizeUserFeedback(
-  ...args: Parameters<typeof firestoreImpl.anonymizeUserFeedback>
-): Promise<Awaited<ReturnType<typeof firestoreImpl.anonymizeUserFeedback>>> {
-  return firestoreImpl.anonymizeUserFeedback(...args)
+  ...args: Parameters<typeof pgImpl.anonymizeUserFeedback>
+): Promise<Awaited<ReturnType<typeof pgImpl.anonymizeUserFeedback>>> {
+  return pgImpl.anonymizeUserFeedback(...args)
 }
+

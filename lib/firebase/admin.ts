@@ -1,6 +1,7 @@
 import { cert, getApp, getApps, initializeApp } from 'firebase-admin/app'
 import { type Auth, getAuth as getFirebaseAuth } from 'firebase-admin/auth'
-import { type Firestore, getFirestore } from 'firebase-admin/firestore'
+// Firebase Admin is used for Authentication ONLY (session verification).
+// All persistence moved to Supabase PostgreSQL — no Firestore usage remains.
 
 type AdminApp = ReturnType<typeof getApp>
 
@@ -45,18 +46,11 @@ function initAdminApp(): AdminApp {
 
   const { credential, projectId } = resolveCredential()
   adminApp = initializeApp({ credential, projectId })
-  // Tolerate undefined values so documents with optional fields
-  // (e.g. metadata.traceId) can be written without manual cleaning.
-  getFirestore(adminApp).settings({ ignoreUndefinedProperties: true })
   return adminApp
 }
 
 export function getAdminApp(): AdminApp {
   return initAdminApp()
-}
-
-export function getDb(): Firestore {
-  return getFirestore(initAdminApp())
 }
 
 export function getAuth(): Auth {

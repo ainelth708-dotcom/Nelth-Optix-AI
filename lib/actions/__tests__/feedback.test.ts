@@ -1,69 +1,38 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Mock the modules before any imports
-vi.mock('@/lib/firebase/admin', () => ({
-  getDb: vi.fn()
+// Mock the PostgreSQL layer (per Firebase UID isolation is covered by
+// lib/db/__tests__/chat-pg.test.ts against the real database).
+vi.mock('@/lib/db/actions-pg', () => ({
+  updateMessageFeedback: vi.fn(),
+  getMessageFeedbackScore: vi.fn()
 }))
 
-// Import after mocking
-import { getDb } from '@/lib/firebase/admin'
+import {
+  getMessageFeedbackScore,
+  updateMessageFeedback as updateMessageFeedbackPg
+} from '@/lib/db/actions-pg'
 
 import { getMessageFeedback, updateMessageFeedback } from '../feedback'
-
-const mockGet = vi.fn()
-const mockUpdate = vi.fn()
-const mockColGroup = vi.fn()
-
-function chain() {
-  return {
-    where: () => ({
-      limit: () => ({ get: (...args: any[]) => mockGet(...args) })
-    })
-  }
-}
 
 describe('Feedback Actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockColGroup.mockReturnValue(chain())
-    vi.mocked(getDb).mockReturnValue({
-      collectionGroup: (...args: any[]) => {
-        mockColGroup(...args)
-        return chain()
-      }
-    } as any)
   })
 
   describe('updateMessageFeedback', () => {
     it('should update message feedback successfully', async () => {
-      const docRef = { update: mockUpdate }
-      mockGet.mockResolvedValue({
-        empty: false,
-        docs: [{ ref: docRef, data: () => ({ metadata: {} }) }]
-      })
+      vi.mocked(updateMessageFeedbackPg).mockResolvedValue(undefined)
 
       const result = await updateMessageFeedback('test-message-id', 1)
 
       expect(result).toEqual({ success: true })
-      expect(mockColGroup).toHaveBeenCalledWith('messages')
-      expect(mockUpdate).toHaveBeenCalledWith({
-        metadata: { feedbackScore: 1 }
-      })
-    })
-
-    it('should return error when message not found', async () => {
-      mockGet.mockResolvedValue({ empty: true, docs: [] })
-
-      const result = await updateMessageFeedback('non-existent-id', 1)
-
-      expect(result).toEqual({
-        success: false,
-        error: 'Message not found'
-      })
+      expect(updateMessageFeedbackPg).toHaveBeenCalledWith('test-message-id', 1)
     })
 
     it('should handle errors gracefully', async () => {
-      mockGet.mockRejectedValue(new Error('Database error'))
+      vi.mocked(updateMessageFeedbackPg).mockRejectedValue(
+        new Error('Database error')
+      )
 
       const result = await updateMessageFeedback('test-message-id', -1)
 
@@ -74,29 +43,15 @@ describe('Feedback Actions', () => {
 
   describe('getMessageFeedback', () => {
     it('should retrieve feedback score successfully', async () => {
-      mockGet.mockResolvedValue({
-        empty: false,
-        docs: [{ data: () => ({ metadata: { feedbackScore: 1 } }) }]
-      })
+      vi.mocked(getMessageFeedbackScore).mockResolvedValue(1)
 
       const result = await getMessageFeedback('test-message-id')
 
       expect(result).toBe(1)
     })
 
-    it('should return null when message not found', async () => {
-      mockGet.mockResolvedValue({ empty: true, docs: [] })
-
-      const result = await getMessageFeedback('non-existent-id')
-
-      expect(result).toBeNull()
-    })
-
     it('should return null when no feedback score exists', async () => {
-      mockGet.mockResolvedValue({
-        empty: false,
-        docs: [{ data: () => ({ metadata: {} }) }]
-      })
+      vi.mocked(getMessageFeedbackScore).mockResolvedValue(null)
 
       const result = await getMessageFeedback('test-message-id')
 
@@ -104,7 +59,9 @@ describe('Feedback Actions', () => {
     })
 
     it('should handle errors and return null', async () => {
-      mockGet.mockRejectedValue(new Error('Database error'))
+      vi.mocked(getMessageFeedbackScore).mockRejectedValue(
+        new Error('Database error')
+      )
 
       const result = await getMessageFeedback('test-message-id')
 

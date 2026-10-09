@@ -1,13 +1,8 @@
 'use server'
 
+import { submitSiteFeedback } from '@/lib/db/actions-pg'
 import { getCurrentUser } from '@/lib/auth/get-current-user'
-import { generateId } from '@/lib/db/schema'
-import { getDb } from '@/lib/firebase/admin'
 import { hasFirebaseConfig } from '@/lib/firebase/config'
-
-function firestore() {
-  return getDb()
-}
 
 export async function submitFeedback(data: {
   sentiment: 'positive' | 'neutral' | 'negative'
@@ -30,20 +25,14 @@ export async function submitFeedback(data: {
     const headersList = await headers()
     const userAgent = headersList.get('user-agent') || undefined
 
-    // Save to Firestore
-    const id = generateId()
-    await firestore()
-      .collection('feedback')
-      .doc(id)
-      .set({
-        id,
-        userId: userId ?? null,
-        sentiment: data.sentiment,
-        message: data.message,
-        pageUrl: data.pageUrl,
-        userAgent: userAgent ?? null,
-        createdAt: new Date()
-      })
+    // Save to PostgreSQL (Firebase UID stays the owner key).
+    const { id } = await submitSiteFeedback({
+      sentiment: data.sentiment,
+      message: data.message,
+      pageUrl: data.pageUrl,
+      userId: userId ?? null,
+      userAgent: userAgent ?? null
+    })
 
     // Send to Slack if webhook URL is configured
     const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL

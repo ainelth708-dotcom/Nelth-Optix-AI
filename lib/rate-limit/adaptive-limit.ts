@@ -2,9 +2,9 @@ import { after } from 'next/server'
 
 import { trackAdaptiveLimitEvent } from '@/lib/analytics'
 import {
-  incrementFirestoreRateLimit,
+  incrementRateLimit,
   isEnforced
-} from '@/lib/rate-limit/firestore'
+} from '@/lib/rate-limit/store'
 import { perfLog } from '@/lib/utils/perf-logging'
 
 const DEFAULT_ADAPTIVE_DAILY_LIMIT = 30
@@ -25,7 +25,7 @@ interface AdaptiveLimitCheckResult {
   remaining: number
   resetAt: number
   limit: number
-  /** True when the check ran against Firestore (i.e. enforced) */
+  /** True when the check ran against Postgres (i.e. enforced) */
   enforced: boolean
 }
 
@@ -49,7 +49,7 @@ async function checkAdaptiveLimit(
   const key = `rl:adaptive:${userId}:${dateKey}`
 
   try {
-    return await incrementFirestoreRateLimit(key, limit)
+    return await incrementRateLimit(key, limit)
   } catch (err) {
     console.error('[AdaptiveLimit] Counter failed, failing open:', err)
     return {
@@ -72,7 +72,7 @@ export async function checkAndEnforceAdaptiveLimit(
 ): Promise<Response | null> {
   const result = await checkAdaptiveLimit(userId)
 
-  // Only emit analytics for real (Firestore-backed) checks. Local dev / cloud
+  // Only emit analytics for real (Postgres-backed) checks. Local dev / cloud
   // without Firebase Admin returns enforced=false and we skip tracking to avoid
   // polluting the dashboard with no-op events.
   //

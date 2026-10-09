@@ -7,7 +7,7 @@ import { defineConfig } from 'drizzle-kit'
 export default defineConfig({
   // Single journal (drizzle/tool-catalog) for the whole app DB surface so
   // already-applied migrations are never replayed.
-  schema: ['./agent/catalog/schema.ts', './lib/db/chat-schema.ts'],
+  schema: ['./agent/catalog/schema.ts', './lib/db/chat-schema.ts', './lib/db/user-schema.ts'],
   out: './drizzle/tool-catalog',
   dialect: 'postgresql',
   strict: true,

@@ -5,8 +5,8 @@ import { checkAndEnforceGuestLimit } from '@/lib/rate-limit/guest-limit'
 const mockIncrement = vi.fn()
 const mockIsEnforced = vi.fn()
 
-vi.mock('@/lib/rate-limit/firestore', () => ({
-  incrementFirestoreRateLimit: (...args: any[]) => mockIncrement(...args),
+vi.mock('@/lib/rate-limit/store', () => ({
+  incrementRateLimit: (...args: any[]) => mockIncrement(...args),
   isEnforced: (...args: any[]) => mockIsEnforced(...args)
 }))
 

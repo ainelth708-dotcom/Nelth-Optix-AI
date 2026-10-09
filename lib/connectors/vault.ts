@@ -1,6 +1,6 @@
-import { getFirestore } from 'firebase-admin/firestore'
-
-import { getAdminApp } from '@/lib/firebase/admin'
+import { getPostgresDb } from '@/lib/db/postgres'
+import { connectorTokens } from '@/lib/db/user-schema'
+import { and, eq } from 'drizzle-orm'
 
 import { decryptSecret, encryptSecret } from './crypto'
 import { ConnectorAuthError, isGrantDeadError } from './errors'
@@ -11,12 +11,14 @@ import {
 } from './providers'
 
 /**
- * Encrypted per-user OAuth token vault (Firestore).
+ * Encrypted per-user OAuth token vault (PostgreSQL).
  *
- * Collection layout: `connector_tokens/{userId}/providers/{providerId}`.
- * Only the refresh token is stored, AES-256-GCM sealed. Access tokens are
- * short-lived and re-minted on demand via `getValidAccessToken` (refresh
- * flow with a 60s skew), so a database read never leaks a usable credential.
+ * Table layout: `connector_tokens(user_id, provider)` — one row per grant.
+ * Only sealed blobs are stored (AES-256-GCM, same crypto as before). Access
+ * tokens are short-lived and re-minted on demand via `getValidAccessToken`
+ * (refresh flow with a 60s skew), so a database read never leaks a usable
+ * credential. Firebase Auth still owns identity: userId is always the
+ * server-verified Firebase UID.
  */
 
 export interface StoredConnection {
@@ -34,11 +36,23 @@ export interface StoredConnection {
 
 const REFRESH_SKEW_MS = 60 * 1000
 
-function providersCollection(userId: string) {
-  return getFirestore(getAdminApp())
-    .collection('connector_tokens')
-    .doc(userId)
-    .collection('providers')
+function toRow(
+  userId: string,
+  provider: ConnectorProviderId,
+  conn: StoredConnection
+) {
+  return {
+    userId,
+    provider,
+    refreshTokenSealed: conn.refreshTokenSealed,
+    accessTokenSealed: conn.accessTokenSealed,
+    expiresAt: conn.expiresAt,
+    scope: conn.scope ?? null,
+    providerAccountId: conn.providerAccountId ?? null,
+    providerAccountName: conn.providerAccountName ?? null,
+    authFailedAt: conn.authFailedAt ?? null,
+    updatedAt: conn.updatedAt
+  }
 }
 
 function toStored(
@@ -66,9 +80,24 @@ export async function saveConnection(
   tokens: TokenResult
 ): Promise<void> {
   if (!userId) throw new Error('saveConnection requires a userId')
-  await providersCollection(userId)
-    .doc(provider)
-    .set({ ...toStored(provider, tokens), authFailedAt: null }, { merge: true })
+  const db = getPostgresDb()
+  const stored = { ...toStored(provider, tokens), authFailedAt: null }
+  await db
+    .insert(connectorTokens)
+    .values(toRow(userId, provider, stored))
+    .onConflictDoUpdate({
+      target: [connectorTokens.userId, connectorTokens.provider],
+      set: {
+        refreshTokenSealed: stored.refreshTokenSealed,
+        accessTokenSealed: stored.accessTokenSealed,
+        expiresAt: stored.expiresAt,
+        scope: stored.scope ?? null,
+        providerAccountId: stored.providerAccountId ?? null,
+        providerAccountName: stored.providerAccountName ?? null,
+        authFailedAt: null,
+        updatedAt: stored.updatedAt
+      }
+    })
 }
 
 /** Records a dead grant so the UI can offer Reconnect instead of green. */
@@ -77,9 +106,24 @@ export async function markConnectorAuthFailure(
   provider: ConnectorProviderId
 ): Promise<void> {
   if (!userId) return
-  await providersCollection(userId)
-    .doc(provider)
-    .set({ authFailedAt: Date.now(), updatedAt: Date.now() }, { merge: true })
+  await getPostgresDb()
+    .insert(connectorTokens)
+    .values({
+      userId,
+      provider,
+      refreshTokenSealed: null,
+      accessTokenSealed: null,
+      expiresAt: null,
+      scope: null,
+      providerAccountId: null,
+      providerAccountName: null,
+      authFailedAt: Date.now(),
+      updatedAt: Date.now()
+    })
+    .onConflictDoUpdate({
+      target: [connectorTokens.userId, connectorTokens.provider],
+      set: { authFailedAt: Date.now(), updatedAt: Date.now() }
+    })
     .catch(() => {})
 }
 
@@ -97,11 +141,29 @@ export async function getConnection(
   provider: ConnectorProviderId
 ): Promise<StoredConnection | null> {
   if (!userId) return null
-  const snap = await providersCollection(userId).doc(provider).get()
-  if (!snap.exists) return null
-  const data = snap.data() as Partial<StoredConnection> | undefined
-  if (!data || typeof data.refreshTokenSealed === 'undefined') return null
-  return data as StoredConnection
+  const rows = await getPostgresDb()
+    .select()
+    .from(connectorTokens)
+    .where(
+      and(
+        eq(connectorTokens.userId, userId),
+        eq(connectorTokens.provider, provider)
+      )
+    )
+    .limit(1)
+  const row = rows[0]
+  if (!row) return null
+  return {
+    provider,
+    refreshTokenSealed: row.refreshTokenSealed,
+    accessTokenSealed: row.accessTokenSealed,
+    expiresAt: row.expiresAt,
+    scope: row.scope ?? undefined,
+    providerAccountId: row.providerAccountId ?? undefined,
+    providerAccountName: row.providerAccountName ?? undefined,
+    authFailedAt: row.authFailedAt ?? undefined,
+    updatedAt: row.updatedAt
+  } as StoredConnection
 }
 
 export async function deleteConnection(
@@ -109,9 +171,14 @@ export async function deleteConnection(
   provider: ConnectorProviderId
 ): Promise<void> {
   if (!userId) return
-  await providersCollection(userId)
-    .doc(provider)
-    .delete()
+  await getPostgresDb()
+    .delete(connectorTokens)
+    .where(
+      and(
+        eq(connectorTokens.userId, userId),
+        eq(connectorTokens.provider, provider)
+      )
+    )
     .catch(() => {})
 }
 
@@ -166,21 +233,35 @@ export async function getValidAccessToken(
     }
     throw error
   }
-  await providersCollection(userId)
-    .doc(provider)
-    .set(
-      {
-        accessTokenSealed: encryptSecret(refreshed.accessToken),
-        expiresAt: refreshed.expiresAt,
+  await getPostgresDb()
+    .insert(connectorTokens)
+    .values({
+      userId,
+      provider,
+      refreshTokenSealed: refreshed.refreshToken
+        ? encryptSecret(refreshed.refreshToken)
+        : null,
+      accessTokenSealed: encryptSecret(refreshed.accessToken),
+      expiresAt: refreshed.expiresAt,
+      scope: null,
+      providerAccountId: null,
+      providerAccountName: null,
+      authFailedAt: null,
+      updatedAt: Date.now()
+    })
+    .onConflictDoUpdate({
+      target: [connectorTokens.userId, connectorTokens.provider],
+      set: {
         // Persist a rotated refresh token (GitHub Apps rotate on refresh);
         // without this the next refresh uses a dead token.
         ...(refreshed.refreshToken
           ? { refreshTokenSealed: encryptSecret(refreshed.refreshToken) }
           : {}),
+        accessTokenSealed: encryptSecret(refreshed.accessToken),
+        expiresAt: refreshed.expiresAt,
         authFailedAt: null,
         updatedAt: Date.now()
-      },
-      { merge: true }
-    )
+      }
+    })
   return refreshed.accessToken
 }

@@ -14,8 +14,8 @@ vi.mock('next/server', () => ({
   after: (task: Promise<unknown>) => mockAfter(task)
 }))
 
-vi.mock('@/lib/rate-limit/firestore', () => ({
-  incrementFirestoreRateLimit: (...args: any[]) => mockIncrement(...args),
+vi.mock('@/lib/rate-limit/store', () => ({
+  incrementRateLimit: (...args: any[]) => mockIncrement(...args),
   isEnforced: (...args: any[]) => mockIsEnforced(...args)
 }))
 
