@@ -9,5 +9,8 @@ export default defineConfig({
   out: './drizzle/tool-catalog',
   dialect: 'postgresql',
   strict: true,
-  verbose: true
+  verbose: true,
+  // Only used by `drizzle-kit migrate/studio` — never at runtime.
+  // Provide DATABASE_URL in the environment (server-only, never committed).
+  dbCredentials: { url: process.env.DATABASE_URL ?? '' }
 })
