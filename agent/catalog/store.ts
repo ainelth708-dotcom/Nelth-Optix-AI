@@ -1,7 +1,8 @@
-import { getDb } from '@/lib/firebase/admin'
-
-import { buildIndex, type IndexedEntry } from './index'
+import type { CatalogBackend } from './backend'
+import { firestoreBackend } from './firestore'
+import { buildIndex, searchIndex, type IndexedEntry } from './index'
 import { SEED_ALL } from './seed'
+import { supabaseBackend } from './supabase'
 import type {
   CatalogStats,
   ExtendedStats,
@@ -10,35 +11,38 @@ import type {
 } from './types'
 
 /**
- * Cache tiers (§10), compatible Vercel (no daemon, no local files):
- *   Atlas / seed  →  Firestore `tool_catalog` (+ meta doc)  →  memory TTL
- *   →  Tool discovery.
- * Firestore is the project's existing database (chat persistence already
- * uses it) — no new database is created. When Firebase isn't configured
- * (local/dev without credentials), the bundled seed is used and writes are
- * skipped silently.
+ * Store facade: the ONLY module routes and the agent import for catalog
+ * persistence. Backend selection via CATALOG_DB_BACKEND=firestore|supabase
+ * (default firestore = rollback-safe). Seed is always merged as the
+ * executable layer; memory TTL cache keeps hot paths cheap.
  */
 
-const COLLECTION = 'tool_catalog'
-const META_COLLECTION = 'tool_catalog_meta'
-const META_DOC = 'sync'
 const CACHE_TTL_MS = 10 * 60 * 1000
+
+export type CatalogSource = 'firestore' | 'supabase' | 'seed'
 
 type CacheShape = {
   at: number
   entries: ToolCatalogEntry[]
   index: IndexedEntry[]
-  source: 'firestore' | 'seed'
+  source: CatalogSource
 }
 
-const globals = globalThis as unknown as { __nelthCatalogCache?: CacheShape }
+const globals = globalThis as unknown as {
+  __nelthCatalogCache?: CacheShape
+  __nelthCatalogBackend?: string
+}
 
-function dbOrNull(): ReturnType<typeof getDb> | null {
-  try {
-    return getDb()
-  } catch {
-    return null
-  }
+function backendName(): 'firestore' | 'supabase' {
+  return process.env.CATALOG_DB_BACKEND === 'supabase' ? 'supabase' : 'firestore'
+}
+
+export function getBackend(): CatalogBackend {
+  return backendName() === 'supabase' ? supabaseBackend : firestoreBackend
+}
+
+export function invalidateCatalogCache(): void {
+  globals.__nelthCatalogCache = undefined
 }
 
 function dedupe(entries: ToolCatalogEntry[]): ToolCatalogEntry[] {
@@ -53,48 +57,23 @@ function dedupe(entries: ToolCatalogEntry[]): ToolCatalogEntry[] {
 export async function saveEntries(
   entries: ToolCatalogEntry[]
 ): Promise<{ upserted: number; duplicatesSkipped: number }> {
-  const unique = dedupe(entries)
-  const duplicatesSkipped = entries.length - unique.length
-  const db = dbOrNull()
-  if (!db) return { upserted: 0, duplicatesSkipped }
-  // Batched writes, 400/batch (under the 500 limit), merge = upsert by id.
-  for (let i = 0; i < unique.length; i += 400) {
-    const batch = db.batch()
-    for (const entry of unique.slice(i, i + 400)) {
-      batch.set(db.collection(COLLECTION).doc(entry.id), entry, { merge: true })
-    }
-    await batch.commit()
-  }
-  globals.__nelthCatalogCache = undefined
-  return { upserted: unique.length, duplicatesSkipped }
+  const result = await getBackend()
+    .saveEntries(entries)
+    .catch(() => ({ upserted: 0, duplicatesSkipped: 0 }))
+  invalidateCatalogCache()
+  return result
 }
 
 export async function loadAllEntries(): Promise<ToolCatalogEntry[]> {
-  const db = dbOrNull()
-  if (!db) return []
-  const snap = await db.collection(COLLECTION).get()
-  const entries: ToolCatalogEntry[] = []
-  snap.forEach(doc => {
-    entries.push({ ...(doc.data() as ToolCatalogEntry), id: doc.id })
-  })
-  return entries
+  return getBackend().loadAllEntries().catch(() => [] as ToolCatalogEntry[])
 }
 
 export async function readMeta(): Promise<{ lastSync: string | null }> {
-  const db = dbOrNull()
-  if (!db) return { lastSync: null }
-  const snap = await db.collection(META_COLLECTION).doc(META_DOC).get()
-  const data = snap.data() as { lastSync?: string } | undefined
-  return { lastSync: data?.lastSync ?? null }
+  return getBackend().readMeta().catch(() => ({ lastSync: null }))
 }
 
 export async function writeMeta(lastSync: string): Promise<void> {
-  const db = dbOrNull()
-  if (!db) return
-  await db
-    .collection(META_COLLECTION)
-    .doc(META_DOC)
-    .set({ lastSync }, { merge: true })
+  await getBackend().writeMeta(lastSync).catch(() => undefined)
 }
 
 export async function updateVerification(
@@ -107,26 +86,14 @@ export async function updateVerification(
     failureReason?: string
   }
 ): Promise<void> {
-  const db = dbOrNull()
-  if (!db) return
-  await db
-    .collection(COLLECTION)
-    .doc(entryId)
-    .set(
-      {
-        ...fields,
-        lastVerifiedAt: new Date().toISOString(),
-        lastChecked: new Date().toISOString()
-      },
-      { merge: true }
-    )
-  globals.__nelthCatalogCache = undefined
+  await getBackend().updateVerification(entryId, fields).catch(() => undefined)
+  invalidateCatalogCache()
 }
 
 export function computeStats(
   entries: ToolCatalogEntry[],
   lastSync: string | null,
-  source: 'firestore' | 'seed'
+  source: CatalogSource
 ): CatalogStats {
   const cats = new Set(entries.map(e => e.category))
   return {
@@ -146,7 +113,7 @@ export function computeStats(
 export function computeExtendedStats(
   entries: ToolCatalogEntry[],
   lastSync: string | null,
-  source: 'firestore' | 'seed'
+  source: CatalogSource
 ): ExtendedStats {
   const base = computeStats(entries, lastSync, source)
   const isMcp = (e: ToolCatalogEntry) => e.type === 'mcp'
@@ -166,65 +133,34 @@ export function computeExtendedStats(
   }
 }
 
-/**
- * Quota-safe live index (§10): ONE small doc holding the entries the agent
- * actually needs (verified/executable + top no-auth by reliability). The
- * agent hot path reads this single doc instead of scanning 10k+ docs.
- * Refreshed by sync/verify jobs, never per request.
- */
-const LIVE_COLLECTION = 'tool_catalog_live'
-const LIVE_DOC = 'index'
-const LIVE_TOP_N = 400
-
 export async function refreshLiveIndex(): Promise<{ kept: number }> {
-  const db = dbOrNull()
-  if (!db) return { kept: 0 }
-  const snap = await db.collection(COLLECTION).get()
-  const all: ToolCatalogEntry[] = []
-  snap.forEach(d => all.push({ ...(d.data() as ToolCatalogEntry), id: d.id }))
-  const priority = all
-    .filter(e => e.type !== 'mcp')
-    .sort((a, b) => {
-      const rank = (e: ToolCatalogEntry) =>
-        (e.executableNow === true ? 100 : 0) +
-        (e.verificationStatus === 'verified' ? 50 : 0) +
-        (e.free && e.auth === 'none' ? 10 : 0) +
-        (e.reliability ?? 0.5)
-      return rank(b) - rank(a)
-    })
-    .slice(0, LIVE_TOP_N)
-  const clean = JSON.parse(JSON.stringify(priority)) as ToolCatalogEntry[]
-  await db.collection(LIVE_COLLECTION).doc(LIVE_DOC).set(
-    { updatedAt: new Date().toISOString(), entries: clean },
-    { merge: false }
-  )
-  globals.__nelthCatalogCache = undefined
-  return { kept: clean.length }
+  const result = await getBackend()
+    .refreshLiveIndex()
+    .catch(() => ({ kept: 0 }))
+  invalidateCatalogCache()
+  return result
 }
 
 export async function getLiveCatalog(): Promise<{
   entries: ToolCatalogEntry[]
   index: IndexedEntry[]
-  source: 'firestore' | 'seed'
+  source: CatalogSource
 }> {
   const cached = globals.__nelthCatalogCache
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
     return { entries: cached.entries, index: cached.index, source: cached.source }
   }
   try {
-    const db = dbOrNull()
-    if (db) {
-      const snap = await db.collection(LIVE_COLLECTION).doc(LIVE_DOC).get()
-      const data = snap.data() as { entries?: ToolCatalogEntry[] } | undefined
-      if (data?.entries?.length) {
-        const merged = dedupe([...SEED_ALL, ...data.entries])
-        const index = buildIndex(merged)
-        globals.__nelthCatalogCache = { at: Date.now(), entries: merged, index, source: 'firestore' }
-        return { entries: merged, index, source: 'firestore' as const }
-      }
+    const live = await getBackend().readLiveIndex()
+    if (live?.length) {
+      const merged = dedupe([...SEED_ALL, ...live])
+      const index = buildIndex(merged)
+      const source: CatalogSource = getBackend().name
+      globals.__nelthCatalogCache = { at: Date.now(), entries: merged, index, source }
+      return { entries: merged, index, source }
     }
   } catch {
-    // Fall through to seed (also covers quota exhaustion).
+    // Fall through to seed (covers unconfigured backends + quota issues).
   }
   const index = buildIndex(SEED_ALL)
   globals.__nelthCatalogCache = { at: Date.now(), entries: SEED_ALL, index, source: 'seed' }
@@ -234,21 +170,46 @@ export async function getLiveCatalog(): Promise<{
 export async function getCatalog(): Promise<{
   entries: ToolCatalogEntry[]
   index: IndexedEntry[]
-  source: 'firestore' | 'seed'
+  source: CatalogSource
   lastSync: string | null
 }> {
   const cached = globals.__nelthCatalogCache
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
-    const { lastSync } = await readMeta().catch(() => ({ lastSync: null as string | null }))
+    const { lastSync } = await readMeta()
     return { entries: cached.entries, index: cached.index, source: cached.source, lastSync }
   }
+  const backend = getBackend()
   const [stored, { lastSync }] = await Promise.all([
-    loadAllEntries().catch(() => [] as ToolCatalogEntry[]),
-    readMeta().catch(() => ({ lastSync: null as string | null }))
+    backend.loadAllEntries().catch(() => [] as ToolCatalogEntry[]),
+    backend.readMeta().catch(() => ({ lastSync: null as string | null }))
   ])
   const merged = dedupe([...SEED_ALL, ...stored])
-  const source: 'firestore' | 'seed' = stored.length > 0 ? 'firestore' : 'seed'
+  const source: CatalogSource = stored.length > 0 ? backend.name : 'seed'
   const index = buildIndex(merged)
   globals.__nelthCatalogCache = { at: Date.now(), entries: merged, index, source }
   return { entries: merged, index, source, lastSync }
+}
+
+export async function searchCatalogEntries(
+  query: string,
+  filters: {
+    type?: 'rest' | 'openapi' | 'mcp' | 'all'
+    auth?: 'none' | 'any'
+    free?: boolean
+    verified?: boolean
+    vercelCompatible?: boolean
+    category?: string
+    limit?: number
+  }
+): Promise<ToolCatalogEntry[]> {
+  const backend = getBackend()
+  if (backend.name === 'supabase') {
+    try {
+      return await backend.searchEntries(query, filters)
+    } catch {
+      // fall through to cached-index search
+    }
+  }
+  const { index } = await getCatalog()
+  return searchIndex(index, query, filters).map(s => s.entry)
 }

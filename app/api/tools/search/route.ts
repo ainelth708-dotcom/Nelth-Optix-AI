@@ -1,5 +1,5 @@
-import { searchIndex } from '@/agent/catalog/index'
-import { getCatalog } from '@/agent/catalog/store'
+import { readMeta } from '@/agent/catalog/store'
+import { searchCatalogEntries } from '@/agent/catalog/store'
 
 export const maxDuration = 60
 
@@ -7,6 +7,8 @@ export const maxDuration = 60
  * GET /api/tools/search?q=&type=&auth=&free=&verified=&vercelCompatible=&category=&limit=
  * Public read-only discovery over the Tool Catalog (real indexed entries,
  * never hard-coded). Powers the /tools dashboard and debugging.
+ * Backend-aware: Supabase uses indexed SQL pre-filtering; otherwise the
+ * shared cached index is searched. Never loads 10k rows into the model.
  */
 export async function GET(req: Request) {
   try {
@@ -15,9 +17,8 @@ export async function GET(req: Request) {
     const type = params.get('type')
     const auth = params.get('auth')
     const limit = Math.max(1, Math.min(100, Number(params.get('limit') ?? 20) || 20))
-    const { index, source, lastSync } = await getCatalog()
-    const results = searchIndex(index, q, {
-      type: type === 'rest' || type === 'openapi' || type === 'mcp' ? type : type === 'all' || !type ? 'all' : 'all',
+    const entries = await searchCatalogEntries(q, {
+      type: type === 'rest' || type === 'openapi' || type === 'mcp' ? type : 'all',
       auth: auth === 'none' ? 'none' : 'any',
       free: params.get('free') === 'true' ? true : undefined,
       verified: params.get('verified') === 'true' ? true : undefined,
@@ -26,12 +27,13 @@ export async function GET(req: Request) {
       category: params.get('category') ?? undefined,
       limit
     })
+    const { lastSync } = await readMeta()
     return Response.json({
       query: q,
-      count: results.length,
-      source,
+      count: entries.length,
+      backend: process.env.CATALOG_DB_BACKEND === 'supabase' ? 'supabase' : 'firestore',
       lastSync,
-      tools: results.map(r => ({ ...r.entry, score: Math.round(r.score * 100) / 100 }))
+      tools: entries
     })
   } catch (error) {
     console.error('Tools search API error:', error)

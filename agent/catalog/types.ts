@@ -109,8 +109,8 @@ export type CatalogStats = {
   executable: number
   categories: number
   lastSync: string | null
-  /** 'firestore' when synced data exists, otherwise 'seed'. Never hard-coded counts. */
-  source: 'firestore' | 'seed'
+  /** Backend holding synced data, otherwise 'seed'. Never hard-coded counts. */
+  source: 'firestore' | 'supabase' | 'seed'
 }
 
 export type SyncResult = {
