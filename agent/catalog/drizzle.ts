@@ -14,13 +14,22 @@ type Db = PostgresJsDatabase<typeof schema>
 
 const globals = globalThis as unknown as { __nelthPgDb?: Db }
 
-function createDb(): Db {
-  const url = process.env.DATABASE_URL
+function resolveDatabaseUrl(): string {
+  // DATABASE_URL wins when set; otherwise reuse the pooler URL injected by
+  // the Vercel ↔ Supabase native integration (transaction mode, port 6543).
+  // Server-only in both cases — never any NEXT_PUBLIC_* variable.
+  const url =
+    process.env.DATABASE_URL || process.env.POSTGRES_URL || ''
   if (!url) {
     throw new Error(
-      'DATABASE_URL is not configured (server-only Supabase pooler URL).'
+      'No PostgreSQL URL configured (DATABASE_URL or POSTGRES_URL from the Vercel Supabase integration).'
     )
   }
+  return url
+}
+
+function createDb(): Db {
+  const url = resolveDatabaseUrl()
   const client = postgres(url, {
     prepare: false,
     max: 5,
