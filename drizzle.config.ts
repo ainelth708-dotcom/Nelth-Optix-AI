@@ -5,7 +5,9 @@ import { defineConfig } from 'drizzle-kit'
  * dbCredentials are only needed when generating/applying — never at runtime.
  */
 export default defineConfig({
-  schema: './agent/catalog/schema.ts',
+  // Single journal (drizzle/tool-catalog) for the whole app DB surface so
+  // already-applied migrations are never replayed.
+  schema: ['./agent/catalog/schema.ts', './lib/db/chat-schema.ts'],
   out: './drizzle/tool-catalog',
   dialect: 'postgresql',
   strict: true,

@@ -1,20 +1,27 @@
 {
-    "version":  "7",
-    "dialect":  "postgresql",
-    "entries":  [
-                    {
-                        "idx":  0,
-                        "version":  "7",
-                        "when":  1791529047576,
-                        "tag":  "0000_dark_thor_girl",
-                        "breakpoints":  true
-                    },
-                    {
-                        "idx":  1,
-                        "breakpoints":  false,
-                        "when":  1791529079998,
-                        "version":  "7",
-                        "tag":  "0001_trgm_search"
-                    }
-                ]
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791529047576,
+      "tag": "0000_dark_thor_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "breakpoints": false,
+      "when": 1791529079998,
+      "version": "7",
+      "tag": "0001_trgm_search"
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791536774952,
+      "tag": "0002_cooing_pandemic",
+      "breakpoints": true
+    }
+  ]
 }
