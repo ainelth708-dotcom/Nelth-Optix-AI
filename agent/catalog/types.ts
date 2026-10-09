@@ -6,7 +6,7 @@
 
 export type CatalogEntryType = 'rest' | 'openapi' | 'mcp'
 
-export type CatalogAuth = 'none' | 'api_key' | 'oauth' | 'bearer' | 'unknown'
+export type CatalogAuth = 'none' | 'api_key' | 'oauth' | 'bearer' | 'basic' | 'unknown'
 
 export type ToolCatalogEntry = {
   /** Stable id: `atlas:<atlas-id>` or `local:<tool-name>`. */

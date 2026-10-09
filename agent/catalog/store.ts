@@ -1,8 +1,8 @@
 import type { CatalogBackend } from './backend'
 import { firestoreBackend } from './firestore'
 import { buildIndex, searchIndex, type IndexedEntry } from './index'
+import { postgresBackend } from './postgres'
 import { SEED_ALL } from './seed'
-import { supabaseBackend } from './supabase'
 import type {
   CatalogStats,
   ExtendedStats,
@@ -38,7 +38,9 @@ function backendName(): 'firestore' | 'supabase' {
 }
 
 export function getBackend(): CatalogBackend {
-  return backendName() === 'supabase' ? supabaseBackend : firestoreBackend
+  // 'supabase' = Supabase PostgreSQL via Drizzle (transaction pooler).
+  // Default 'firestore' = legacy backend, instant rollback.
+  return backendName() === 'supabase' ? postgresBackend : firestoreBackend
 }
 
 export function invalidateCatalogCache(): void {
