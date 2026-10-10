@@ -102,7 +102,7 @@ export function ResearchProcessSection({
   status,
   addToolResult,
   parts: partsOverride,
-  hasSubsequentText = false
+  hasSubsequentText: hasSubsequentTextProp = false
 }: Props) {
   const baseParts = (partsOverride ?? (message.parts || [])) as MessagePart[]
 
@@ -188,7 +188,7 @@ export function ResearchProcessSection({
           const part = item.part as ToolPart
           const pos = filteredParts.indexOf(part)
           const hasSubsequentContent =
-            hasSubsequentText ||
+            hasSubsequentTextProp ||
             filteredParts
               .slice(pos + 1)
               .some(p => isToolPart(p) || isNonEmptyTextPart(p))
@@ -212,11 +212,13 @@ export function ResearchProcessSection({
 
         const reasoningKey = `${messageId}-reasoning-${idx}`
         const mergedParts = item.parts
-        const hasSubsequentText = filteredParts.some(
-          (p, i) =>
-            i > filteredParts.indexOf(mergedParts[mergedParts.length - 1]) &&
-            isNonEmptyTextPart(p)
-        )
+        const hasSubsequentText =
+          hasSubsequentTextProp ||
+          filteredParts.some(
+            (p, i) =>
+              i > filteredParts.indexOf(mergedParts[mergedParts.length - 1]) &&
+              isNonEmptyTextPart(p)
+          )
         return (
           <ReasoningStep
             key={reasoningKey}
