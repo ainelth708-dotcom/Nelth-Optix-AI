@@ -61,9 +61,8 @@ describe('pickSingleImageViaPhotoPicker', () => {
     const input = document.body.querySelector(
       'input[type="file"]'
     ) as HTMLInputElement
-    expect(input).not.toBeNull()
-    // Photo-picker-eligible config: image-only, no capture, single file.
-    expect(input.accept).toBe('image/*')
+    // Gallery config: image/* with octet-stream for system chooser access.
+    expect(input.accept).toBe('image/*,application/octet-stream')
     expect(input.hasAttribute('capture')).toBe(false)
     expect(input.multiple).toBe(false)
     // Rendered but invisible (display:none would fall back to Files).

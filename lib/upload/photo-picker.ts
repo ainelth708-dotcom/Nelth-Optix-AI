@@ -53,7 +53,13 @@ export function pickSingleImageViaPhotoPicker(
     }
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'image/*'
+    // For camera: strict image/* with capture attribute.
+    // For gallery: include application/octet-stream so Android routes to the
+    // system app chooser (Google Photos, Gallery) directly like Gemini Web,
+    // rather than locking into the local-only restricted MediaStore photo picker.
+    input.accept = options?.capture
+      ? 'image/*'
+      : 'image/*,application/octet-stream'
     if (options?.capture) {
       input.setAttribute('capture', 'environment')
     }

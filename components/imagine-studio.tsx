@@ -171,7 +171,7 @@ function AttachDropdownButton({
           className="flex cursor-pointer items-center gap-2.5 rounded-[12px] px-3 py-2.5 text-[13.5px] font-medium text-neutral-800 transition-colors hover:bg-black/5 focus:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/10 dark:focus:bg-white/10"
         >
           <IconPhoto size={18} className="text-neutral-600 dark:text-neutral-400" />
-          <span>Galerie / Photos</span>
+          <span>Galerie / Google Photos</span>
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={onSelectCamera}
@@ -821,7 +821,7 @@ function StylePreviewCard({
                   className="flex h-[48px] w-full items-center justify-center gap-2 rounded-[24px] bg-black text-[14.5px] font-semibold text-white transition-colors duration-200 hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200"
                 >
                   <IconPhoto size={18} />
-                  Choisir depuis la galerie
+                  Choisir depuis la galerie / Google Photos
                 </button>
                 <button
                   type="button"
@@ -843,7 +843,7 @@ function StylePreviewCard({
               <input
                 ref={photoInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,application/octet-stream"
                 className="pointer-events-none absolute h-px w-px opacity-0"
                 aria-hidden
                 tabIndex={-1}
@@ -2674,7 +2674,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,application/octet-stream"
               // Visually hidden but RENDERED (never display:none): on
               // Android Chrome a display:none input opened by code falls
               // back to the Files manager instead of the gallery picker.
