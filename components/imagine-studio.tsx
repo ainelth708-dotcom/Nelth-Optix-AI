@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 
 import {
   IconArrowLeft,
+  IconCamera,
   IconLayoutGrid,
   IconLoader2,
   IconPencil,
@@ -15,6 +16,13 @@ import {
   IconVideo
 } from '@tabler/icons-react'
 import { ArrowUp, X } from 'lucide-react'
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 
 import { addNelthLogo, fitImageForDisplay } from '@/lib/imagine/add-logo'
 import {
@@ -89,6 +97,7 @@ export interface ComposerExtras {
   attachmentBar: React.ReactNode
   animateChoiceBar: React.ReactNode
   onAttach: () => void
+  onAttachCamera: () => void
   canSend: boolean
 }
 
@@ -124,6 +133,55 @@ function ToolbarIconButton({
     >
       {children}
     </button>
+  )
+}
+
+function AttachDropdownButton({
+  onSelectGallery,
+  onSelectCamera,
+  className
+}: {
+  onSelectGallery: () => void
+  onSelectCamera: () => void
+  className?: string
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="Ajouter une image"
+          title="Ajouter une image"
+          className={cn(
+            'flex size-8 shrink-0 items-center justify-center rounded-full text-neutral-700 transition-colors hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/10 -ml-2',
+            className
+          )}
+        >
+          <IconPlus size={20} strokeWidth={2} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        side="top"
+        sideOffset={8}
+        className="z-50 min-w-[210px] rounded-[18px] border border-black/10 bg-white/95 p-1.5 shadow-[0_12px_36px_rgba(0,0,0,0.14)] backdrop-blur-md dark:border-white/15 dark:bg-neutral-900/95"
+      >
+        <DropdownMenuItem
+          onClick={onSelectGallery}
+          className="flex cursor-pointer items-center gap-2.5 rounded-[12px] px-3 py-2.5 text-[13.5px] font-medium text-neutral-800 transition-colors hover:bg-black/5 focus:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/10 dark:focus:bg-white/10"
+        >
+          <IconPhoto size={18} className="text-neutral-600 dark:text-neutral-400" />
+          <span>Galerie / Photos</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={onSelectCamera}
+          className="flex cursor-pointer items-center gap-2.5 rounded-[12px] px-3 py-2.5 text-[13.5px] font-medium text-neutral-800 transition-colors hover:bg-black/5 focus:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/10 dark:focus:bg-white/10"
+        >
+          <IconCamera size={18} className="text-neutral-600 dark:text-neutral-400" />
+          <span>Prendre une photo</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -684,6 +742,7 @@ function StylePreviewCard({
   }, [onClose])
 
   const photoInputRef = useRef<HTMLInputElement>(null)
+  const cameraPhotoInputRef = useRef<HTMLInputElement>(null)
   const [showFullPrompt, setShowFullPrompt] = useState(false)
   const isLongPrompt = preset.prompt.length > PROMPT_COLLAPSED_CHARS
   const promptText =
@@ -745,35 +804,58 @@ function StylePreviewCard({
           </p>
           {preset.category === 'edit' ? (
             <>
-              <button
-                type="button"
-                onClick={() => {
-                  // Gallery-only on mobile: Android goes through the
-                  // dedicated photo-picker path (system gallery directly,
-                  // never the Files manager); other platforms use the
-                  // gallery-eligible hidden input below.
-                  if (isAndroidDevice()) {
-                    void pickSingleImageViaPhotoPicker().then(file => {
-                      // null = user cancelled: nothing to do.
-                      if (file) onSelectPhoto(file)
-                    })
-                    return
-                  }
-                  photoInputRef.current?.click()
-                }}
-                className="mt-4 h-[50px] w-full rounded-[25px] bg-black text-[15px] font-semibold text-white transition-colors duration-200 hover:bg-neutral-800 dark:text-neutral-100"
-              >
-                Sélectionner une photo
-              </button>
+              <div className="mt-4 flex flex-col gap-2 w-full">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isAndroidDevice()) {
+                      void pickSingleImageViaPhotoPicker().then(file => {
+                        if (file) onSelectPhoto(file)
+                      })
+                      return
+                    }
+                    photoInputRef.current?.click()
+                  }}
+                  className="flex h-[48px] w-full items-center justify-center gap-2 rounded-[24px] bg-black text-[14.5px] font-semibold text-white transition-colors duration-200 hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200"
+                >
+                  <IconPhoto size={18} />
+                  Choisir depuis la galerie
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isAndroidDevice()) {
+                      void pickSingleImageViaPhotoPicker({ capture: true }).then(file => {
+                        if (file) onSelectPhoto(file)
+                      })
+                      return
+                    }
+                    cameraPhotoInputRef.current?.click()
+                  }}
+                  className="flex h-[44px] w-full items-center justify-center gap-2 rounded-[22px] border border-black/10 bg-transparent text-[14px] font-semibold text-neutral-800 transition-colors duration-200 hover:bg-black/5 dark:border-white/15 dark:text-neutral-200 dark:hover:bg-white/10"
+                >
+                  <IconCamera size={18} />
+                  Prendre une photo
+                </button>
+              </div>
               <input
                 ref={photoInputRef}
                 type="file"
                 accept="image/*"
-                // Image-only (never a MIME list): on mobile any deviation
-                // can demote the picker to the Files manager. Visually
-                // hidden but RENDERED (never display:none): on Android
-                // Chrome a display:none input opened by code falls back to
-                // the Files manager instead of the gallery picker.
+                className="pointer-events-none absolute h-px w-px opacity-0"
+                aria-hidden
+                tabIndex={-1}
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  e.target.value = ''
+                  if (file) onSelectPhoto(file)
+                }}
+              />
+              <input
+                ref={cameraPhotoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
                 className="pointer-events-none absolute h-px w-px opacity-0"
                 aria-hidden
                 tabIndex={-1}
@@ -897,13 +979,10 @@ function DiscoverComposer({
           placeholder="Décrivez ce que vous imaginez"
         />
         <div className="no-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto px-[15px] pt-[6px] pb-[11px] md:flex-wrap md:gap-3 md:overflow-visible md:px-[19px]">
-          <ToolbarIconButton
-            label="Ajouter"
-            className="-ml-2"
-            onClick={extras.onAttach}
-          >
-            <IconPlus size={20} strokeWidth={2} />
-          </ToolbarIconButton>
+          <AttachDropdownButton
+            onSelectGallery={extras.onAttach}
+            onSelectCamera={extras.onAttachCamera}
+          />
           {mode === 'image' ? (
             <>
               <ModeCapsule
@@ -1357,6 +1436,7 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
   // Animate-choice pills (Auto / Manuel) after the Animer result action.
   const [animateChoice, setAnimateChoice] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
   const [generating, setGenerating] = useState(false)
   const [job, setJob] = useState<
     | { status: 'working'; label: string }
@@ -2354,6 +2434,15 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
       }
       fileInputRef.current?.click()
     },
+    onAttachCamera: () => {
+      if (isAndroidDevice()) {
+        void pickSingleImageViaPhotoPicker({ capture: true }).then(file => {
+          if (file) void handleAttachFile(file)
+        })
+        return
+      }
+      cameraInputRef.current?.click()
+    },
     canSend
   }
 
@@ -2435,13 +2524,10 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
               row on desktop per the reference layout. */}
               <div className="no-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto px-[15px] pt-[6px] pb-[11px] md:flex-wrap md:gap-3 md:overflow-visible md:px-[19px]">
                 {/* Plus */}
-                <ToolbarIconButton
-                  label="Ajouter"
-                  className="-ml-2"
-                  onClick={extras.onAttach}
-                >
-                  <IconPlus size={20} strokeWidth={2} />
-                </ToolbarIconButton>
+                <AttachDropdownButton
+                  onSelectGallery={extras.onAttach}
+                  onSelectCamera={extras.onAttachCamera}
+                />
 
                 {mode === 'image' ? (
                   <>
@@ -2590,6 +2676,20 @@ export function ImagineStudio({ onGenerate }: ImagineStudioProps) {
               // Visually hidden but RENDERED (never display:none): on
               // Android Chrome a display:none input opened by code falls
               // back to the Files manager instead of the gallery picker.
+              className="pointer-events-none absolute h-px w-px opacity-0"
+              aria-hidden
+              tabIndex={-1}
+              onChange={e => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                if (file) void handleAttachFile(file)
+              }}
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
               className="pointer-events-none absolute h-px w-px opacity-0"
               aria-hidden
               tabIndex={-1}

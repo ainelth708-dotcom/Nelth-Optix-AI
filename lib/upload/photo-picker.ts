@@ -29,14 +29,23 @@ export function isIOSDevice(ua?: string, touchPoints?: number): boolean {
   return /Macintosh/i.test(agent) && touch > 1
 }
 
+export interface PickImageOptions {
+  /**
+   * When true, directly triggers the device camera (capture="environment")
+   * instead of the gallery picker. Works across mobile platforms.
+   */
+  capture?: boolean
+}
+
 /**
  * Opens the system photo picker for a SINGLE image and resolves with the
  * chosen File, or null when the user cancels. Uses a fresh dedicated
- * input on every call (image/* only, no capture, no multiple) so Android
- * always takes the photo-picker path; the returned File flows straight
- * into the existing upload pipeline (preview, downscale, base64, POST).
+ * input on every call so Android routes to the photo-picker or camera path;
+ * the returned File flows straight into the existing upload pipeline.
  */
-export function pickSingleImageViaPhotoPicker(): Promise<File | null> {
+export function pickSingleImageViaPhotoPicker(
+  options?: PickImageOptions
+): Promise<File | null> {
   return new Promise(resolve => {
     if (typeof document === 'undefined') {
       resolve(null)
@@ -45,6 +54,9 @@ export function pickSingleImageViaPhotoPicker(): Promise<File | null> {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'image/*'
+    if (options?.capture) {
+      input.setAttribute('capture', 'environment')
+    }
     // Visually hidden but RENDERED (never display:none): on Android
     // Chrome a display:none input opened by code falls back to the Files
     // manager instead of the gallery picker.

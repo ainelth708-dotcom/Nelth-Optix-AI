@@ -91,4 +91,20 @@ describe('pickSingleImageViaPhotoPicker', () => {
       vi.useRealTimers()
     }
   })
+
+  it('sets capture="environment" when capture option is true', async () => {
+    const promise = pickSingleImageViaPhotoPicker({ capture: true })
+    const input = document.body.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement
+    expect(input).not.toBeNull()
+    expect(input.getAttribute('capture')).toBe('environment')
+    expect(input.accept).toBe('image/*')
+
+    const file = new File(['photo'], 'camera.jpg', { type: 'image/jpeg' })
+    Object.defineProperty(input, 'files', { value: [file] })
+    input.dispatchEvent(new Event('change'))
+
+    await expect(promise).resolves.toBe(file)
+  })
 })
