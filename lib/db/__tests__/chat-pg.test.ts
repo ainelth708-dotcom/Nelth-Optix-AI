@@ -15,6 +15,7 @@ import {
   getChat,
   getChats,
   loadChat,
+  loadChatWithMessages,
   updateChatTitle,
   updateChatVisibility,
   upsertMessage
@@ -104,6 +105,17 @@ async function assistantMessage(chatId: string, id: string, text: string) {
     const res = await deleteMessagesAfter(chat.id, `u-${stamp}-2`)
     expect(res.count).toBe(1)
     expect((await loadChat(chat.id)).map(m => m.id)).toEqual([`u-${stamp}-2`])
+  })
+
+  it('loads chat with messages for owner and blocks cross-account', async () => {
+    const chat = await createChat({ title: 'alice chat', userId: UID_A })
+    await userMessage(chat.id, `u-${stamp}-l1`, 'hi')
+    await assistantMessage(chat.id, `a-${stamp}-l1`, 'hello')
+    const loadedOwner = await loadChatWithMessages(chat.id, UID_A)
+    expect(loadedOwner).not.toBeNull()
+    expect(loadedOwner?.messages.length).toBe(2)
+    const loadedOther = await loadChatWithMessages(chat.id, UID_B)
+    expect(loadedOther).toBeNull()
   })
 
   it('deleteChat refuses other accounts', async () => {

@@ -13,7 +13,11 @@ export type PostgresDb = PostgresJsDatabase<Record<string, never>>
 const globals = globalThis as unknown as { __nelthPgDb?: PostgresDb }
 
 function resolveDatabaseUrl(): string {
-  const url = process.env.DATABASE_URL || process.env.POSTGRES_URL || ''
+  const url =
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    ''
   if (!url) {
     throw new Error(
       'No PostgreSQL URL configured (DATABASE_URL or POSTGRES_URL).'

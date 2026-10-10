@@ -262,7 +262,7 @@ export async function loadChatWithMessages(
   const count = incrementDbOperationCount()
   perfLog(`DB - loadChatWithMessages called - count: ${count}`)
 
-  const chat = await getChat(chatId)
+  const chat = await getChat(chatId, userId)
   if (!chat) return null
   if (chat.visibility === 'private' && (!userId || chat.userId !== userId)) {
     return null
