@@ -7,11 +7,8 @@ import {
   type UIMessage
 } from 'ai'
 
-import { getLiveCatalog } from '@/agent/catalog/store'
-import { buildAgentTools } from '@/agent/catalog/router'
 import {
   AGENT_MAX_HISTORY_TURNS,
-  AGENT_MAX_MESSAGE_CHARS,
   AGENT_MAX_OUTPUT_TOKENS,
   AGENT_MAX_STEPS,
   buildAgentSystemPrompt
@@ -22,16 +19,17 @@ import { checkAndEnforceGuestLimit } from '@/lib/rate-limit/guest-limit'
 import { createModelId } from '@/lib/utils'
 import { selectModel } from '@/lib/utils/model-selection'
 import { getModel, isProviderEnabled } from '@/lib/utils/registry'
+import { buildComputerTools } from '@/lib/computer/tools'
 
 export const maxDuration = 300
 
 const MAX_UI_MESSAGES = AGENT_MAX_HISTORY_TURNS + 2
 
 /**
- * POST /api/agent/chat — the agent loop, Vercel-native and stateless.
+ * POST /api/agent/chat — Docker-Free Computer Agent loop.
  * Body: { messages: UIMessage[] } (useChat default). Streams SSE back.
- * Same providers and same guards as the main chat; tools are READ-only
- * (web_search, calculator, datetime) plus one bounded research subagent.
+ * Providers and auth guards are preserved; tools execute real browser automation
+ * via Playwright Chromium and workspace/command execution via Vercel Sandbox.
  */
 export async function POST(req: Request) {
   try {
@@ -45,7 +43,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'messages are required' }, { status: 400 })
     }
 
-    // Same guards as /api/chat: guests only when enabled, with quotas.
+    // Preserve Firebase Auth and guest rate-limits
     const userId = await getCurrentUserId()
     const isGuest = !userId
     if (isGuest && process.env.ENABLE_GUEST_CHAT !== 'true') {
@@ -86,23 +84,10 @@ export async function POST(req: Request) {
       )
     }
 
+    const effectiveUserId = userId || 'guest-session'
     const model = getModel(createModelId(selectedModel))
-    // Tool Router (§3, §13): capabilities → catalog discovery → only the
-    // relevant executable tools are loaded into this request. The catalog
-    // can hold thousands of entries; the prompt never sees more than ~10.
-    const lastUserText = [...uiMessages]
-      .reverse()
-      .find(m => m.role === 'user')
-    const requestText =
-      lastUserText?.parts
-        ?.filter(
-          (p): p is { type: 'text'; text: string } => p.type === 'text'
-        )
-        .map(p => p.text)
-        .join('\n')
-        .slice(0, AGENT_MAX_MESSAGE_CHARS) ?? ''
-    const { entries, index } = await getLiveCatalog()
-    const { tools } = buildAgentTools(index, entries, requestText, model)
+    const tools = buildComputerTools(effectiveUserId)
+
     const result = streamText({
       model,
       system: buildAgentSystemPrompt(),
@@ -113,7 +98,7 @@ export async function POST(req: Request) {
     })
     return result.toUIMessageStreamResponse()
   } catch (error) {
-    console.error('Agent chat API error:', error)
+    console.error('Computer Agent chat API error:', error)
     return Response.json(
       { error: 'Error processing your request' },
       { status: 500 }

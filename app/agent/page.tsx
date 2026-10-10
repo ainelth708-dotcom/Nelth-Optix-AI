@@ -1,11 +1,11 @@
-import { AgentChat } from '@/components/agent/agent-chat'
+import { ComputerAgent } from '@/components/agent/computer-agent'
 
 export const metadata = {
-  title: 'Agent — Nelth-IA',
+  title: 'Computer Agent — Nelth-IA',
   description:
-    'Nelth Agent : conversation, recherche web, calculs et sous-agent de recherche — 100 % serverless.'
+    'Nelth Computer Agent : automatisation de navigateur réel Chromium, sandbox terminal et fichiers de code.'
 }
 
 export default function AgentPage() {
-  return <AgentChat />
+  return <ComputerAgent />
 }

@@ -35,6 +35,7 @@
     "Nelth-Voice",
     "nanoMuse-main",
     "browser-agent-template-main",
-    "skills-main"
+    "skills-main",
+    "mode-agent"
   ]
 }
