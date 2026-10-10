@@ -1,11 +1,11 @@
-import { ComputerAgent } from '@/components/agent/computer-agent'
+import { OpenDotsAgent } from '@/components/agent/opendots-agent'
 
 export const metadata = {
-  title: 'Computer Agent — Nelth-IA',
+  title: 'OpenDots — Nelth-IA',
   description:
-    'Nelth Computer Agent : automatisation de navigateur réel Chromium, sandbox terminal et fichiers de code.'
+    'OpenDots Agent : interface complète avec automatisation de navigateur réel Chromium, terminal sandbox et fichiers de code.'
 }
 
 export default function AgentPage() {
-  return <ComputerAgent />
+  return <OpenDotsAgent />
 }
