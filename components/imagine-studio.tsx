@@ -720,7 +720,7 @@ function StylePresetGrid({
 // rounded card, light + dark mode.
 // ---------------------------------------------------------------------------
 
-const PROMPT_COLLAPSED_CHARS = 140
+const PROMPT_COLLAPSED_CHARS = 550
 
 function StylePreviewCard({
   preset,
@@ -790,18 +790,20 @@ function StylePreviewCard({
               />
             )}
           </div>
-          <p className="mt-4 whitespace-pre-wrap text-left text-[16px] font-medium leading-[1.45]">
-            {promptText}{' '}
-            {isLongPrompt && (
-              <button
-                type="button"
-                onClick={() => setShowFullPrompt(v => !v)}
-                className="font-semibold underline underline-offset-2"
-              >
-                {showFullPrompt ? 'Moins' : 'Voir plus'}
-              </button>
-            )}
-          </p>
+          <div className="mt-3 max-h-[160px] overflow-y-auto overscroll-contain pr-1">
+            <p className="whitespace-pre-wrap text-left text-[15px] font-medium leading-[1.45]">
+              {promptText}{' '}
+              {isLongPrompt && (
+                <button
+                  type="button"
+                  onClick={() => setShowFullPrompt(v => !v)}
+                  className="font-semibold underline underline-offset-2 hover:opacity-80"
+                >
+                  {showFullPrompt ? 'Moins' : 'Voir plus'}
+                </button>
+              )}
+            </p>
+          </div>
           {preset.category === 'edit' ? (
             <>
               <div className="mt-4 flex flex-col gap-2 w-full">
