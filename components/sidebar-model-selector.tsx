@@ -33,6 +33,7 @@ function modelKey(providerId: string, modelId: string): string {
 
 const MODEL_DISPLAY_NAMES: Record<string, string> = {
   'dots-studio/dots-3-note-preview:free': 'Nelth-3.5',
+  'nvidia/nemotron-3-ultra-550b-a55b:free': 'Nelth-3.5 Thinking',
   'stepfun/step-3.7-flash:free': 'Nelth-3.5 Thinking'
 }
 

@@ -140,7 +140,7 @@ export async function enforceSkillOutput(opts: EnforceOptions): Promise<void> {
   // standard: it is forced through the skill-application reinforcement pass too.
   const isWeakModel = /dots-3-note-preview:free/i.test(model)
   const isThinkingModel =
-    /(stepfun|step-3\.7-flash|nelth-3\.5 thinking|thinking)/i.test(model)
+    /(nemotron|stepfun|step-3\.7-flash|nelth-3\.5 thinking|thinking)/i.test(model)
 
   // Visual/frontend artifacts must never contain emoji used as UI icons.
   const VISUAL_SKILLS = new Set([

@@ -56,7 +56,9 @@ const HIDDEN_MODEL_IDS = new Set([
   // Replaced by Laguna XS 2.1.
   'poolside/laguna-xs-2.1:free',
   // Replaced by Dots Note as Nelth-3.5 (persistent upstream 429).
-  'thinkingmachines/inkling-small:free'
+  'thinkingmachines/inkling-small:free',
+  // Removed per user request
+  'tencent/hy3:free'
 ])
 
 /** True for retired ids: never listed, never selectable, never honored. */
@@ -67,6 +69,7 @@ export function isRetiredModelId(id: string): boolean {
 // Friendly display names for the static OPENAI_COMPATIBLE_MODELS list. The list
 // only carries raw ids, so map the ones we want to brand explicitly.
 const OPENAI_COMPATIBLE_DISPLAY_NAMES: Record<string, string> = {
+  'nvidia/nemotron-3-ultra-550b-a55b:free': 'Nelth-3.5 Thinking',
   'stepfun/step-3.7-flash:free': 'Nelth-3.5 Thinking',
   'dots-studio/dots-3-note-preview:free': 'Nelth-3.5'
 }
@@ -74,8 +77,9 @@ const OPENAI_COMPATIBLE_DISPLAY_NAMES: Record<string, string> = {
 // Models served by the Kilo AI gateway rather than the default
 // openai-compatible (NVIDIA) endpoint. They are routed to the `kilo-gateway`
 // provider so Nelth-3.5 (dots) and Nelth-3.5 Thinking
-// (stepfun/step-3.7-flash:free) do not hit NVIDIA.
+// (nvidia/nemotron-3-ultra-550b-a55b:free) do not hit NVIDIA.
 const KILO_GATEWAY_MODEL_IDS = new Set([
+  'nvidia/nemotron-3-ultra-550b-a55b:free',
   'stepfun/step-3.7-flash:free',
   'dots-studio/dots-3-note-preview:free'
 ])
