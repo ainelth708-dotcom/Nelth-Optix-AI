@@ -13,6 +13,7 @@ import {
   signFilePartUrls
 } from '@/lib/storage/r2-client'
 import { perfLog, perfTime } from '@/lib/utils/perf-logging'
+import { getTextFromParts } from '@/lib/utils/message-utils'
 
 import type { StreamContext } from './types'
 
@@ -97,13 +98,17 @@ export async function prepareMessages(
 
     // Optimize for new chats: create chat and save message together
     if (isNewChat) {
+      const userText = getTextFromParts((messageWithId.parts ?? []) as any[])
+      const cleanTitle =
+        userText.trim().slice(0, 70).replace(/\s+/g, ' ') || DEFAULT_CHAT_TITLE
+
       // Persist the chat and first message optimistically in the background
       const createStart = performance.now()
       const persistencePromise = createChatWithFirstMessage(
         chatId,
         messageWithId,
         userId,
-        DEFAULT_CHAT_TITLE
+        cleanTitle
       )
         .then(result => {
           perfTime('createChatWithFirstMessage completed', createStart)

@@ -56,20 +56,17 @@ export function compareMessagesForOrder(
 }
 
 /**
- * Enforce the canonical chat shape: exactly one assistant reply per user turn,
- * i.e. no two consecutive messages may share the same role. Consecutive
- * same-role messages are always artifacts of the persistence bug (retried or
- * double-submitted requests), so we keep the FIRST message of each same-role
- * run and drop the rest. This guarantees the hydrated UI renders a clean
- * USER → AI → USER → AI sequence regardless of how the data was corrupted.
+ * Deduplicate messages by unique ID so duplicate stream finalizations are removed
+ * without dropping legitimate consecutive user or assistant messages.
  */
 export function dedupeConsecutiveDuplicates<
   T extends OrderableMessage & { role?: string }
 >(messages: T[]): T[] {
   const result: T[] = []
+  const seenIds = new Set<string>()
   for (const message of messages) {
-    const prev = result[result.length - 1]
-    if (prev && prev.role === message.role) continue
+    if (message.id && seenIds.has(message.id)) continue
+    if (message.id) seenIds.add(message.id)
     result.push(message)
   }
   return result

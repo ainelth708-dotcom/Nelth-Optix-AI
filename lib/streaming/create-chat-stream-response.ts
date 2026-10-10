@@ -1324,85 +1324,79 @@ export async function createChatStreamResponse(
           }
           return serializePublicError(error)
         },
-        onFinish: ({ responseMessage, isAborted }) => {
-          // Also persist the synthetic tool-search part so the Sources panel and
-          // inline citation map survive a reload. Same condition as the live
-          // emit above: results, images OR videos (image-only searches must
-          // survive too).
-          if (
-            !isAborted &&
-            responseMessage &&
-            searchResultsForCitation &&
-            (searchResultsForCitation.results.length > 0 ||
-              searchResultsForCitation.images.length > 0 ||
-              (searchResultsForCitation.videos?.length ?? 0) > 0)
-          ) {
-            const hasSearch = responseMessage.parts?.some(
-              (p: any) => p.type === 'tool-search'
-            )
-            if (!hasSearch) {
-              responseMessage.parts = [
-                ...(responseMessage.parts ?? []),
-                {
-                  type: 'tool-search',
-                  toolCallId: 'preloaded-search',
-                  state: 'output-available',
-                  // Same input as the live synthetic emit above (image
-                  // searches must keep their images after reload).
-                  input: {
-                    query: userQuery,
-                    type: 'optimized',
-                    content_types: caps.webImageSearch
-                      ? ['image', 'web']
-                      : ['web'],
-                    max_results: 10,
-                    search_depth: 'basic'
-                  },
-                  output: { ...searchResultsForCitation, state: 'complete' }
-                } as unknown as (typeof responseMessage.parts)[number]
-              ]
-            }
-          }
-          // Also persist the synthetic connector parts so the connector
-          // sections survive a reload. Same condition as the live emit above.
-          if (
-            !isAborted &&
-            responseMessage &&
-            connectorPreloadCalls.length > 0
-          ) {
-            for (const call of connectorPreloadCalls) {
-              const partType = `tool-${call.service}`
-              const hasPart = responseMessage.parts?.some(
-                (p: any) => p.type === partType
+          onFinish: async ({ responseMessage, isAborted }) => {
+            // Also persist the synthetic tool-search part so the Sources panel and
+            // inline citation map survive a reload. Same condition as the live
+            // emit above: results, images OR videos (image-only searches must
+            // survive too).
+            if (
+              !isAborted &&
+              responseMessage &&
+              searchResultsForCitation &&
+              (searchResultsForCitation.results.length > 0 ||
+                searchResultsForCitation.images.length > 0 ||
+                (searchResultsForCitation.videos?.length ?? 0) > 0)
+            ) {
+              const hasSearch = responseMessage.parts?.some(
+                (p: any) => p.type === 'tool-search'
               )
-              if (!hasPart) {
+              if (!hasSearch) {
                 responseMessage.parts = [
                   ...(responseMessage.parts ?? []),
                   {
-                    type: partType,
-                    toolCallId: `preloaded-${call.service}`,
+                    type: 'tool-search',
+                    toolCallId: 'preloaded-search',
                     state: 'output-available',
-                    input: call.input,
-                    output: call.output
+                    // Same input as the live synthetic emit above (image
+                    // searches must keep their images after reload).
+                    input: {
+                      query: userQuery,
+                      type: 'optimized',
+                      content_types: caps.webImageSearch
+                        ? ['image', 'web']
+                        : ['web'],
+                      max_results: 10,
+                      search_depth: 'basic'
+                    },
+                    output: { ...searchResultsForCitation, state: 'complete' }
                   } as unknown as (typeof responseMessage.parts)[number]
                 ]
               }
             }
-          }
-          // Post-processing: skill enforcement refines the answer in place
-          // (bounded, only when skills are active). Message persistence is
-          // AWAITED before the stream closes — the composer unlocks on close,
-          // so a background save would race the user's next message and its
-          // history load would miss this turn. Only the title update (which
-          // waits on an LLM call) and tracing flush stay background.
-          void (async () => {
+            // Also persist the synthetic connector parts so the connector
+            // sections survive a reload. Same condition as the live emit above.
+            if (
+              !isAborted &&
+              responseMessage &&
+              connectorPreloadCalls.length > 0
+            ) {
+              for (const call of connectorPreloadCalls) {
+                const partType = `tool-${call.service}`
+                const hasPart = responseMessage.parts?.some(
+                  (p: any) => p.type === partType
+                )
+                if (!hasPart) {
+                  responseMessage.parts = [
+                    ...(responseMessage.parts ?? []),
+                    {
+                      type: partType,
+                      toolCallId: `preloaded-${call.service}`,
+                      state: 'output-available',
+                      input: call.input,
+                      output: call.output
+                    } as unknown as (typeof responseMessage.parts)[number]
+                  ]
+                }
+              }
+            }
+            // Post-processing: skill enforcement refines the answer in place.
+            // Message persistence & title update MUST BE AWAITED before the stream
+            // closes so serverless functions don't terminate prematurely.
             try {
               perfTime('researchAgent.stream completed', llmStart)
               if (isAborted || !responseMessage) return
 
               // ENFORCEMENT: validate the generated answer against active skills.
-              // If it fails, refine it in place (bounded loop) before persisting.
-              // Only runs when a skill was actually loaded for this request.
               if (skillCtx && skillCtx.activated.length > 0) {
                 try {
                   await enforceSkillOutput({
@@ -1422,19 +1416,13 @@ export async function createChatStreamResponse(
                 }
               }
 
-              // Numero 1: guarantee NO emoji leaks into any generated code/artifact
-              // (emoji-as-UI-icon), independent of active skills — the weak model
-              // re-inserts them even for plain code requests. Conversational text
-              // outside code blocks is preserved (legitimate on-page emoji stay).
+              // Guarantee NO emoji leaks into any generated code/artifact
               stripEmojiFromCodeInMessage(responseMessage)
 
-              // Strip fake <tool_call> / <function> XML blocks the weak model
-              // emits as text instead of native tool calls — they would otherwise
-              // leak into the final answer as raw markup.
+              // Strip fake tool XML blocks
               stripFakeToolCallXmlFromMessage(responseMessage)
 
-              // Blocking: the turn must be in the DB before this response
-              // closes (see helper doc).
+              // Awaited: guarantee the message is persisted to DB before stream closes
               await persistStreamMessages(
                 responseMessage,
                 chatId,
@@ -1446,11 +1434,18 @@ export async function createChatStreamResponse(
                 context.pendingInitialUserMessage,
                 context.userMessageId
               )
-              // Best-effort background: title + tracing flush must never hold
-              // the stream open (slow LLM / unreachable endpoint).
-              void persistChatTitle(chatId, userId, titlePromise).catch(
-                (err: unknown) => console.error('onFinish title error:', err)
-              )
+
+              // Awaited with timeout: guarantee chat title is updated in DB
+              if (titlePromise) {
+                try {
+                  await Promise.race([
+                    persistChatTitle(chatId, userId, titlePromise),
+                    new Promise(r => setTimeout(r, 4000))
+                  ])
+                } catch (titleErr) {
+                  console.error('onFinish title error:', titleErr)
+                }
+              }
             } catch (err) {
               console.error('onFinish post-processing error:', err)
             } finally {
@@ -1458,8 +1453,7 @@ export async function createChatStreamResponse(
                 console.error('onFinish tracing error:', err)
               )
             }
-          })()
-        }
+          }
       })
 
       return createUIMessageStreamResponse({
