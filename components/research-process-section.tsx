@@ -6,6 +6,7 @@ import type { ReasoningPart } from '@ai-sdk/provider-utils'
 import { UseChatHelpers } from '@ai-sdk/react'
 import { IconSearch as SearchIcon } from '@tabler/icons-react'
 import {
+  Globe as LucideGlobeIcon,
   PanelRightOpen as PanelRightIcon,
   Search as LucideSearchIcon
 } from 'lucide-react'
@@ -185,11 +186,22 @@ export function ResearchProcessSection({
       {items.map((item, idx) => {
         if (item.kind === 'tool') {
           const part = item.part as ToolPart
+          const pos = filteredParts.indexOf(part)
+          const hasSubsequentContent =
+            hasSubsequentText ||
+            filteredParts
+              .slice(pos + 1)
+              .some(p => isToolPart(p) || isNonEmptyTextPart(p))
+
           return (
             <ToolStep
               key={`${messageId}-tool-${idx}`}
               part={part}
-              isOpen={getIsOpen(part.toolCallId, part.type, false)}
+              isOpen={getIsOpen(
+                part.toolCallId,
+                part.type,
+                hasSubsequentContent
+              )}
               onOpenChange={open => onOpenChange(part.toolCallId, open)}
               status={status}
               addToolResult={addToolResult}
@@ -342,53 +354,121 @@ function ToolStep({
     )
   }
 
-  // Web search: render with the ChainOfThought component, listing result
-  // sources as badges (collapsible to the full SearchSection details).
+  // Web search: modern ChatGPT-style Chain of Thought search pill & interactive sources
   if (isSearch) {
     const output =
       part.state === 'output-available' ? (part.output as any) : undefined
+    const isSearching =
+      part.state === 'input-streaming' ||
+      part.state === 'input-available' ||
+      (part.state === 'output-available' && output?.state === 'searching')
     const images = Array.isArray(output?.images) ? output.images : []
-    const sources: string[] = [
-      ...(output?.results ?? []).map((r: any) => r.url).filter(Boolean),
-      ...(output?.videos ?? []).map((v: any) => v.url).filter(Boolean)
-    ]
-    const hostnames = Array.from(
-      new Set(
-        sources
-          .map(url => {
-            try {
-              return new URL(url).hostname.replace(/^www\./, '')
-            } catch {
-              return null
-            }
-          })
-          .filter(Boolean) as string[]
-      )
+    const sources: Array<{ url: string; title?: string }> = [
+      ...(output?.results ?? []).map((r: any) => ({
+        url: r.url,
+        title: r.title
+      })),
+      ...(output?.videos ?? []).map((v: any) => ({
+        url: v.url ?? v.link,
+        title: v.title
+      }))
+    ].filter(s => Boolean(s.url))
+
+    const uniqueSourcesByHost = Array.from(
+      new Map(
+        sources.map(s => {
+          try {
+            const host = new URL(s.url).hostname.replace(/^www\./, '')
+            return [host, s]
+          } catch {
+            return [s.url, s]
+          }
+        })
+      ).values()
     )
+
+    const hostnames = uniqueSourcesByHost.map(s => {
+      try {
+        return new URL(s.url).hostname.replace(/^www\./, '')
+      } catch {
+        return s.url
+      }
+    })
 
     return (
       <div className="space-y-3">
         <ChainOfThought
           data-testid="tool-section"
-          defaultOpen={isOpen}
+          open={isOpen}
           onOpenChange={onOpenChange}
+          isStreaming={isSearching}
           className="not-prose"
         >
-          <ChainOfThoughtHeader>{`Web search: ${query}`}</ChainOfThoughtHeader>
+          <ChainOfThoughtHeader
+            status={isSearching ? 'active' : 'complete'}
+            count={hostnames.length}
+            leftIcon={
+              isSearching ? (
+                <LucideGlobeIcon className="size-3.5 text-primary animate-spin [animation-duration:3s]" />
+              ) : (
+                <LucideGlobeIcon className="size-3.5 text-muted-foreground group-hover/cot:text-foreground transition-colors" />
+              )
+            }
+          >
+            {isSearching ? (
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className="shrink-0 font-medium text-foreground">
+                  Recherche sur le web
+                </span>
+                {query && (
+                  <span className="truncate max-w-[220px] font-normal text-muted-foreground">
+                    « {query} »
+                  </span>
+                )}
+              </span>
+            ) : (
+              <span className="font-medium text-foreground">
+                Recherche sur le web
+              </span>
+            )}
+          </ChainOfThoughtHeader>
           <ChainOfThoughtContent>
             <ChainOfThoughtStep
               icon={LucideSearchIcon}
-              label={`Searching for "${query}"`}
+              label={
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-muted-foreground">Requête :</span>
+                  <span className="font-semibold text-foreground">« {query} »</span>
+                </div>
+              }
               status={output ? 'complete' : 'active'}
             >
-              {hostnames.length > 0 && (
-                <ChainOfThoughtSearchResults>
-                  {hostnames.map(host => (
-                    <ChainOfThoughtSearchResult key={host}>
-                      {host}
-                    </ChainOfThoughtSearchResult>
-                  ))}
-                </ChainOfThoughtSearchResults>
+              {uniqueSourcesByHost.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="text-[11px] font-medium text-muted-foreground/80">
+                    Sources consultées ({uniqueSourcesByHost.length})
+                  </div>
+                  <ChainOfThoughtSearchResults>
+                    {uniqueSourcesByHost.map(s => {
+                      const host = (() => {
+                        try {
+                          return new URL(s.url).hostname.replace(/^www\./, '')
+                        } catch {
+                          return s.url
+                        }
+                      })()
+                      return (
+                        <ChainOfThoughtSearchResult
+                          key={s.url}
+                          domain={host}
+                          href={s.url}
+                        >
+                          {s.title || host}
+                        </ChainOfThoughtSearchResult>
+                      )
+                    })}
+                  </ChainOfThoughtSearchResults>
+                </div>
               )}
             </ChainOfThoughtStep>
           </ChainOfThoughtContent>
@@ -404,8 +484,7 @@ function ToolStep({
     )
   }
 
-  // Fetch: render with the ChainOfThought component (no card border),
-  // matching the web-search look and avoiding the boxed "table" style.
+  // Fetch: render with the modern ChainOfThought component
   if (isFetch) {
     const isFetching =
       part.state === 'input-streaming' ||
@@ -433,16 +512,31 @@ function ToolStep({
     return (
       <ChainOfThought
         data-testid="tool-section"
-        defaultOpen={isOpen}
+        open={isOpen}
         onOpenChange={onOpenChange}
+        isStreaming={isFetching}
         className="not-prose"
       >
-        <ChainOfThoughtHeader>{`Fetch: ${fetchDomain}`}</ChainOfThoughtHeader>
+        <ChainOfThoughtHeader
+          status={isFetching ? 'active' : 'complete'}
+          badgeText={fetchDomain}
+          leftIcon={
+            isFetching ? (
+              <LucideGlobeIcon className="size-3.5 text-primary animate-spin [animation-duration:3s]" />
+            ) : (
+              <LucideGlobeIcon className="size-3.5 text-muted-foreground group-hover/cot:text-foreground transition-colors" />
+            )
+          }
+        >
+          {isFetching ? `Lecture de ${fetchDomain}…` : `Lu : ${fetchDomain}`}
+        </ChainOfThoughtHeader>
         <ChainOfThoughtContent>
           <ChainOfThoughtStep
             icon={LucideSearchIcon}
             label={
-              isFetching ? `Fetching ${fetchDomain}` : `Fetched ${fetchDomain}`
+              isFetching
+                ? `Lecture de ${fetchDomain}`
+                : `Contenu extrait de ${fetchDomain}`
             }
             status={part.state === 'output-available' ? 'complete' : 'active'}
           >
@@ -477,9 +571,9 @@ function ToolStep({
                 {fetchChars ? (
                   <p className="text-muted-foreground text-xs">
                     {fetchChars > 1000
-                      ? `${Math.round(fetchChars / 1000)}k chars`
-                      : `${fetchChars} chars`}
-                    {fetchContent ? ' extracted' : ''}
+                      ? `${Math.round(fetchChars / 1000)}k caractères`
+                      : `${fetchChars} caractères`}
+                    {fetchContent ? ' extraits' : ''}
                   </p>
                 ) : null}
                 {fetchContent ? (

@@ -311,14 +311,22 @@ export function ChatMessages({
       return userModifiedStates[id]
     }
 
-    // For tool types, check if there are multiple tools
+    // For tool types: auto-collapse when next part follows or when message is complete (ChatGPT behavior)
     if (partType && toolTypes.includes(partType)) {
+      // If there's subsequent content (e.g. answer text), collapse by default
+      if (hasNextPart) {
+        return false
+      }
       const toolCount = getToolCount(message)
       // If multiple tools exist, default to closed
       if (toolCount > 1) {
         return false
       }
-      // Single tool results stay open even if more content follows
+      // When message is completed, keep collapsed so tools do not remain permanent
+      const isComplete = status !== 'streaming' && status !== 'submitted'
+      if (isComplete) {
+        return false
+      }
       return true
     }
 
