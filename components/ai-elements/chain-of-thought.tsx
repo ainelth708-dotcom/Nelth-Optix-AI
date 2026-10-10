@@ -133,6 +133,32 @@ export const ChainOfThought = memo(
   }
 )
 
+export const ShimmerText = memo(
+  ({
+    children,
+    className
+  }: {
+    children: ReactNode
+    className?: string
+  }) => (
+    <span
+      className={cn('inline-block font-medium select-none', className)}
+      style={{
+        background:
+          'linear-gradient(110deg, var(--muted-foreground) 25%, var(--foreground) 50%, var(--muted-foreground) 75%)',
+        backgroundSize: '200% 100%',
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        backgroundClip: 'text',
+        animation: 'shimmer 1.8s linear infinite'
+      }}
+    >
+      {children}
+    </span>
+  )
+)
+ShimmerText.displayName = 'ShimmerText'
+
 export type ChainOfThoughtHeaderProps = ComponentProps<
   typeof CollapsibleTrigger
 > & {
@@ -178,7 +204,11 @@ export const ChainOfThoughtHeader = memo(
           <span className="shrink-0">{leftIcon ?? defaultIcon}</span>
           <span className="truncate text-left font-medium">
             {children ??
-              (isActive ? 'Recherche sur le web…' : 'Recherche sur le web')}
+              (isActive ? (
+                <ShimmerText>Recherche sur le web…</ShimmerText>
+              ) : (
+                'Recherche sur le web'
+              ))}
           </span>
           {count !== undefined && count > 0 && !isActive && (
             <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">

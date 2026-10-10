@@ -27,7 +27,8 @@ import {
   ChainOfThoughtHeader,
   ChainOfThoughtSearchResult,
   ChainOfThoughtSearchResults,
-  ChainOfThoughtStep
+  ChainOfThoughtStep,
+  ShimmerText
 } from '@/components/ai-elements/chain-of-thought'
 import {
   Reasoning,
@@ -419,9 +420,9 @@ function ToolStep({
           >
             {isSearching ? (
               <span className="flex items-center gap-1.5 min-w-0">
-                <span className="shrink-0 font-medium text-foreground">
+                <ShimmerText className="shrink-0 font-medium">
                   Recherche sur le web
-                </span>
+                </ShimmerText>
                 {query && (
                   <span className="truncate max-w-[220px] font-normal text-muted-foreground">
                     « {query} »
@@ -530,7 +531,11 @@ function ToolStep({
             )
           }
         >
-          {isFetching ? `Lecture de ${fetchDomain}…` : `Lu : ${fetchDomain}`}
+          {isFetching ? (
+            <ShimmerText>Lecture de {fetchDomain}…</ShimmerText>
+          ) : (
+            `Lu : ${fetchDomain}`
+          )}
         </ChainOfThoughtHeader>
         <ChainOfThoughtContent>
           <ChainOfThoughtStep
