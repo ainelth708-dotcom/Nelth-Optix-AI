@@ -87,7 +87,9 @@ describe('groupMarkdownImages', () => {
       '![Third](https://a.test/3.jpg)'
     ].join('\n')
     const out = groupMarkdownImages(text)
-    expect(out).toMatch(/^```openui\nroot = Card\(\[gallery\]\)\ngallery = ImageGallery\(/)
+    expect(out).toMatch(
+      /^```openui\nroot = Card\(\[gallery\]\)\ngallery = ImageGallery\(/
+    )
     expect(out.match(/"src":"https:\/\/a\.test\/\d\.jpg"/g)).toHaveLength(3)
   })
 })

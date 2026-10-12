@@ -65,9 +65,7 @@ function createMockSearchTool() {
 
 function findRelatedBlocks(markdown: string): string[] {
   return splitOpenUIResponses(markdown)
-    .flatMap(segment =>
-      segment.type === 'openui' ? [segment.content] : []
-    )
+    .flatMap(segment => (segment.type === 'openui' ? [segment.content] : []))
     .filter(source => source.includes('FollowUpBlock'))
 }
 

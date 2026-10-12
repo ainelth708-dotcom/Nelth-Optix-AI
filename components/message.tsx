@@ -62,13 +62,9 @@ export function MarkdownMessage({
   // Consecutive Markdown images become OpenUI galleries.
   const processedMessage = allowOpenUI
     ? groupMarkdownImages(
-        wrapBareSpecBlocks(
-          processCitations(message || '', citationMaps || {})
-        )
+        wrapBareSpecBlocks(processCitations(message || '', citationMaps || {}))
       )
-    : wrapBareSpecBlocks(
-        processCitations(message || '', citationMaps || {})
-      )
+    : wrapBareSpecBlocks(processCitations(message || '', citationMaps || {}))
   const segments = allowOpenUI
     ? splitOpenUIResponses(processedMessage)
     : [{ type: 'markdown' as const, content: processedMessage }]

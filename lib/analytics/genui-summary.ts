@@ -33,10 +33,7 @@ export function summarizeGenui(text: string): GenuiSummary | null {
     blocks.push({ source: match[1], format: 'openui' })
   }
   if (blocks.length === 0) return null
-  blocks.sort(
-    (a, b) =>
-      text.indexOf(a.source) - text.indexOf(b.source)
-  )
+  blocks.sort((a, b) => text.indexOf(a.source) - text.indexOf(b.source))
 
   let contentBlockCount = 0
   let imageCount = 0

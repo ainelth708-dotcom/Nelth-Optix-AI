@@ -26,9 +26,7 @@ describe('OpenUI response integration', () => {
 
   test('splits OpenUI blocks embedded after prose', () => {
     expect(
-      extractOpenUIResponse(
-        'Here is the answer:\n```openui\nCard()'
-      )
+      extractOpenUIResponse('Here is the answer:\n```openui\nCard()')
     ).toBeNull()
     expect(
       splitOpenUIResponses(
