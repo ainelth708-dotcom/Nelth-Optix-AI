@@ -73,6 +73,27 @@ describe('Skill Activation — skills are ACTIVE instructions, not docs', () => 
     expect(result.context).not.toContain('ACTIVE SKILL: React Expert')
   })
 
+  it('compact mode uses only selected-skill requirements without loading skill bodies or references', async () => {
+    const result = await buildSkillContext(
+      'Write a Python script to parse a CSV file',
+      'minimal',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true
+    )
+
+    expect(result.context).toContain('[python-pro]')
+    expect(result.context).toContain('Write idiomatic Python')
+    expect(result.context).not.toContain('SKILL INSTRUCTIONS')
+    expect(result.context).not.toContain('SKILL EXECUTION RULES')
+    expect(result.debug?.skillMdLoaded).toBe(false)
+    expect(result.debug?.loaded).toEqual([])
+    expect(result.debug?.instructionsInjected).toBe(true)
+    expect(result.operationalPrompt).toBe('')
+  })
+
   it('TEST 3: Debugging TypeScript request activates Debugging + TypeScript', async () => {
     const result = await buildSkillContext(
       'Debug this function, review the code for the bug causing an error in TypeScript'

@@ -104,9 +104,9 @@ export interface ActivatedSkill {
 export interface SkillDebugInfo {
   /** Skills the router detected as relevant. */
   detected: string[]
-  /** Skills whose SKILL.md was actually read from disk. */
+  /** Skills whose full SKILL.md body was read from disk. */
   loaded: string[]
-  /** Whether at least one SKILL.md body was loaded. */
+  /** Whether at least one full SKILL.md body was loaded. */
   skillMdLoaded: boolean
   /** Whether skill instructions were injected into the model context. */
   instructionsInjected: boolean

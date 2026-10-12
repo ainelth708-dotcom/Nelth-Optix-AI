@@ -100,12 +100,10 @@ export function resetSkillContentCache(): void {
 /**
  * Progressive Disclosure loader.
  *
- * Given the skills already selected by the router, this loads the FULL
- * SKILL.md body for each selected skill, plus ONLY the relevant reference
- * files that the router chose. All reads are cached (see module caches above)
- * and executed in parallel so the context is built as fast as possible before
- * the model request. Any individual read failure is swallowed so the rest of
- * the context still loads.
+ * Given skills already selected by the router, optionally load their SKILL.md
+ * bodies and only the relevant references. Compact mode builds instructions
+ * from the selected skill's routing metadata and curated requirements without
+ * reading the body or any references.
  *
  * Returns structured `LoadedSkill` objects (not a pre-formatted string) so the
  * context builder can wrap them as ACTIVE SKILL instructions.
@@ -113,7 +111,8 @@ export function resetSkillContentCache(): void {
 export async function loadSelectedSkillContent(
   selections: SkillSelection[],
   registry: SkillMeta[],
-  queryTokens?: Set<string>
+  queryTokens?: Set<string>,
+  includeDetails = true
 ): Promise<LoadedSkill[]> {
   const bySlug = new Map(registry.map(s => [s.slug, s]))
 
@@ -122,14 +121,15 @@ export async function loadSelectedSkillContent(
       const meta = bySlug.get(selection.slug)
       if (!meta) return null
 
-      const skillPath = path.join(meta.skillDir, 'SKILL.md')
-      const skillBody = await readSkillBody(skillPath)
+      const skillBody = includeDetails
+        ? await readSkillBody(path.join(meta.skillDir, 'SKILL.md'))
+        : ''
       if (skillBody === null) return null
 
       // Start from the router's filename-overlap picks, then let the skill body
-      // itself signal any additional relevant references (point 12).
-      const refNames = [...selection.references]
-      if (queryTokens && queryTokens.size > 0) {
+      // itself signal any additional relevant references.
+      const refNames = includeDetails ? [...selection.references] : []
+      if (includeDetails && queryTokens && queryTokens.size > 0) {
         refNames.push(
           ...selectBodySignaledReferences(
             meta,

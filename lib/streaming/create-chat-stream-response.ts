@@ -426,19 +426,27 @@ export async function createChatStreamResponse(
       let skillCtx: Awaited<ReturnType<typeof buildSkillContext>> | null = null
 
       if (skillNeeded) {
-        // Skill CONTINUITY: reuse the previous turn's active skills only when a
-        // skill is actually in play for this request.
-        const tPrevCtx = performance.now()
-        prevCtx = await getPreviousDesignContext(messagesToModel, message?.id)
-        perfTime('[TTFT] previous-design context resolved', tPrevCtx)
+        // Keep detailed design instructions for requests where they materially
+        // shape a generated visual artifact; other Nelth-3.5 requests need only
+        // the concise requirements for skills selected for that request.
+        const detailedDesignSkillSlugs = new Set([
+          'frontend-design',
+          'web-artifacts-builder',
+          'game-developer',
+          'canvas-design'
+        ])
+        const compactSkillContext =
+          isNonThinkingModel &&
+          !caps.candidateSkillSlugs.some(slug =>
+            detailedDesignSkillSlugs.has(slug)
+          )
 
-        // NOTE: do NOT pass `compact` (checklist-only) for the weak non-thinking
-        // Nelth-3.5 model. Empirically the checklist-only context makes it ignore
-        // the artifact rules and emit a "design brief" (prose plan + code
-        // fragments + emoji headers) instead of the COMPLETE code. Feeding the
-        // FULL SKILL.md (minimal mode, compact=false) gives it the explicit,
-        // authoritative "output ONLY the runnable artifact" constraints it
-        // actually follows.
+        if (!compactSkillContext) {
+          const tPrevCtx = performance.now()
+          prevCtx = await getPreviousDesignContext(messagesToModel, message?.id)
+          perfTime('[TTFT] previous-design context resolved', tPrevCtx)
+        }
+
         const tSkillCtx = performance.now()
         skillCtx = await buildSkillContext(
           userQuery,
@@ -447,7 +455,7 @@ export async function createChatStreamResponse(
           prevCtx.slugs,
           prevCtx.designSummary,
           prevCtx.previousCode,
-          false
+          compactSkillContext
         )
         perfTime('[TTFT] skill context built', tSkillCtx)
       }

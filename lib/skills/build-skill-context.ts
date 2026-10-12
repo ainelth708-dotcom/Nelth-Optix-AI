@@ -312,7 +312,7 @@ export async function buildSkillContext(
     if (registry.length === 0) return empty
 
     const intent: FollowUpIntent | null =
-      (previousActiveSlugs?.length ?? 0) > 0
+      !compact && (previousActiveSlugs?.length ?? 0) > 0
         ? classifyFollowUpIntent(query)
         : null
     const followUp = intent != null
@@ -393,7 +393,8 @@ export async function buildSkillContext(
     const loaded: LoadedSkill[] = await loadSelectedSkillContent(
       selections,
       registry,
-      queryTokens
+      compact ? undefined : queryTokens,
+      !compact
     )
     if (loaded.length === 0) return empty
     perfTime('[TTFT] skill content loaded (T3)', tBuild)
@@ -680,40 +681,42 @@ output AND validation passes. If validation fails, correct the output and
 re-validate before completing. Detection is NEVER completion.`
 
     const context = (
-      mode === 'full'
-        ? [
-            fullHeader,
-            priorityBlock,
-            ...skillBlocks,
-            strategyBlock,
-            executionBlock,
-            validationBlock,
-            lifecycleBlock,
-            continuityBlock,
-            ACTIVE_SKILL_EXECUTION_PROTOCOL
-          ]
-        : [
-            minimalHeader,
-            ...skillBlocks,
-            strategyBlock,
-            priorityBlock,
-            executionBlock,
-            validationBlock,
-            lifecycleBlock,
-            continuityBlock,
-            MINIMAL_SKILL_PROTOCOL
-          ]
+      compact
+        ? [minimalHeader, ...skillBlocks, strategyBlock, MINIMAL_SKILL_PROTOCOL]
+        : mode === 'full'
+          ? [
+              fullHeader,
+              priorityBlock,
+              ...skillBlocks,
+              strategyBlock,
+              executionBlock,
+              validationBlock,
+              lifecycleBlock,
+              continuityBlock,
+              ACTIVE_SKILL_EXECUTION_PROTOCOL
+            ]
+          : [
+              minimalHeader,
+              ...skillBlocks,
+              strategyBlock,
+              priorityBlock,
+              executionBlock,
+              validationBlock,
+              lifecycleBlock,
+              continuityBlock,
+              MINIMAL_SKILL_PROTOCOL
+            ]
     )
       .filter(Boolean)
       .join('\n')
 
     const debug: SkillDebugInfo = {
       detected: selections.map(s => s.slug),
-      loaded: loaded.map(s => s.slug),
-      skillMdLoaded: loaded.length > 0,
+      loaded: compact ? [] : loaded.map(s => s.slug),
+      skillMdLoaded: !compact && loaded.length > 0,
       instructionsInjected: loaded.length > 0,
       execution: loaded.length > 0,
-      validation: allValidation.length > 0,
+      validation: !compact && allValidation.length > 0,
       followUp,
       intent: intent ?? undefined,
       previousActiveSlugs
