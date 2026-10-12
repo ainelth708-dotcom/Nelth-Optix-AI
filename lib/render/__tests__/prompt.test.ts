@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 
-import { getImageSpecPrompt, getRelatedQuestionsSpecPrompt } from '../prompt'
+import {
+  getGenerativeUiPrompt,
+  getImageSpecPrompt,
+  getRelatedQuestionsSpecPrompt
+} from '../prompt'
 
 describe('render prompts', () => {
   test('includes related questions by default for substantive answers', () => {
@@ -30,5 +34,18 @@ describe('render prompts', () => {
 
   test('describes the related block as optional alongside image specs', () => {
     expect(getImageSpecPrompt()).toContain('which is itself optional')
+  })
+
+  test('defines a bounded native UI protocol without executable output', () => {
+    const prompt = getGenerativeUiPrompt()
+
+    expect(prompt).toContain('A greeting, simple fact')
+    expect(prompt).toContain('Table:')
+    expect(prompt).toContain('Chart:')
+    expect(prompt).toContain('Diagram:')
+    expect(prompt).toContain('Calculator:')
+    expect(prompt).toContain('Simulation:')
+    expect(prompt).toContain('InteractiveForm:')
+    expect(prompt).toContain('Do not output HTML, JavaScript')
   })
 })

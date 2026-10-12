@@ -8,6 +8,10 @@ import {
 
 import { catalog } from './catalog'
 import { migrateSpec } from './migrations'
+import {
+  nativeVisualComponentTypes,
+  nativeVisualElementSchema
+} from './visual-schemas'
 
 function compileSource(source: string): Spec {
   return compileSpecStream(source, {
@@ -123,6 +127,20 @@ export function parseSpecBlock(source: string): Spec {
   }
 
   const validatedSpec = validation.data as Spec
+  for (const element of Object.values(validatedSpec.elements ?? {})) {
+    if (!nativeVisualComponentTypes.has(element.type)) continue
+    const visualValidation = nativeVisualElementSchema.safeParse({
+      type: element.type,
+      props: element.props
+    })
+    if (!visualValidation.success) {
+      throw new Error(
+        visualValidation.error.issues.map(issue => issue.message).join(', ') ||
+          'Invalid native visual component'
+      )
+    }
+  }
+
   const specIssues = validateSpec(validatedSpec)
   if (!specIssues.valid) {
     throw new Error(formatSpecIssues(specIssues.issues))

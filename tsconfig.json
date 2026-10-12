@@ -37,6 +37,7 @@
     "browser-agent-template-main",
     "skills-main",
     "mode-agent",
-    "OpenDots-main"
+    "OpenDots-main",
+    "OpenIntelligentUI-main"
   ]
 }

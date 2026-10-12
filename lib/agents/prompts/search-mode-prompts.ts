@@ -1,4 +1,5 @@
 import {
+  getGenerativeUiPrompt,
   getImageSpecPrompt,
   getRelatedQuestionsSpecPrompt
 } from '@/lib/render/prompt'
@@ -392,6 +393,7 @@ export interface QuickPromptFlags {
   code?: boolean
   document?: boolean
   relatedQuestions?: boolean
+  generativeUI?: boolean
 }
 
 /**
@@ -407,6 +409,7 @@ export function getQuickModePrompt(flags?: QuickPromptFlags): string {
     code: true,
     document: true,
     relatedQuestions: true,
+    generativeUI: false,
     ...flags
   } as Required<QuickPromptFlags>
 
@@ -415,6 +418,7 @@ export function getQuickModePrompt(flags?: QuickPromptFlags): string {
   if (f.image) blocks.push(getImagePrompt())
   if (f.code) blocks.push(getCodePrompt())
   if (f.document) blocks.push(getDocumentPrompt())
+  if (f.generativeUI) blocks.push(getGenerativeUiPrompt())
   if (f.relatedQuestions) blocks.push(getRelatedQuestionsSpecPrompt())
 
   return blocks.join('\n\n')
@@ -481,7 +485,7 @@ Rule precedence:
 7. Provide comprehensive and detailed responses based on search results, ensuring thorough coverage of the user's question`
 }
 
-export function getAdaptiveModePrompt(): string {
+export function getAdaptiveModePrompt(generativeUI = false): string {
   return `
 Instructions:
 
@@ -623,6 +627,8 @@ Flexible example:
 Conclude with a brief synthesis that ties together the main insights into a clear overall understanding.
 
 ${getImageSpecPrompt()}
+
+${generativeUI ? getGenerativeUiPrompt() : ''}
 
 ${getRelatedQuestionsSpecPrompt()}
 `

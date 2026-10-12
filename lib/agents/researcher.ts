@@ -600,7 +600,8 @@ function detectQuickIntent(
   } else if (image || document) {
     search = false
   } else {
-    search = isExplicitSearch || (!isMathOrCode && (hasCurrentInfoKeyword || webImage))
+    search =
+      isExplicitSearch || (!isMathOrCode && (hasCurrentInfoKeyword || webImage))
   }
 
   // WEB IMAGE SEARCH: a request to FIND existing images on the web must use the
@@ -762,6 +763,8 @@ export async function createResearcher({
     let activeToolsList: (keyof ResearcherTools)[] = []
     let maxSteps: number
     let searchTool = originalSearchTool
+    const generativeUI =
+      classifyVisualIntent(userQuery ?? '').intent !== 'not_needed'
 
     // Configure based on search mode
     switch (searchMode) {
@@ -797,7 +800,8 @@ export async function createResearcher({
           relatedQuestions:
             (quickIntent.search || quickIntent.document) &&
             !quickIntent.code &&
-            !quickIntent.image
+            !quickIntent.image,
+          generativeUI
         })
         activeToolsList = ['search', 'fetch', 'document', 'generateImage']
         maxSteps = 20
@@ -806,7 +810,7 @@ export async function createResearcher({
 
       case 'adaptive':
       default:
-        systemPrompt = getAdaptiveModePrompt()
+        systemPrompt = getAdaptiveModePrompt(generativeUI)
         activeToolsList = [
           'search',
           'fetch',

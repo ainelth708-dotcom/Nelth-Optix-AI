@@ -147,4 +147,38 @@ describe('parseSpecBlock', () => {
       aspectRatio: '4:3'
     })
   })
+
+  test('validates the complete set of native interactive UI components', () => {
+    const source = [
+      '{"op":"add","path":"/root","value":"main"}',
+      '{"op":"add","path":"/elements/main","value":{"type":"Stack","props":{"direction":"vertical"},"children":["table","chart","diagram","calculator","simulation","form"]}}',
+      '{"op":"add","path":"/elements/table","value":{"type":"Table","props":{"columns":["Option","Prix"],"rows":[["A","10"],["B","20"]]},"children":[]}}',
+      '{"op":"add","path":"/elements/chart","value":{"type":"Chart","props":{"title":"Prix","chartType":"bar","values":[{"label":"A","value":10},{"label":"B","value":20}]},"children":[]}}',
+      '{"op":"add","path":"/elements/diagram","value":{"type":"Diagram","props":{"title":"Étapes","steps":[{"label":"Un"},{"label":"Deux"}]},"children":[]}}',
+      '{"op":"add","path":"/elements/calculator","value":{"type":"Calculator","props":{"title":"Calcul","operation":"add","first":{"label":"A","value":1},"second":{"label":"B","value":2},"resultLabel":"Résultat"},"children":[]}}',
+      '{"op":"add","path":"/elements/simulation","value":{"type":"Simulation","props":{"title":"Carré","operation":"square","min":-10,"max":10,"step":1,"initialValue":2,"outputLabel":"Résultat"},"children":[]}}',
+      '{"op":"add","path":"/elements/form","value":{"type":"InteractiveForm","props":{"title":"Informations","submitLabel":"Envoyer","fields":[{"label":"Nom","type":"text","required":true}]},"children":[]}}'
+    ].join('\n')
+
+    const spec = parseSpecBlock(source)
+    expect(Object.values(spec.elements).map(element => element.type)).toEqual(
+      expect.arrayContaining([
+        'Table',
+        'Chart',
+        'Diagram',
+        'Calculator',
+        'Simulation',
+        'InteractiveForm'
+      ])
+    )
+  })
+
+  test('rejects malformed native component data', () => {
+    const source = [
+      '{"op":"add","path":"/root","value":"table"}',
+      '{"op":"add","path":"/elements/table","value":{"type":"Table","props":{"columns":["A","B"],"rows":[["only one cell"]]},"children":[]}}'
+    ].join('\n')
+
+    expect(() => parseSpecBlock(source)).toThrow()
+  })
 })
