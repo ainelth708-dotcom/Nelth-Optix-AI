@@ -39,3 +39,7 @@ export function useChatContext(): ChatContextValue {
   }
   return context
 }
+
+export function useOptionalChatContext(): ChatContextValue | null {
+  return useContext(ChatContext)
+}

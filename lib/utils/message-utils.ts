@@ -1,6 +1,7 @@
 import { ModelMessage, UIMessage } from 'ai'
 
 import { type Message as DBMessage } from '@/lib/db/schema'
+import { describeOpenUIContext } from '@/lib/openui/context'
 
 // Interface matching the expected DB message input format
 interface DatabaseMessageInput {
@@ -95,7 +96,7 @@ export function getTextFromParts(parts?: UIMessage['parts']): string {
   return (
     parts
       ?.filter(part => part.type === 'text')
-      .map(part => part.text)
+      .map(part => describeOpenUIContext(part.text))
       .join(' ') ?? ''
   )
 }

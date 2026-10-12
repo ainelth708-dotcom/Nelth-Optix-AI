@@ -1,0 +1,15 @@
+/* Response container rendered by the Card root (src/lib/route/root.tsx). */
+.rt-root {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  min-width: 0;
+  color: var(--iui-ink, #0d0d0d);
+  background: var(--iui-canvas, #fff);
+  font: 400 16px/1.6 var(--iui-font, system-ui);
+}
+
+@media (max-width: 600px) {
+  .rt-root { gap: 20px; }
+}

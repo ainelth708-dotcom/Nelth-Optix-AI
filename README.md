@@ -11,7 +11,7 @@ Your AI assistant for answers, documents, mail and calendar — with your apps c
 ## Features
 
 - AI-powered search with grounded, cited answers
-- Generative UI — answers render rich inline components (source-credited images, grids, headings) live from a streamed JSON spec, beyond plain markdown
+- Open Intelligent UI — rich answers stream through the original OpenUI Lang renderer and component library, including interactive travel maps and itineraries
 - Search modes: Quick and Adaptive
 - Model selector with dynamic provider detection (OpenAI, Anthropic, Google, Ollama, Vercel AI Gateway, OpenAI-compatible providers)
 - Multiple search providers (Tavily, SearXNG, Brave, Exa)
@@ -21,6 +21,10 @@ Your AI assistant for answers, documents, mail and calendar — with your apps c
 - User authentication with Supabase / Firebase Auth
 - Guest mode for anonymous usage
 - Docker deployment ready
+
+### Open Intelligent UI
+
+Nelth-IA reuses the original [Open Intelligent UI](https://github.com/thesysdev/open-intelligent-ui) travel components and the [OpenUI Lang](https://github.com/thesysdev/openui) renderer inside existing assistant messages. Replies continue through Nelth-IA's selected model, provider router, chat history, and Vercel AI SDK stream; no Thesys API key or separate backend service is required. Visual fidelity depends on the selected model following the OpenUI Lang schema. Travel photo lookups and route geometry use the original Wikipedia and OSRM API routes.
 
 ## Installation
 

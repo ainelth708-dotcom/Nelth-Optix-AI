@@ -1,14 +1,6 @@
 import { z } from 'zod'
 
 import { schema } from './schema'
-import {
-  calculatorPropsSchema,
-  chartPropsSchema,
-  diagramPropsSchema,
-  interactiveFormPropsSchema,
-  simulationPropsSchema,
-  tablePropsSchema
-} from './visual-schemas'
 
 const iconName = z.enum(['related', 'arrow-right']).optional()
 
@@ -65,35 +57,6 @@ export const catalog = schema.createCatalog({
       }),
       description:
         'An inline image referencing a web source; click to expand with credit'
-    },
-    Table: {
-      props: tablePropsSchema,
-      description:
-        'A compact responsive data table with validated columns and rows'
-    },
-    Chart: {
-      props: chartPropsSchema,
-      description:
-        'An interactive, accessible bar or line chart for supplied numeric data'
-    },
-    Diagram: {
-      props: diagramPropsSchema,
-      description: 'A responsive, ordered flow diagram made from labeled steps'
-    },
-    Calculator: {
-      props: calculatorPropsSchema,
-      description:
-        'A two-input calculator with a fixed safe arithmetic operation'
-    },
-    Simulation: {
-      props: simulationPropsSchema,
-      description:
-        'A bounded slider simulation for square, cube, or fixed-factor relationships'
-    },
-    InteractiveForm: {
-      props: interactiveFormPropsSchema,
-      description:
-        'A validated local form whose explicit submit sends its answers as a chat follow-up'
     }
   },
   actions: {

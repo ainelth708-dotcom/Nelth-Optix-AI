@@ -44,6 +44,7 @@ export type AnswerSectionProps = {
   messageId: string
   metadata?: UIMessageMetadata
   status?: UseChatHelpers<UIMessage<unknown, UIDataTypes, UITools>>['status']
+  isStreaming?: boolean
   reload?: (
     messageId: string,
     options?: ChatRequestOptions
@@ -66,6 +67,7 @@ export function AnswerSection({
   messageId,
   metadata,
   status,
+  isStreaming = false,
   reload,
   citationMaps,
   isGuest = false,
@@ -277,7 +279,12 @@ export function AnswerSection({
             onMouseUp={updateSelection}
             onKeyUp={updateSelection}
           >
-            <MarkdownMessage message={content} citationMaps={citationMaps} />
+            <MarkdownMessage
+              message={content}
+              citationMaps={citationMaps}
+              allowOpenUI
+              isStreaming={isStreaming}
+            />
           </div>
           {selection &&
             (showSelectionSaveButton || showSelectionDeepDiveButton) && (

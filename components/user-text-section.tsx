@@ -11,6 +11,7 @@ import {
   IconPencil as Pencil
 } from '@tabler/icons-react'
 
+import { stripOpenUIContext } from '@/lib/openui/context'
 import { cn } from '@/lib/utils'
 import { stripMarkdownText } from '@/lib/utils/markdown'
 
@@ -59,7 +60,8 @@ export const UserTextSection: React.FC<UserTextSectionProps> = ({
   onUpdateMessage
 }) => {
   // Legacy cards live inside the text; new pasted texts arrive as props.
-  const { cards: legacyCards, rest } = splitPastedContent(content)
+  const visibleContent = stripOpenUIContext(content)
+  const { cards: legacyCards, rest } = splitPastedContent(visibleContent)
   const cards = [...legacyCards, ...pastedTexts]
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState(rest)
@@ -87,7 +89,7 @@ export const UserTextSection: React.FC<UserTextSectionProps> = ({
   const handleCopyClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
     try {
-      await navigator.clipboard.writeText(content)
+      await navigator.clipboard.writeText(visibleContent)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {

@@ -800,7 +800,8 @@ export async function createResearcher({
           relatedQuestions:
             (quickIntent.search || quickIntent.document) &&
             !quickIntent.code &&
-            !quickIntent.image,
+            !quickIntent.image &&
+            !generativeUI,
           generativeUI
         })
         activeToolsList = ['search', 'fetch', 'document', 'generateImage']

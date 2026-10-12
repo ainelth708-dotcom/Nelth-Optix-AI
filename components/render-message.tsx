@@ -241,6 +241,7 @@ export function RenderMessage({
           metadata={message.metadata as UIMessageMetadata | undefined}
           reload={reload}
           status={status}
+          isStreaming={status === 'streaming' || status === 'submitted'}
           citationMaps={citationMaps}
           onQuoteContext={onQuoteContext}
           searchResults={messageSearchResults}

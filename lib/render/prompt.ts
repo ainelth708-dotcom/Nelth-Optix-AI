@@ -1,27 +1,18 @@
+import { generateSystemPrompt } from '@openuidev/lang-core'
+
+import { localPromptOptions } from '@/lib/openui/prompt-options'
+import librarySpec from '@/lib/openui/spec.json'
+
 export function getGenerativeUiPrompt(): string {
-  return `
-ADAPTIVE NATIVE UI:
-Choose a native interactive component only when the current request explicitly asks for one or it materially improves a complex comparison, data explanation, process, or calculation. A greeting, simple fact, translation, ordinary explanation, or short answer stays plain text.
+  const promptOptions = {
+    ...localPromptOptions,
+    additionalRules: [
+      ...(localPromptOptions.additionalRules ?? []),
+      'For a request that needs a visual response, return exactly one fenced block marked ```openui containing valid OpenUI Lang source generated from this library. Put the complete answer inside the OpenUI components; do not add prose or another block outside it. Do not output JSON patches, HTML, JavaScript, or components not in this library.'
+    ]
+  }
 
-For a useful visual, put one \`\`\`spec fenced block directly after the explanation. The block is JSONL containing RFC 6902 add operations, with one JSON object per line. Create a Stack root and add one or more components as its children. Keep all values grounded in the user's data or tool results; label estimates and assumptions. Never invent live data.
-
-Available native components and props:
-- Table: { title?: string, columns: string[], rows: string[][] }. Each row must have exactly one cell per column; maximum 8 columns and 30 rows.
-- Chart: { title: string, chartType: "bar" | "line", values: { label: string, value: number }[] }. Maximum 16 points; use only supplied or verified values.
-- Diagram: { title: string, steps: { label: string, description?: string }[] }. Use for a short ordered flow (2–12 steps).
-- Calculator: { title: string, operation: "add" | "subtract" | "multiply" | "divide" | "percentOf", first: { label: string, value: number }, second: { label: string, value: number }, resultLabel: string }. Inputs are editable; percentOf means first × second ÷ 100.
-- Simulation: { title: string, description?: string, operation: "square" | "cube" | "multiply", min: number, max: number, step: number, initialValue: number, factor?: number, outputLabel: string, unit?: string }. A bounded slider updates the stated mathematical relationship; multiply requires a fixed factor.
-- InteractiveForm: { title: string, submitLabel: string, fields: { label: string, type: "text" | "number" | "select", required?: boolean, options?: string[] }[] }. A form submission is an explicit user action that sends the entered values as a chat follow-up; never use it to trigger consequential external actions.
-
-Example for a requested chart:
-\`\`\`spec
-{"op":"add","path":"/root","value":"main"}
-{"op":"add","path":"/elements/main","value":{"type":"Stack","props":{"direction":"vertical","gap":"md"},"children":["chart"]}}
-{"op":"add","path":"/elements/chart","value":{"type":"Chart","props":{"title":"Values provided by the user","chartType":"bar","values":[{"label":"A","value":12},{"label":"B","value":18}]},"children":[]}}
-\`\`\`
-
-Use only these registered components. Do not output HTML, JavaScript, executable code, event handlers, or arbitrary SVG. Invalid or unsupported visual content should be omitted while preserving the plain-text answer. A map is supported only when reliable location data is already available; do not imply a live map service.
-`
+  return generateSystemPrompt({ library: librarySpec, promptOptions })
 }
 
 /**

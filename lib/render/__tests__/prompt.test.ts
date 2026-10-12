@@ -36,16 +36,12 @@ describe('render prompts', () => {
     expect(getImageSpecPrompt()).toContain('which is itself optional')
   })
 
-  test('defines a bounded native UI protocol without executable output', () => {
+  test('uses the original OpenUI library and OpenUI Lang response format', () => {
     const prompt = getGenerativeUiPrompt()
 
-    expect(prompt).toContain('A greeting, simple fact')
-    expect(prompt).toContain('Table:')
-    expect(prompt).toContain('Chart:')
-    expect(prompt).toContain('Diagram:')
-    expect(prompt).toContain('Calculator:')
-    expect(prompt).toContain('Simulation:')
-    expect(prompt).toContain('InteractiveForm:')
-    expect(prompt).toContain('Do not output HTML, JavaScript')
+    expect(prompt).toContain('```openui')
+    expect(prompt).toContain('TravelMap')
+    expect(prompt).toContain('Table')
+    expect(prompt).not.toContain('RFC 6902')
   })
 })
