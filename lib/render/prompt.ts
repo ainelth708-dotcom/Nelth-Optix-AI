@@ -8,7 +8,8 @@ export function getGenerativeUiPrompt(): string {
     ...localPromptOptions,
     additionalRules: [
       ...(localPromptOptions.additionalRules ?? []),
-      'For a request that needs a visual response, return exactly one fenced block marked ```openui containing valid OpenUI Lang source generated from this library. Put the complete answer inside the OpenUI components; do not add prose or another block outside it. Do not output JSON patches, HTML, JavaScript, or components not in this library.'
+      'For a request that needs a visual response, return exactly one fenced block marked ```openui containing valid OpenUI Lang source generated from this library. Put the complete answer inside the OpenUI components; do not add prose or another block outside it. Do not output JSON patches, HTML, JavaScript, or components not in this library.',
+      'For travel planning, sightseeing itineraries, or requests to show destinations on a map, use the Travel components in this library. Never create or link a separate HTML file for these requests.'
     ]
   }
 

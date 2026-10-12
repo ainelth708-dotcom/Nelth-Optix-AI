@@ -491,6 +491,40 @@ const CREATION_VERB_RE = buildRe(CREATION_VERBS)
 const BUILD_NOUN_RE = buildRe(BUILD_NOUNS)
 const SIGNAL_RE = buildRe(SIGNAL_TERMS)
 const NON_VISUAL_RE = buildRe(NON_VISUAL_TERMS)
+const TRAVEL_RE = buildRe([
+  'voyage',
+  'voyages',
+  'sejour',
+  'sejours',
+  'vacances',
+  'weekend',
+  'escapade',
+  'circuit',
+  'trip',
+  'travel',
+  'vacation',
+  'holiday',
+  'viaje',
+  'viajes',
+  'itinerary',
+  'itineraire'
+])
+const TRAVEL_PLANNING_RE = buildRe([
+  'organis\\w*',
+  'organiz\\w*',
+  'plan\\w*',
+  'prepar\\w*',
+  'programm\\w*',
+  'carte',
+  'map',
+  'route',
+  'ruta',
+  'muestra\\w*',
+  'mostrar',
+  'visit\\w*',
+  'lieux?\\s+a\\s+visiter',
+  'places?\\s+to\\s+visit'
+])
 
 function normalize(text: string): string {
   return text
@@ -522,6 +556,14 @@ export function classifyVisualIntent(text: string): VisualIntentResult {
       score: 0.1,
       reason:
         'non-visual intent (greeting / translation / summary / simple code / explanatory question)'
+    }
+  }
+
+  if (TRAVEL_RE.test(t) && TRAVEL_PLANNING_RE.test(t)) {
+    return {
+      intent: 'required',
+      score: 0.92,
+      reason: 'travel planning request suited to the interactive travel UI'
     }
   }
 

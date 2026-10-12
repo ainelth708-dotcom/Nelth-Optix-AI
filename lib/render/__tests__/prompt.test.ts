@@ -41,6 +41,9 @@ describe('render prompts', () => {
 
     expect(prompt).toContain('```openui')
     expect(prompt).toContain('TravelMap')
+    expect(prompt).toContain(
+      'Never create or link a separate HTML file for these requests.'
+    )
     expect(prompt).toContain('Table')
     expect(prompt).not.toContain('RFC 6902')
   })
