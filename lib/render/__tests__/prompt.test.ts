@@ -45,6 +45,8 @@ describe('render prompts', () => {
       'Never create or link a separate HTML file for these requests.'
     )
     expect(prompt).toContain('Table')
+    expect(prompt).toContain('calculators, quizzes, planners, configurators')
+    expect(prompt).toContain('prefer concise natural prose')
     expect(prompt).not.toContain('RFC 6902')
   })
 })

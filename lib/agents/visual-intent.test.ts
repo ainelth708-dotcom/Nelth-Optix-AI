@@ -13,7 +13,10 @@ describe('classifyVisualIntent', () => {
   test.each([
     'Show this data as a chart',
     'Create a tip calculator',
-    'Compare these three models'
+    'Compare these three models',
+    'Create an interactive quiz about French vocabulary',
+    'Crée un planificateur de budget interactif',
+    'Build a product configurator with selectable options'
   ])('enables a useful native UI for "%s"', prompt => {
     expect(classifyVisualIntent(prompt).intent).not.toBe('not_needed')
   })

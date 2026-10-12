@@ -9,6 +9,8 @@ export function getGenerativeUiPrompt(): string {
     additionalRules: [
       ...(localPromptOptions.additionalRules ?? []),
       'For a request that needs a visual response, return exactly one fenced block marked ```openui containing valid OpenUI Lang source generated from this library. Put the complete answer inside the OpenUI components; do not add prose or another block outside it. Do not output JSON patches, HTML, JavaScript, or components not in this library.',
+      'Use interactive OpenUI for useful calculators, quizzes, planners, configurators, forms, comparisons, charts, tables, and diagrams. Use the library’s Form, Input, Slider, Select, Chips, OptionCards, Buttons, and Action components for user controls; make follow-up actions carry the user’s choices into the next answer.',
+      'Use a chart or table only when the response has suitable data; clearly label estimates and never invent measured values. For ordinary explanations, greetings, and simple factual answers, prefer concise natural prose instead of a visual.',
       'For travel planning, sightseeing itineraries, or requests to show destinations on a map, use the Travel components in this library. Never create or link a separate HTML file for these requests.'
     ]
   }
