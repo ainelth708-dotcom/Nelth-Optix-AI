@@ -3,24 +3,22 @@ import { describe, expect, it } from 'vitest'
 import { summarizeGenui } from '@/lib/analytics/genui-summary'
 
 const imageBlock = [
-  '```spec',
-  '{"op":"add","path":"/root","value":"grid"}',
-  '{"op":"add","path":"/elements/grid","value":{"type":"Grid","props":{"columns":2},"children":["img1","img2"]}}',
-  '{"op":"add","path":"/elements/img1","value":{"type":"Image","props":{"src":"https://example.com/a.jpg"},"children":[]}}',
-  '{"op":"add","path":"/elements/img2","value":{"type":"Image","props":{"src":"https://example.com/b.jpg"},"children":[]}}',
+  '```openui',
+  'root = Card([gallery])',
+  'gallery = ImageGallery([{"src":"https://example.com/a.jpg"}, {"src":"https://example.com/b.jpg"}])',
   '```'
 ].join('\n')
 
 const relatedBlock = [
-  '```spec',
-  '{"op":"add","path":"/root","value":"main"}',
-  '{"op":"add","path":"/elements/main","value":{"type":"Stack","props":{},"children":["q1"]}}',
-  '{"op":"add","path":"/elements/q1","value":{"type":"Button","props":{"text":"Q1","variant":"link"},"children":[]}}',
+  '```openui',
+  'root = Card([followUps])',
+  'followUps = FollowUpBlock([q1])',
+  'q1 = FollowUpItem("Q1")',
   '```'
 ].join('\n')
 
 describe('summarizeGenui', () => {
-  it('returns null when there are no spec blocks', () => {
+  it('returns null when there are no generated UI blocks', () => {
     expect(summarizeGenui('just some markdown text')).toBeNull()
   })
 
@@ -34,7 +32,7 @@ describe('summarizeGenui', () => {
       imageCount: 2,
       hasImage: true,
       hasRelated: true,
-      componentTypes: ['Grid', 'Image']
+      componentTypes: ['Card', 'ImageGallery']
     })
   })
 

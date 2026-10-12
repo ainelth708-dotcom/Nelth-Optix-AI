@@ -1,6 +1,6 @@
 /**
- * Groups runs of consecutive Markdown image lines (`![alt](url)`) into modern
- * ```spec gallery blocks (Grid + Image), rendered with zoom dialog + credits.
+ * Groups runs of consecutive Markdown image lines (`![alt](url)`) into OpenUI
+ * ImageGallery blocks, rendered with the framework's built-in gallery.
  *
  * - Only complete image-only lines are converted (streaming-safe: a partially
  *   streamed image line stays Markdown until its URL is complete).
@@ -20,39 +20,16 @@ const FENCE_RE = /^\s*```/
 
 type MarkdownImage = { alt: string; url: string }
 
-function toGallerySpec(images: MarkdownImage[], galleryId: string): string[] {
-  const ids = images.map((_, j) => `${galleryId}img${j + 1}`)
-  const lines = [
-    '```spec',
-    JSON.stringify({ op: 'add', path: '/root', value: galleryId }),
-    JSON.stringify({
-      op: 'add',
-      path: `/elements/${galleryId}`,
-      value: {
-        type: 'Grid',
-        props: { columns: images.length, gap: 'sm' },
-        children: ids
-      }
-    })
-  ]
-  images.forEach((img, j) => {
-    lines.push(
+function toGalleryOpenUI(images: MarkdownImage[]): string[] {
+  const gallery = `ImageGallery([${images
+    .map(image =>
       JSON.stringify({
-        op: 'add',
-        path: `/elements/${ids[j]}`,
-        value: {
-          type: 'Image',
-          props: {
-            src: img.url,
-            ...(img.alt ? { title: img.alt } : {})
-          },
-          children: []
-        }
+        src: image.url,
+        ...(image.alt ? { alt: image.alt } : {})
       })
     )
-  })
-  lines.push('```')
-  return lines
+    .join(', ')}])`
+  return ['```openui', `root = Card([gallery])`, `gallery = ${gallery}`, '```']
 }
 
 export function groupMarkdownImages(
@@ -66,7 +43,6 @@ export function groupMarkdownImages(
   let run: MarkdownImage[] = []
   let pendingBlanks: string[] = []
   let inFence = false
-  let galleryCount = 0
 
   const flush = () => {
     if (run.length === 0) {
@@ -82,8 +58,7 @@ export function groupMarkdownImages(
     if (kept.length === 1) {
       out.push(`![${kept[0].alt}](${kept[0].url})`)
     } else {
-      galleryCount += 1
-      out.push(...toGallerySpec(kept, `gallery${galleryCount}`))
+      out.push(...toGalleryOpenUI(kept))
     }
     run = []
     // Blank lines collected after the run go back after it (order preserved).

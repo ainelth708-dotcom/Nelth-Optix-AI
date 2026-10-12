@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import { groupMarkdownImages } from '@/lib/render/group-markdown-images'
-import { createSpecFenceEvaluator } from '@/lib/render/spec-fence'
 
 describe('groupMarkdownImages', () => {
   it('leaves text without images untouched', () => {
@@ -14,7 +13,7 @@ describe('groupMarkdownImages', () => {
     expect(groupMarkdownImages(text)).toBe(text)
   })
 
-  it('groups consecutive images into a spec gallery in order', () => {
+  it('groups consecutive images into an OpenUI gallery in order', () => {
     const text = [
       'Voici :',
       '',
@@ -26,13 +25,13 @@ describe('groupMarkdownImages', () => {
       'https://a.test/1.jpg'
     ].join('\n')
     const out = groupMarkdownImages(text)
-    expect(out).toContain('```spec')
-    expect(out).toContain('"columns":3')
+    expect(out).toContain('```openui')
+    expect(out).toContain('ImageGallery([')
     expect(out).not.toContain('![First]')
-    // Order preserved: img1 before img2 before img3.
-    const i1 = out.indexOf('gallery1img1')
-    const i2 = out.indexOf('gallery1img2')
-    const i3 = out.indexOf('gallery1img3')
+    // Order is preserved from the original Markdown lines.
+    const i1 = out.indexOf('https://a.test/1.jpg')
+    const i2 = out.indexOf('https://a.test/2.jpg')
+    const i3 = out.indexOf('https://a.test/3.jpg')
     expect(i1).toBeGreaterThan(-1)
     expect(i2).toBeGreaterThan(i1)
     expect(i3).toBeGreaterThan(i2)
@@ -59,12 +58,12 @@ describe('groupMarkdownImages', () => {
       '![Other](https://a.test/2.jpg)'
     ].join('\n')
     const out = groupMarkdownImages(text)
-    expect(out).toContain('```spec')
+    expect(out).toContain('```openui')
     // URL 1 appears once as a src (plus once in the children id list check below).
     const srcCount = (out.match(/"src":"https:\/\/a\.test\/1\.jpg"/g) || [])
       .length
     expect(srcCount).toBe(1)
-    expect(out).toContain('"columns":2')
+    expect(out).toContain('"alt":"Other"')
   })
 
   it('caps a run at 3 images, keeping the first ones in order', () => {
@@ -76,26 +75,19 @@ describe('groupMarkdownImages', () => {
       '![Five](https://a.test/5.jpg)'
     ].join('\n')
     const out = groupMarkdownImages(text)
-    expect(out).toContain('"columns":3')
+    expect(out).toContain('ImageGallery([')
     expect(out).not.toContain('a.test/4.jpg')
     expect(out).not.toContain('a.test/5.jpg')
   })
 
-  it('generated gallery evaluates to a ready Grid spec', () => {
+  it('generated gallery is a fenced OpenUI Lang component tree', () => {
     const text = [
       '![First](https://a.test/1.jpg)',
       '![Second](https://a.test/2.jpg)',
       '![Third](https://a.test/3.jpg)'
     ].join('\n')
     const out = groupMarkdownImages(text)
-    const fence = out.split('```spec')[1].split('```')[0]
-    const result = createSpecFenceEvaluator().evaluate(fence.trim())
-    expect(result.status).toBe('ready')
-    if (result.status !== 'ready') return
-    const elements = result.spec.elements as Record<string, { type?: string }>
-    const grid = Object.values(elements).find(v => v?.type === 'Grid')
-    expect(grid).toBeDefined()
-    const images = Object.values(elements).filter(v => v?.type === 'Image')
-    expect(images).toHaveLength(3)
+    expect(out).toMatch(/^```openui\nroot = Card\(\[gallery\]\)\ngallery = ImageGallery\(/)
+    expect(out.match(/"src":"https:\/\/a\.test\/\d\.jpg"/g)).toHaveLength(3)
   })
 })

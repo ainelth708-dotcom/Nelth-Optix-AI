@@ -17,8 +17,6 @@ import { getAdaptiveModePrompt } from '@/lib/agents/prompts/search-mode-prompts'
 import { createSearchTool } from '@/lib/tools/search'
 import { getModel } from '@/lib/utils/registry'
 
-import { parseSpecBlock } from '../parse-spec-block'
-
 const RUN = process.env.RUN_LLM_E2E === '1'
 const MODEL = process.env.LLM_E2E_MODEL || 'openai:gpt-4o-mini'
 
@@ -72,18 +70,15 @@ function createMockSearchTool() {
   })
 }
 
-function extractSpecBlocks(markdown: string): string[] {
-  const blocks: string[] = []
-  const regex = /```spec\n([\s\S]*?)```/g
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(markdown)) !== null) {
-    blocks.push(match[1])
-  }
-  return blocks
+function extractMarkdownImageUrls(markdown: string): string[] {
+  return Array.from(
+    markdown.matchAll(/^!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/gm),
+    match => match[1]
+  )
 }
 
 describe.skipIf(!RUN)('LLM inline image output (E2E)', () => {
-  test('LLM emits inline image spec block using search tool images', async () => {
+  test('LLM emits inline image links using search tool images', async () => {
     const { text } = await generateText({
       model: getModel(MODEL),
       system: getAdaptiveModePrompt(),
@@ -97,28 +92,11 @@ describe.skipIf(!RUN)('LLM inline image output (E2E)', () => {
 
     console.log('[E2E] Model output:\n', text)
 
-    const blocks = extractSpecBlocks(text)
-    expect(blocks.length).toBeGreaterThanOrEqual(1)
-
-    // Parse every spec block and check at least one contains an Image.
     const fixtureSrcs = new Set(FIXTURE_IMAGES.map(i => i.url))
-    let imageCount = 0
-
-    for (const source of blocks) {
-      const spec = parseSpecBlock(source)
-      for (const el of Object.values(spec.elements) as Array<{
-        type: string
-        props: Record<string, unknown>
-      }>) {
-        if (el.type === 'Image') {
-          imageCount++
-          const src = el.props.src as string
-          // src MUST be one of the fixture image URLs — no fabrication.
-          expect(fixtureSrcs.has(src)).toBe(true)
-        }
-      }
+    const imageUrls = extractMarkdownImageUrls(text)
+    expect(imageUrls.length).toBeGreaterThanOrEqual(1)
+    for (const url of imageUrls) {
+      expect(fixtureSrcs.has(url)).toBe(true)
     }
-
-    expect(imageCount).toBeGreaterThanOrEqual(1)
   }, 120_000)
 })

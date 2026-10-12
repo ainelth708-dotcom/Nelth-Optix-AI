@@ -11,7 +11,7 @@ Your AI assistant for answers, documents, mail and calendar — with your apps c
 ## Features
 
 - AI-powered search with grounded, cited answers
-- Open Intelligent UI — rich answers stream through the original OpenUI Lang renderer and component library, including interactive travel maps and itineraries
+- OpenUI Generative UI — rich answers, image galleries, follow-up actions, maps and itineraries use the OpenUI Lang renderer
 - Search modes: Quick and Adaptive
 - Model selector with dynamic provider detection (OpenAI, Anthropic, Google, Ollama, Vercel AI Gateway, OpenAI-compatible providers)
 - Multiple search providers (Tavily, SearXNG, Brave, Exa)
@@ -22,9 +22,9 @@ Your AI assistant for answers, documents, mail and calendar — with your apps c
 - Guest mode for anonymous usage
 - Docker deployment ready
 
-### Open Intelligent UI
+### OpenUI Generative UI
 
-Nelth-IA reuses the original [Open Intelligent UI](https://github.com/thesysdev/open-intelligent-ui) travel components and the [OpenUI Lang](https://github.com/thesysdev/openui) renderer inside existing assistant messages. Replies continue through Nelth-IA's selected model, provider router, chat history, and Vercel AI SDK stream; no Thesys API key or separate backend service is required. Visual fidelity depends on the selected model following the OpenUI Lang schema. Travel photo lookups and route geometry use the original Wikipedia and OSRM API routes.
+Nelth-IA uses the official [OpenUI framework](https://github.com/thesysdev/openui) and its OpenUI Lang renderer inside existing assistant messages. The travel library also reuses components adapted from [Open Intelligent UI](https://github.com/thesysdev/open-intelligent-ui), including MapLibre maps, itinerary editing, image fallbacks, and customization forms. New generated visual answers, galleries, and follow-up actions use OpenUI Lang; legacy saved `spec` messages remain readable for conversation-history compatibility. Replies continue through Nelth-IA's selected model, provider router, chat history, and Vercel AI SDK stream; no Thesys API key or separate backend service is required. Travel photo lookups and route geometry use the existing Wikipedia and OSRM API routes.
 
 ## Installation
 

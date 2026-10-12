@@ -10,7 +10,7 @@ import {
   type StreamdownProps
 } from 'streamdown'
 
-import { extractOpenUIResponse } from '@/lib/openui/response'
+import { splitOpenUIResponses } from '@/lib/openui/response'
 import { groupMarkdownImages } from '@/lib/render/group-markdown-images'
 import { mergeStreamdownSpecRenderer } from '@/lib/render/streamdown-spec'
 import { wrapBareSpecBlocks } from '@/lib/render/wrap-bare-spec'
@@ -58,23 +58,20 @@ export function MarkdownMessage({
     []
   )
 
-  const openUIResponse = allowOpenUI
-    ? extractOpenUIResponse(message || '')
-    : null
-
-  if (openUIResponse !== null) {
-    return (
-      <div className={cn('openui-answer', className)}>
-        <OpenUIResponse response={openUIResponse} isStreaming={isStreaming} />
-      </div>
-    )
-  }
-
   // Process citations to replace [number](#toolCallId) with [number](actual-url).
-  // Consecutive Markdown images become a modern gallery grid (spec fence).
-  const processedMessage = groupMarkdownImages(
-    wrapBareSpecBlocks(processCitations(message || '', citationMaps || {}))
-  )
+  // Consecutive Markdown images become OpenUI galleries.
+  const processedMessage = allowOpenUI
+    ? groupMarkdownImages(
+        wrapBareSpecBlocks(
+          processCitations(message || '', citationMaps || {})
+        )
+      )
+    : wrapBareSpecBlocks(
+        processCitations(message || '', citationMaps || {})
+      )
+  const segments = allowOpenUI
+    ? splitOpenUIResponses(processedMessage)
+    : [{ type: 'markdown' as const, content: processedMessage }]
 
   return (
     <CitationProvider citationMaps={citationMaps}>
@@ -84,18 +81,30 @@ export function MarkdownMessage({
           className
         )}
       >
-        <Streamdown
-          {...streamdownProps}
-          rehypePlugins={rehypePlugins}
-          components={
-            {
-              ...defaultComponents,
-              ...customComponents
-            } as unknown as StreamdownProps['components']
-          }
-        >
-          {processedMessage}
-        </Streamdown>
+        {segments.map((segment, index) =>
+          segment.type === 'openui' ? (
+            <div className="openui-answer" key={`openui-${index}`}>
+              <OpenUIResponse
+                response={segment.content}
+                isStreaming={isStreaming}
+              />
+            </div>
+          ) : (
+            <Streamdown
+              key={`markdown-${index}`}
+              {...streamdownProps}
+              rehypePlugins={rehypePlugins}
+              components={
+                {
+                  ...defaultComponents,
+                  ...customComponents
+                } as unknown as StreamdownProps['components']
+              }
+            >
+              {segment.content}
+            </Streamdown>
+          )
+        )}
       </div>
     </CitationProvider>
   )

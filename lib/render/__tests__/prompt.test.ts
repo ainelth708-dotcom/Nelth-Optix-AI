@@ -7,33 +7,19 @@ import {
 } from '../prompt'
 
 describe('render prompts', () => {
-  test('includes related questions by default for substantive answers', () => {
+  test('uses OpenUI Lang follow-ups for substantive answers', () => {
     const prompt = getRelatedQuestionsSpecPrompt()
 
-    expect(prompt).toContain('expected on every substantive answer')
-    expect(prompt).toContain(
-      'Include the spec block whenever the answer contains substantive information'
-    )
-    expect(prompt).toContain(
-      'SKIP the spec block entirely (output nothing) only in these cases'
-    )
-    expect(prompt).toContain('Greetings, small talk, or thanks')
-    expect(prompt).toContain(
-      'Trivial one-off lookups with no natural next step'
-    )
-    expect(prompt).toContain('Meta/operational replies')
-    expect(prompt).toContain('Cases where you could not answer')
-    expect(prompt).toContain(
-      'Short answers where suggested next questions would be generic or forced'
-    )
-    expect(prompt).toContain('These skip cases are the exception')
-    expect(prompt).not.toContain('RELATED QUESTIONS (MANDATORY)')
-    expect(prompt).not.toContain('MUST generate exactly 3')
-    expect(prompt).not.toContain('Emit exactly ONE related questions')
+    expect(prompt).toContain('exactly 3 concise follow-up questions')
+    expect(prompt).toContain('```openui')
+    expect(prompt).toContain('FollowUpBlock([q1, q2, q3])')
+    expect(prompt).toContain('Skip follow-ups for greetings')
+    expect(prompt).not.toContain('```spec')
   })
 
-  test('describes the related block as optional alongside image specs', () => {
-    expect(getImageSpecPrompt()).toContain('which is itself optional')
+  test('keeps image output compatible with the OpenUI image gallery', () => {
+    expect(getImageSpecPrompt()).toContain('OpenUI ImageGallery')
+    expect(getImageSpecPrompt()).not.toContain('Grid + Image')
   })
 
   test('uses the original OpenUI library and OpenUI Lang response format', () => {

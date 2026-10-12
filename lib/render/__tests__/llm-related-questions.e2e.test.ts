@@ -15,10 +15,9 @@ import { z } from 'zod'
 import cloudConfig from '@/config/models/cloud.json'
 
 import { getAdaptiveModePrompt } from '@/lib/agents/prompts/search-mode-prompts'
+import { splitOpenUIResponses } from '@/lib/openui/response'
 import { createSearchTool } from '@/lib/tools/search'
 import { getModel } from '@/lib/utils/registry'
-
-import { parseSpecBlock } from '../parse-spec-block'
 
 const RUN = process.env.RUN_LLM_E2E === '1'
 
@@ -64,37 +63,12 @@ function createMockSearchTool() {
   })
 }
 
-function extractSpecBlocks(markdown: string): string[] {
-  const blocks: string[] = []
-  const regex = /```spec\n([\s\S]*?)```/g
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(markdown)) !== null) {
-    blocks.push(match[1])
-  }
-  return blocks
-}
-
-type SpecElement = {
-  type: string
-  props: Record<string, unknown>
-  on?: {
-    press?: {
-      action?: string
-      params?: Record<string, unknown>
-    }
-  }
-}
-
-function findRelatedBlocks(markdown: string): SpecElement[][] {
-  return extractSpecBlocks(markdown)
-    .map(source => parseSpecBlock(source))
-    .map(spec => Object.values(spec.elements) as SpecElement[])
-    .filter(elements =>
-      elements.some(
-        element =>
-          element.type === 'Heading' && element.props.title === 'Related'
-      )
+function findRelatedBlocks(markdown: string): string[] {
+  return splitOpenUIResponses(markdown)
+    .flatMap(segment =>
+      segment.type === 'openui' ? [segment.content] : []
     )
+    .filter(source => source.includes('FollowUpBlock'))
 }
 
 async function generateAnswer(prompt: string): Promise<string> {
@@ -113,7 +87,7 @@ async function generateAnswer(prompt: string): Promise<string> {
 }
 
 describe.skipIf(!RUN)('LLM related questions output (E2E)', () => {
-  test('substantive answer includes three related question buttons', async () => {
+  test('substantive answer includes three OpenUI follow-up items', async () => {
     const text = await generateAnswer(
       'Compare the main Mount Fuji climbing routes and recommend who each route suits.'
     )
@@ -123,15 +97,8 @@ describe.skipIf(!RUN)('LLM related questions output (E2E)', () => {
     const relatedBlocks = findRelatedBlocks(text)
     expect(relatedBlocks.length).toBeGreaterThanOrEqual(1)
 
-    const buttons = relatedBlocks[0].filter(
-      element => element.type === 'Button'
-    )
-    expect(buttons).toHaveLength(3)
-
-    for (const button of buttons) {
-      expect(button.on?.press?.action).toBe('submitQuery')
-      expect(button.props.text).toBe(button.on?.press?.params?.query)
-    }
+    const items = relatedBlocks[0].match(/\b\w+\s*=\s*FollowUpItem\(/g) ?? []
+    expect(items).toHaveLength(3)
   }, 120_000)
 
   test('trivial answer omits the related questions block', async () => {
