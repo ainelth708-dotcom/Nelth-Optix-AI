@@ -15,10 +15,8 @@ import { toast } from 'sonner'
 import { isOpenUILangResponse } from '@/lib/openui/content-format'
 import { pageLibrary } from '@/lib/openui/page-library'
 import { splitOpenUIResponses } from '@/lib/openui/response'
-import {
-  type OpenUISearchCall,
-  splitOpenUISearchMetadata
-} from '@/lib/openui/search-metadata'
+import { splitOpenUISearchMetadata } from '@/lib/openui/search-metadata'
+import { useSearchResults } from '@/lib/openui/search-results-context'
 import type { SearchResultItem } from '@/lib/types'
 import type { ToolPart } from '@/lib/types/ai'
 import { processCitations } from '@/lib/utils/citation'
@@ -110,42 +108,48 @@ export function OpenUIAssistantMessage({
   const setMessages = useThread(state => state.setMessages)
   const { open: openArtifact } = useArtifact()
 
-  const { content, search } = useMemo(() => {
+  const {
+    results: searchResults,
+    query: searchQuery,
+    images: searchImages
+  } = useSearchResults()
+
+  // Strip the trailing search-metadata envelope from the displayed text (the
+  // route still appends it at the end of the stream). Citation maps come from
+  // the preloaded search results pushed via the nelth.search.results SSE
+  // event — available from the very first chunk, not only at the end.
+  const content = useMemo(() => {
     try {
       const parsed = splitOpenUISearchMetadata(message.content ?? '')
-      return {
-        content: parsed.content,
-        search: parsed.metadata['preloaded-search'] as
-          | OpenUISearchCall
-          | undefined
-      }
+      return parsed.content
     } catch (error) {
       console.error('Unable to read OpenUI search citations:', error)
-      return { content: message.content ?? '', search: undefined }
+      return message.content ?? ''
     }
   }, [message.content])
 
   const citationMaps = useMemo(() => {
-    if (!search || search.results.length === 0) return undefined
+    if (!searchResults || searchResults.length === 0) return undefined
     const citationMap: Record<number, SearchResultItem> = {}
-    search.results.forEach((result, index) => {
+    searchResults.forEach((result, index) => {
       citationMap[index + 1] = result
     })
     return { 'preloaded-search': citationMap }
-  }, [search])
+  }, [searchResults])
 
-  const searchResults = useMemo(() => search?.results ?? [], [search])
+  const searchResultsFromContext = searchResults
 
   // The same synthetic tool part the classic chat surfaces for preloaded
   // searches, so the right-hand panel renders web results and images.
   const searchPart = useMemo<ToolPart<'search'> | undefined>(() => {
-    if (!search || searchResults.length === 0) return undefined
+    if (!searchResultsFromContext || searchResultsFromContext.length === 0)
+      return undefined
     return {
       type: 'tool-search',
       toolCallId: 'preloaded-search',
       state: 'output-available',
       input: {
-        query: search.query,
+        query: searchQuery,
         type: 'optimized',
         content_types: ['web'],
         max_results: 10,
@@ -155,14 +159,14 @@ export function OpenUIAssistantMessage({
       },
       output: {
         state: 'complete',
-        query: search.query,
-        results: searchResults,
-        images: search.images ?? [],
-        number_of_results: searchResults.length,
+        query: searchQuery,
+        results: searchResultsFromContext,
+        images: searchImages,
+        number_of_results: searchResultsFromContext.length,
         toolCallId: 'preloaded-search'
       }
     }
-  }, [search, searchResults])
+  }, [searchResultsFromContext, searchQuery, searchImages])
 
   // ChatGPT Intelligent UI rule: basic prompts keep the text-only format.
   // The model may answer in plain Markdown; only OpenUI Lang programs go
@@ -313,26 +317,8 @@ export function OpenUIAssistantMessage({
           )}
         </CitationProvider>
       </div>
-      {!isStreaming && (
+      {(!isStreaming || searchResults.length > 0) && (
         <div className="mt-2 flex flex-wrap items-center gap-1">
-          <button
-            type="button"
-            onClick={() => void regenerateAnswer()}
-            aria-label="Régénérer la réponse"
-            className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <RotateCcw className="size-3.5" />
-            Régénérer
-          </button>
-          <button
-            type="button"
-            onClick={() => void copyAnswer()}
-            aria-label="Copier la réponse"
-            className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <Copy className="size-3.5" />
-            Copier
-          </button>
           {searchResults.length > 0 && (
             <div
               role="button"
@@ -350,6 +336,28 @@ export function OpenUIAssistantMessage({
               <SourceFavicons results={searchResults} maxDisplay={5} />
               <span>{searchResults.length} sources</span>
             </div>
+          )}
+          {!isStreaming && (
+            <>
+              <button
+                type="button"
+                onClick={() => void regenerateAnswer()}
+                aria-label="Régénérer la réponse"
+                className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <RotateCcw className="size-3.5" />
+                Régénérer
+              </button>
+              <button
+                type="button"
+                onClick={() => void copyAnswer()}
+                aria-label="Copier la réponse"
+                className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <Copy className="size-3.5" />
+                Copier
+              </button>
+            </>
           )}
         </div>
       )}

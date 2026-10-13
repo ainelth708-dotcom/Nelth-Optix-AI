@@ -383,6 +383,16 @@ export async function POST(request: Request) {
               console.info(
                 `[OpenUI] Preloaded ${preloadedSearch.results.length} search results`
               )
+              // Send results to the client as early as possible so inline
+              // citations ([n]) resolve into clickable citation components
+              // while the answer still streams — no need to wait for the
+              // trailing metadata envelope at the end of the stream.
+              send({
+                type: 'nelth.search.results',
+                query: preloadedSearch.query,
+                results: preloadedSearch.results,
+                images: preloadedSearch.images
+              })
             }
           } catch (searchError) {
             console.warn(

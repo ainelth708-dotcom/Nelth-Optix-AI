@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { ActionEvent } from '@openuidev/react-lang'
 import {
@@ -26,9 +26,17 @@ import {
 import { toast } from 'sonner'
 
 import {
+  SearchResultsProvider,
+  useSearchResults
+} from '@/lib/openui/search-results-context'
+import {
+  createSearchResultsWatcher,
   createSearchStatusWatcher,
+  registerSearchResultsCallback,
+  searchResultsCallback,
   WEB_SEARCH_STATUS_ATTRIBUTE
 } from '@/lib/openui/web-search-status'
+import type { SearchResultImage, SearchResultItem } from '@/lib/types'
 
 import { runLibraryAction } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/actions'
 import {
@@ -50,12 +58,21 @@ const OPENUI_CHAT_PATH = '/api/openui/chat'
 // events; the watcher flags <html> so the stylesheet can swap the loading
 // shimmer's "Working" label for the web-search one, then back again.
 async function watchSearchStatus(stream: ReadableStream<Uint8Array>) {
-  const push = createSearchStatusWatcher(searching => {
+  const pushStatus = createSearchStatusWatcher(searching => {
     document.documentElement.toggleAttribute(
       WEB_SEARCH_STATUS_ATTRIBUTE,
       searching
     )
   })
+  const pushResults = createSearchResultsWatcher((results, query, images) => {
+    if (searchResultsCallback) {
+      searchResultsCallback(results, query, images)
+    }
+  })
+  const push = (chunk: string) => {
+    pushStatus(chunk)
+    pushResults(chunk)
+  }
   const reader = stream.getReader()
   const decoder = new TextDecoder()
 
@@ -298,6 +315,35 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
     [isGuest]
   )
 
+  // Web search results preloaded by the route, made available to the assistant
+  // message renderer so inline citations ([n]) resolve into clickable
+  // citation components while the answer still streams.
+  const [searchResults, setSearchResultsState] = useState<SearchResultItem[]>(
+    []
+  )
+  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [searchImages, setSearchImages] = useState<SearchResultImage[]>([])
+
+  const setSearchResults = useCallback(
+    (
+      results: SearchResultItem[],
+      query: string,
+      images: SearchResultImage[]
+    ) => {
+      setSearchResultsState(results)
+      setSearchQuery(query)
+      setSearchImages(images)
+    },
+    []
+  )
+
+  useEffect(() => {
+    registerSearchResultsCallback(setSearchResults)
+    return () => {
+      registerSearchResultsCallback(() => {})
+    }
+  }, [setSearchResults])
+
   useEffect(() => {
     document.documentElement.setAttribute('data-openui-theme', mode)
 
@@ -322,40 +368,47 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
 
   return (
     <div className="openui-integration-shell">
-      <AgentInterface
-        llm={llm}
-        storage={storage}
-        componentLibrary={library}
-        components={{ AssistantMessage: OpenUIAssistantMessage }}
-        onAction={onAction}
-        agentName="Nelth-IA"
-        logoUrl="/nelth-logo.svg"
-        theme={{ mode }}
-        starters={starters}
+      <SearchResultsProvider
+        results={searchResults}
+        query={searchQuery}
+        images={searchImages}
+        setResults={setSearchResults}
       >
-        <AgentInterface.SidebarHeader />
-        <AgentInterface.SidebarFooter>
-          <AgentInterface.ThemeModeToggle
-            mode={mode}
-            onModeChange={setPreference}
-          />
-        </AgentInterface.SidebarFooter>
-        <AgentInterface.ThreadHeader showChatTitle={false} />
-        <AgentInterface.Welcome
-          image={
-            <NelthLogo
-              variant="periodic"
-              className="welcome-mascot"
-              aria-hidden="true"
+        <AgentInterface
+          llm={llm}
+          storage={storage}
+          componentLibrary={library}
+          components={{ AssistantMessage: OpenUIAssistantMessage }}
+          onAction={onAction}
+          agentName="Nelth-IA"
+          logoUrl="/nelth-logo.svg"
+          theme={{ mode }}
+          starters={starters}
+        >
+          <AgentInterface.SidebarHeader />
+          <AgentInterface.SidebarFooter>
+            <AgentInterface.ThemeModeToggle
+              mode={mode}
+              onModeChange={setPreference}
             />
-          }
-          title="Que puis-je faire pour vous ?"
-          starterVariant="card"
-          glowAnimation
-        />
-        {isGuest ? <SaveMessages /> : <SaveDatabaseMessages />}
-        <FollowStreamTail />
-      </AgentInterface>
+          </AgentInterface.SidebarFooter>
+          <AgentInterface.ThreadHeader showChatTitle={false} />
+          <AgentInterface.Welcome
+            image={
+              <NelthLogo
+                variant="periodic"
+                className="welcome-mascot"
+                aria-hidden="true"
+              />
+            }
+            title="Que puis-je faire pour vous ?"
+            starterVariant="card"
+            glowAnimation
+          />
+          {isGuest ? <SaveMessages /> : <SaveDatabaseMessages />}
+          <FollowStreamTail />
+        </AgentInterface>
+      </SearchResultsProvider>
     </div>
   )
 }
