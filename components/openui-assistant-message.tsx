@@ -30,6 +30,47 @@ import { CitationProvider } from './openui/citation-context'
 import { MarkdownMessage } from './openui/message'
 import { SourceFavicons } from './openui/source-favicons'
 
+// Keyframes `sd-fadeIn` + `[data-sd-animate]` rules: same stylesheet the
+// Streamdown Markdown path uses so the rich-UI blocks can fade in too.
+import 'streamdown/styles.css'
+
+/**
+ * Renders an OpenUI Lang block with a fade-in entry while it streams, like
+ * the Streamdown Markdown path. The container keeps a stable key so the
+ * animation plays once when the run starts and is never re-triggered per
+ * chunk — no visual latency is added to the stream.
+ */
+function RichBlock({
+  response,
+  isStreaming,
+  onAction,
+  onError
+}: {
+  response: string
+  isStreaming: boolean
+  onAction: (event: ActionEvent) => void
+  onError: (errors: unknown) => void
+}) {
+  return (
+    <div
+      data-sd-animate
+      style={{
+        animation: isStreaming ? 'sd-fadeIn 200ms ease-out both' : 'none'
+      }}
+    >
+      <Renderer
+        response={response}
+        library={pageLibrary}
+        isStreaming={isStreaming}
+        onAction={onAction}
+        onError={errors => {
+          onError(errors)
+        }}
+      />
+    </div>
+  )
+}
+
 function continueMessage(event: ActionEvent): string {
   const context: unknown[] = [`User clicked: ${event.humanFriendlyMessage}`]
   const actionContext = event.params?.context
@@ -232,9 +273,8 @@ export function OpenUIAssistantMessage({
       <div ref={answerRef} className="openui-answer">
         <CitationProvider citationMaps={citationMaps}>
           {isLangResponse && !mixed ? (
-            <Renderer
+            <RichBlock
               response={renderedLang}
-              library={pageLibrary}
               isStreaming={isStreaming}
               onAction={handleAction}
               onError={errors => {
@@ -245,13 +285,12 @@ export function OpenUIAssistantMessage({
             <>
               {segments.map((segment, index) =>
                 segment.type === 'openui' ? (
-                  <Renderer
+                  <RichBlock
                     key={`openui-${index}`}
                     response={processCitations(
                       segment.content,
                       citationMaps ?? {}
                     )}
-                    library={pageLibrary}
                     isStreaming={isStreaming}
                     onAction={handleAction}
                     onError={errors => {
