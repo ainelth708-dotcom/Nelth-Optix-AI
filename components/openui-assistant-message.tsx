@@ -14,9 +14,11 @@ import { toast } from 'sonner'
 
 import { isOpenUILangResponse } from '@/lib/openui/content-format'
 import { pageLibrary } from '@/lib/openui/page-library'
+import { splitOpenUIResponses } from '@/lib/openui/response'
 import {
   type OpenUISearchCall,
-  splitOpenUISearchMetadata} from '@/lib/openui/search-metadata'
+  splitOpenUISearchMetadata
+} from '@/lib/openui/search-metadata'
 import type { SearchResultItem } from '@/lib/types'
 import type { ToolPart } from '@/lib/types/ai'
 import { processCitations } from '@/lib/utils/citation'
@@ -131,6 +133,16 @@ export function OpenUIAssistantMessage({
     [citationMaps, content, isLangResponse]
   )
 
+  // Découpe la réponse en segments Markdown / OpenUI Lang. Les cas purs
+  // (tout Markdown ou tout programme) conservent leur rendu actuel. Une
+  // réponse mêlant les deux est rendue segment par segment : le Renderer
+  // OpenUI ne conserve que ce qui est joignable depuis `root`, donc sans
+  // cela la prose autour d'un bloc ```openui disparaît silencieusement —
+  // et un programme invalide en cours de stream rend un blanc.
+  const segments = splitOpenUIResponses(content)
+  const hasOpenUI = segments.some(segment => segment.type === 'openui')
+  const mixed = hasOpenUI && segments.length > 1
+
   async function copyAnswer() {
     const visibleAnswer = answerRef.current?.innerText.trim()
     if (!visibleAnswer) {
@@ -162,7 +174,7 @@ export function OpenUIAssistantMessage({
       (typeof userMessage.content !== 'string' &&
         !Array.isArray(userMessage.content))
     ) {
-      toast.error("Impossible de retrouver la question à régénérer.")
+      toast.error('Impossible de retrouver la question à régénérer.')
       return
     }
 
@@ -219,7 +231,7 @@ export function OpenUIAssistantMessage({
     <div className="openui-answer-with-actions">
       <div ref={answerRef} className="openui-answer">
         <CitationProvider citationMaps={citationMaps}>
-          {isLangResponse ? (
+          {isLangResponse && !mixed ? (
             <Renderer
               response={renderedLang}
               library={pageLibrary}
@@ -230,11 +242,35 @@ export function OpenUIAssistantMessage({
               }}
             />
           ) : (
-            <MarkdownMessage
-              message={content}
-              citationMaps={citationMaps}
-              isStreaming={isStreaming}
-            />
+            <>
+              {segments.map((segment, index) =>
+                segment.type === 'openui' ? (
+                  <Renderer
+                    key={`openui-${index}`}
+                    response={processCitations(
+                      segment.content,
+                      citationMaps ?? {}
+                    )}
+                    library={pageLibrary}
+                    isStreaming={isStreaming}
+                    onAction={handleAction}
+                    onError={errors => {
+                      console.error(
+                        'OpenUI response validation errors:',
+                        errors
+                      )
+                    }}
+                  />
+                ) : (
+                  <MarkdownMessage
+                    key={`markdown-${index}`}
+                    message={segment.content}
+                    citationMaps={citationMaps}
+                    isStreaming={isStreaming}
+                  />
+                )
+              )}
+            </>
           )}
         </CitationProvider>
       </div>
