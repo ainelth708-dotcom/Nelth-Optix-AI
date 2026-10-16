@@ -44,11 +44,13 @@ function displayName(model: { id: string; name: string }): string {
 export default function SidebarModelSelector({
   modelSelectorData,
   isCloudDeployment = false,
-  isGuest = false
+  isGuest = false,
+  isOpenUI = false
 }: {
   modelSelectorData?: ModelSelectorData
   isCloudDeployment?: boolean
   isGuest?: boolean
+  isOpenUI?: boolean
 }) {
   const { state } = useSidebar()
   const isMobile = useIsMobile()
@@ -85,11 +87,13 @@ export default function SidebarModelSelector({
     )
   }
 
-  const position = isMobile
+  const position = isOpenUI
     ? 'right-3'
-    : state === 'expanded'
-      ? 'left-[calc(var(--sidebar-width)+8px)]'
-      : 'left-10'
+    : isMobile
+      ? 'right-3'
+      : state === 'expanded'
+        ? 'left-[calc(var(--sidebar-width)+8px)]'
+        : 'left-10'
 
   return (
     <div className={`fixed top-3 z-50 ${position}`}>

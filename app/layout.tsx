@@ -19,18 +19,11 @@ import { cn } from '@/lib/utils'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { Toaster } from '@/components/ui/sonner'
 
-import AppSidebar from '@/components/app-sidebar'
-import ArtifactRoot from '@/components/artifact/artifact-root'
-import FloatingAccountMenu from '@/components/floating-account-menu'
-import GuestMenu from '@/components/guest-menu'
-import Header from '@/components/header'
+import AppShellContent from '@/components/app-shell-content'
 import { I18nProvider } from '@/components/i18n-provider'
-import { KeyboardShortcutHandler } from '@/components/keyboard-shortcut-handler'
 import { LibraryProvider } from '@/components/library/library-context'
 import { PostHogProvider } from '@/components/posthog-provider'
-import SidebarModelSelector from '@/components/sidebar-model-selector'
 import { ThemeProvider } from '@/components/theme-provider'
-import UserMenu from '@/components/user-menu'
 
 import '@/lib/polyfills'
 
@@ -135,25 +128,15 @@ export default async function RootLayout({
                 <UserProvider hasUser={!!userId}>
                   <SidebarProvider defaultOpen={false}>
                     <LibraryProvider>
-                      {userId && <AppSidebar user={user} />}
-                      <SidebarModelSelector
+                      <AppShellContent
+                        user={user}
+                        userId={userId}
                         modelSelectorData={modelSelectorData}
                         isCloudDeployment={isCloudDeployment}
-                        isGuest={!userId}
-                      />
-                      <KeyboardShortcutHandler />
-                      <div className="flex flex-col flex-1 min-w-0">
-                        <Header user={user} />
-                        <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-                          <ArtifactRoot>{children}</ArtifactRoot>
-                        </main>
-                      </div>
+                      >
+                        {children}
+                      </AppShellContent>
                     </LibraryProvider>
-                    {/* Account avatar pinned to the bottom-left of the screen.
-
-                      Visible only when the sidebar is closed so it doesn't
-                      overlap the sidebar footer avatar. */}
-                    <FloatingAccountMenu user={user} />
                   </SidebarProvider>
                 </UserProvider>
               </PostHogProvider>

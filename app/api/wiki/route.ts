@@ -10,7 +10,10 @@ const HEADERS = { "User-Agent": "open-intelligent-ui (https://github.com/thesysd
 
 // A missing article is a real answer (cached); any other failure is retried next time.
 async function get(url: string) {
-  const response = await fetch(url, { headers: HEADERS });
+  const response = await fetch(url, {
+    headers: HEADERS,
+    signal: AbortSignal.timeout(8000)
+  });
   if (response.status === 404) return {};
   if (!response.ok) throw new Error(`Wikipedia ${response.status}`);
   return response.json();
@@ -40,9 +43,13 @@ export async function GET(req: Request) {
         if (photos.length >= 3) break;
       }
       info = { lat: summary?.coordinates?.lat, lng: summary?.coordinates?.lon, photos };
-      if (cache.size >= 500) cache.delete(cache.keys().next().value!);
+      if (cache.size >= 500) {
+        const oldestKey = cache.keys().next().value;
+        if (oldestKey !== undefined) cache.delete(oldestKey);
+      }
       cache.set(title, info);
-    } catch {
+    } catch (error) {
+      console.error("[OpenUI] Wikipedia lookup failed:", error);
       return Response.json({ error: { message: "Wikipedia unavailable" } }, { status: 502 });
     }
   }

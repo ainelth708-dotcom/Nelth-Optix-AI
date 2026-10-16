@@ -1,5 +1,5 @@
 const OPENUI_BLOCK =
-  /(^|\n)[ \t]*```openui(?:-lang)?[ \t]*\r?\n([\s\S]*?)(?:\r?\n```[ \t]*(?=\r?$|\n|$)|$)/gim
+  /(^|\n)[ \t]*```openui(?:-lang)?[ \t]*\r?\n([\s\S]*?)(?:\r?\n```[ \t]*(?=\r?$|\n|$)|$(?![\s\S]*\S))/gim
 
 export function extractOpenUIResponse(message: string): string | null {
   const match = /^\s*```openui(?:-lang)?[ \t]*\r?\n([\s\S]*)$/i.exec(message)

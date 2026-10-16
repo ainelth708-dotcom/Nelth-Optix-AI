@@ -11,7 +11,7 @@ Your AI assistant for answers, documents, mail and calendar — with your apps c
 ## Features
 
 - AI-powered search with grounded, cited answers
-- OpenUI Generative UI — rich answers, image galleries, follow-up actions, maps and itineraries use the OpenUI Lang renderer
+- Open Intelligent UI — interactive answers, image galleries, maps and itineraries at `/`, with the previous Nelth chat retained at `/classic`
 - Search modes: Quick and Adaptive
 - Model selector with dynamic provider detection (OpenAI, Anthropic, Google, Ollama, Vercel AI Gateway, OpenAI-compatible providers)
 - Multiple search providers (Tavily, SearXNG, Brave, Exa)
@@ -24,7 +24,9 @@ Your AI assistant for answers, documents, mail and calendar — with your apps c
 
 ### OpenUI Generative UI
 
-Nelth-IA uses the official [OpenUI framework](https://github.com/thesysdev/openui) and its OpenUI Lang renderer inside existing assistant messages. The travel library also reuses components adapted from [Open Intelligent UI](https://github.com/thesysdev/open-intelligent-ui), including MapLibre maps, itinerary editing, image fallbacks, and customization forms. New generated visual answers, galleries, and follow-up actions use OpenUI Lang; legacy saved `spec` messages remain readable for conversation-history compatibility. Replies continue through Nelth-IA's selected model, provider router, chat history, and Vercel AI SDK stream; no Thesys API key or separate backend service is required. Travel photo lookups and route geometry use the existing Wikipedia and OSRM API routes.
+The default `/` interface reuses the original [Open Intelligent UI](https://github.com/thesysdev/open-intelligent-ui) `AgentInterface`, component library, OpenUI Lang renderer, generated library specification, and interactive travel components. Signed-in threads use Nelth-IA's PostgreSQL chat history; guest threads remain in browser storage. The existing Nelth chat remains available at `/classic`.
+
+Responses use the model selected in Nelth-IA and its existing provider router. The server builds the OpenUI system prompt from the original library specification and adapts the selected provider's text stream to the Responses events consumed by Open Intelligent UI's original streaming adapter. Thesys is not required. Unlike OpenUI Gateway, direct providers do not validate or repair generated OpenUI Lang, so successful rendering depends on the selected model following the format. Wikipedia photo search, place lookups, and OSRM route geometry use same-origin Next.js API routes; no separate backend service is added.
 
 ## Installation
 

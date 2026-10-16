@@ -13,6 +13,7 @@ import {
 import { splitOpenUIResponses } from '@/lib/openui/response'
 import { groupMarkdownImages } from '@/lib/render/group-markdown-images'
 import { mergeStreamdownSpecRenderer } from '@/lib/render/streamdown-spec'
+import { wrapBareOpenUIBlocks } from '@/lib/render/wrap-bare-openui'
 import { wrapBareSpecBlocks } from '@/lib/render/wrap-bare-spec'
 import type { SearchResultItem } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -59,10 +60,13 @@ export function MarkdownMessage({
   )
 
   // Process citations to replace [number](#toolCallId) with [number](actual-url).
-  // Consecutive Markdown images become OpenUI galleries.
+  // Consecutive Markdown images become OpenUI galleries. Bare OpenUI Lang
+  // programs (missing their ```openui fence) are fenced so the renderer runs.
   const processedMessage = allowOpenUI
     ? groupMarkdownImages(
-        wrapBareSpecBlocks(processCitations(message || '', citationMaps || {}))
+        wrapBareOpenUIBlocks(
+          wrapBareSpecBlocks(processCitations(message || '', citationMaps || {}))
+        )
       )
     : wrapBareSpecBlocks(processCitations(message || '', citationMaps || {}))
   const segments = allowOpenUI
