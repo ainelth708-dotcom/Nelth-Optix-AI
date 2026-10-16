@@ -41,6 +41,7 @@ export default defineConfig([
     'out/**',
     'build/**',
     'next-env.d.ts',
-    'nanoMuse-main/**'
+    'nanoMuse-main/**',
+    'open-intelligent-ui-main/open-intelligent-ui-main/src/**'
   ])
 ])
