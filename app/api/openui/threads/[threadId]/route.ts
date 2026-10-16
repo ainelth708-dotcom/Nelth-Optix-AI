@@ -1,9 +1,6 @@
 import type { Message } from '@openuidev/react-ui'
 
-import {
-  deleteMessagesFromIndex,
-  upsertMessage
-} from '@/lib/actions/chat'
+import { deleteMessagesFromIndex, upsertMessage } from '@/lib/actions/chat'
 import { getCurrentUserId } from '@/lib/auth/get-current-user'
 import * as dbActions from '@/lib/db/actions'
 import {
@@ -38,9 +35,7 @@ function toOpenUIMessage(message: UIMessage): Message | null {
       : undefined
   const saved = metadata?.openuiMessage
   const savedMessage =
-    saved && typeof saved === 'object'
-      ? (saved as Record<string, unknown>)
-      : {}
+    saved && typeof saved === 'object' ? (saved as Record<string, unknown>) : {}
 
   return {
     ...savedMessage,
@@ -80,7 +75,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
 export async function PUT(request: Request, { params }: RouteContext) {
   if (!hasAllowedOrigin(request)) {
-    return Response.json({ error: { message: 'Not allowed.' } }, { status: 403 })
+    return Response.json(
+      { error: { message: 'Not allowed.' } },
+      { status: 403 }
+    )
   }
   const userId = await getCurrentUserId()
   if (!userId) return unauthorized()
@@ -155,7 +153,10 @@ export async function PUT(request: Request, { params }: RouteContext) {
 
 export async function PATCH(request: Request, { params }: RouteContext) {
   if (!hasAllowedOrigin(request)) {
-    return Response.json({ error: { message: 'Not allowed.' } }, { status: 403 })
+    return Response.json(
+      { error: { message: 'Not allowed.' } },
+      { status: 403 }
+    )
   }
   const userId = await getCurrentUserId()
   if (!userId) return unauthorized()
@@ -202,7 +203,10 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
 export async function DELETE(_request: Request, { params }: RouteContext) {
   if (!hasAllowedOrigin(_request)) {
-    return Response.json({ error: { message: 'Not allowed.' } }, { status: 403 })
+    return Response.json(
+      { error: { message: 'Not allowed.' } },
+      { status: 403 }
+    )
   }
   const userId = await getCurrentUserId()
   if (!userId) return unauthorized()
@@ -219,7 +223,9 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   const result = await dbActions.deleteChat(threadId, userId)
   if (!result.success) {
     return Response.json(
-      { error: { message: result.error ?? 'Conversation could not be deleted.' } },
+      {
+        error: { message: result.error ?? 'Conversation could not be deleted.' }
+      },
       { status: 500 }
     )
   }

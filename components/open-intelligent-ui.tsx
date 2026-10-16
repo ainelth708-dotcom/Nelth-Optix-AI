@@ -13,12 +13,23 @@ import {
   type Thread,
   useThemeModePreference,
   useThread,
-  useThreadList} from '@openuidev/react-ui'
-import { CalendarDays, ChefHat, Compass, Lightbulb, MapPinned, Sparkles } from 'lucide-react'
+  useThreadList
+} from '@openuidev/react-ui'
+import {
+  CalendarDays,
+  ChefHat,
+  Compass,
+  Lightbulb,
+  MapPinned,
+  Sparkles
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import { runLibraryAction } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/actions'
-import { localChatStorage, SaveMessages } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/chat-storage'
+import {
+  localChatStorage,
+  SaveMessages
+} from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/chat-storage'
 import { webUrl } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/components/style'
 import { library } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/library'
 

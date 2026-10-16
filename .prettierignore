@@ -43,3 +43,6 @@ lib/db/migrations/
 # asserted by tests) — never reformat them.
 skills-main/
 lib/skills/claude-skills/
+
+# Original Open Intelligent UI source is vendored and kept intact.
+open-intelligent-ui-main/open-intelligent-ui-main/src/

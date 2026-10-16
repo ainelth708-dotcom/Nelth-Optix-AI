@@ -45,9 +45,7 @@ describe('OpenUI persistence helpers', () => {
 
     expect(OPENUI_CHAT_PREFIX).toBe('oiu_')
     expect(titleFromMessage(titleMessage)).toBe('Plan two days in Paris')
-    expect(
-      toThread({ id: 'oiu_chat-1', title: 'Paris', createdAt })
-    ).toEqual({
+    expect(toThread({ id: 'oiu_chat-1', title: 'Paris', createdAt })).toEqual({
       id: 'oiu_chat-1',
       title: 'Paris',
       createdAt: '2026-04-12T10:30:00.000Z'

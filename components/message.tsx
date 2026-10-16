@@ -65,7 +65,9 @@ export function MarkdownMessage({
   const processedMessage = allowOpenUI
     ? groupMarkdownImages(
         wrapBareOpenUIBlocks(
-          wrapBareSpecBlocks(processCitations(message || '', citationMaps || {}))
+          wrapBareSpecBlocks(
+            processCitations(message || '', citationMaps || {})
+          )
         )
       )
     : wrapBareSpecBlocks(processCitations(message || '', citationMaps || {}))

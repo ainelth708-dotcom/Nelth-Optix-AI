@@ -1,6 +1,7 @@
 const cache = new Map<string, string[]>()
 const HEADERS = {
-  'User-Agent': 'open-intelligent-ui (https://github.com/thesysdev/open-intelligent-ui)'
+  'User-Agent':
+    'open-intelligent-ui (https://github.com/thesysdev/open-intelligent-ui)'
 }
 const SKIP = /\.svg|icon|logo|map|flag|seal|coat_of_arms|signature|diagram/i
 const WIDTH = 960
@@ -63,9 +64,7 @@ async function search(queryText: string): Promise<string[]> {
     pithumbsize: String(WIDTH)
   })
   articles
-    .filter(page =>
-      words(page.title ?? '').some(word => wanted.has(word))
-    )
+    .filter(page => words(page.title ?? '').some(word => wanted.has(word)))
     .forEach(page => add(page.thumbnail?.source))
 
   const terms = queryText.split(/\s+/)
@@ -96,8 +95,8 @@ async function search(queryText: string): Promise<string[]> {
 }
 
 export async function GET(request: Request) {
-  const queryText = new URL(request.url)
-    .searchParams.get('q')
+  const queryText = new URL(request.url).searchParams
+    .get('q')
     ?.replace(/\s+/g, ' ')
     .trim()
   if (!queryText || queryText.length < 2 || queryText.length > 200) {

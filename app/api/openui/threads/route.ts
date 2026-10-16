@@ -8,7 +8,8 @@ import {
   parseMessage,
   type StoredMessage,
   titleFromMessage,
-  toThread} from '@/lib/openui/persistence'
+  toThread
+} from '@/lib/openui/persistence'
 
 import { hasAllowedOrigin } from '@/open-intelligent-ui-main/open-intelligent-ui-main/src/lib/same-origin'
 
@@ -47,7 +48,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (!hasAllowedOrigin(request)) {
-    return Response.json({ error: { message: 'Not allowed.' } }, { status: 403 })
+    return Response.json(
+      { error: { message: 'Not allowed.' } },
+      { status: 403 }
+    )
   }
   const userId = await getCurrentUserId()
   if (!userId) return unauthorized()

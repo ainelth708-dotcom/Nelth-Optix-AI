@@ -15,7 +15,8 @@ function textContent(value: unknown): string | null {
   if (!Array.isArray(value)) return null
   return value
     .flatMap(part =>
-      part && typeof part === 'object' &&
+      part &&
+      typeof part === 'object' &&
       'text' in part &&
       typeof part.text === 'string'
         ? [part.text]

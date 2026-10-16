@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 
 import { generateSystemPrompt, type LibrarySpec } from '@openuidev/lang-core'
-import { type ModelMessage,streamText } from 'ai'
+import { type ModelMessage, streamText } from 'ai'
 
 import { getCurrentUserId } from '@/lib/auth/get-current-user'
 import { checkAndEnforceAdaptiveLimit } from '@/lib/rate-limit/adaptive-limit'
@@ -51,7 +51,8 @@ function toModelMessages(value: unknown): ModelMessage[] | null {
     } else if (Array.isArray(candidate.content)) {
       content = candidate.content
         .flatMap(part =>
-          part && typeof part === 'object' &&
+          part &&
+          typeof part === 'object' &&
           'text' in part &&
           typeof part.text === 'string'
             ? [part.text]
@@ -68,7 +69,10 @@ function toModelMessages(value: unknown): ModelMessage[] | null {
   return messages.some(message => message.role === 'user') ? messages : null
 }
 
-function encodeEvent(controller: ReadableStreamDefaultController<Uint8Array>, event: unknown) {
+function encodeEvent(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  event: unknown
+) {
   controller.enqueue(
     new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
   )
@@ -76,7 +80,10 @@ function encodeEvent(controller: ReadableStreamDefaultController<Uint8Array>, ev
 
 export async function POST(request: Request) {
   if (!hasAllowedOrigin(request)) {
-    return Response.json({ error: { message: 'Not allowed.' } }, { status: 403 })
+    return Response.json(
+      { error: { message: 'Not allowed.' } },
+      { status: 403 }
+    )
   }
   if (!request.headers.get('content-type')?.includes('application/json')) {
     return Response.json(
@@ -230,10 +237,14 @@ export async function POST(request: Request) {
         try {
           encodeEvent(controller, {
             type: 'error',
-            message: 'The selected model could not complete the OpenUI response.'
+            message:
+              'The selected model could not complete the OpenUI response.'
           })
         } catch (enqueueError) {
-          console.error('[OpenUI] Could not report the stream failure:', enqueueError)
+          console.error(
+            '[OpenUI] Could not report the stream failure:',
+            enqueueError
+          )
         }
       } finally {
         controller.close()
