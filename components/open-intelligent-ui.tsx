@@ -219,6 +219,7 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
         componentLibrary={library}
         onAction={onAction}
         agentName="Nelth-IA"
+        logoUrl="/shiro-face.svg"
         theme={{ mode }}
         starters={starters}
       >
@@ -230,6 +231,13 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
         </AgentInterface.SidebarFooter>
         <AgentInterface.ThreadHeader showChatTitle={false} />
         <AgentInterface.Welcome
+          image={
+            <img
+              src="/shiro-woodworker.svg"
+              alt=""
+              className="welcome-mascot"
+            />
+          }
           title="Que puis-je faire pour vous ?"
           starterVariant="card"
           glowAnimation

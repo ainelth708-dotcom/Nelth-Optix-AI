@@ -4,3 +4,8 @@
   min-height: 0;
   overflow: hidden;
 }
+
+.openui-integration-shell .welcome-mascot {
+  width: 112px;
+  height: auto;
+}
