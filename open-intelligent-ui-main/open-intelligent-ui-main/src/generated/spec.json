@@ -145,6 +145,10 @@
       "signature": "Image(src: string, alt: string, aspectRatio?: number, radius?: Radius, fit?: \"cover\" | \"contain\")",
       "description": "Photo from a URL the user or a tool gave; if it fails, a photo is found for alt."
     },
+    "SearchCitation": {
+      "signature": "SearchCitation(number: number, toolCallId: string)",
+      "description": "Inline citation for a web search result. Place SearchCitation(resultNumber, toolCallId) after each factual claim from web_search, using the exact result number and toolCallId from that search result."
+    },
     "Icon": {
       "signature": "Icon(name: string, size?: \"sm\" | \"md\" | \"lg\" | \"xl\", color?: Color)",
       "description": "Lucide icon by name, e.g. \"map-pin\"."
@@ -291,6 +295,15 @@
         "Map",
         "MapMarker",
         "YouTube"
+      ]
+    },
+    {
+      "name": "Sources",
+      "components": [
+        "SearchCitation"
+      ],
+      "notes": [
+        "Use SearchCitation(resultNumber, toolCallId) for verified claims from web_search."
       ]
     },
     {

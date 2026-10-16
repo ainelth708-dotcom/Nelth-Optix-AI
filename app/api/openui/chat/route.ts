@@ -1,9 +1,18 @@
 import { cookies } from 'next/headers'
 
 import { generateSystemPrompt, type LibrarySpec } from '@openuidev/lang-core'
-import { type ModelMessage, streamText } from 'ai'
+import { type ModelMessage, stepCountIs, streamText } from 'ai'
 
+import {
+  CONVERSATIONAL_BEHAVIOR,
+  OPENUI_RESPONSE_ROUTING_POLICY
+} from '@/lib/agents/prompts/conversational-behavior'
 import { getCurrentUserId } from '@/lib/auth/get-current-user'
+import {
+  appendOpenUISearchMetadata,
+  type OpenUISearchCall,
+  type OpenUISearchMetadata
+} from '@/lib/openui/search-metadata'
 import { checkAndEnforceAdaptiveLimit } from '@/lib/rate-limit/adaptive-limit'
 import { checkAndEnforceOverallChatLimit } from '@/lib/rate-limit/chat-limits'
 import { checkAndEnforceGuestLimit } from '@/lib/rate-limit/guest-limit'
@@ -11,13 +20,10 @@ import {
   ADAPTIVE_MODE_AUTH_REQUIRED_MESSAGE,
   isAdaptiveModeAuthBlocked
 } from '@/lib/search-mode-availability'
+import { createSearchTool } from '@/lib/tools/search'
 import { SearchMode } from '@/lib/types/search'
 import { selectModel } from '@/lib/utils/model-selection'
 import { getModel, isProviderEnabled } from '@/lib/utils/registry'
-import {
-  CONVERSATIONAL_BEHAVIOR,
-  OPENUI_RESPONSE_ROUTING_POLICY
-} from '@/lib/agents/prompts/conversational-behavior'
 
 import spec from '@/open-intelligent-ui-main/open-intelligent-ui-main/src/generated/spec.json'
 import { promptOptions } from '@/open-intelligent-ui-main/open-intelligent-ui-main/src/lib/prompt-options'
@@ -28,7 +34,7 @@ export const maxDuration = 300
 const MAX_BODY_BYTES = 1_000_000
 const MAX_MESSAGES = 60
 const MAX_OUTPUT_TOKENS = 16_000
-const OPENUI_PREAMBLE = `You are Nelth-IA, a natural and helpful conversational assistant. Your entire response must be valid openui-lang code using the supplied component library; do not output raw Markdown or explanations outside that format.`
+const OPENUI_PREAMBLE = `You are Nelth-IA, a natural and helpful conversational assistant. Choose the response format from the user's intent, like ChatGPT's Intelligent UI does: for greetings, thanks, small talk, and simple questions or short factual answers, reply in plain Markdown text — never wrap those in UI components. Use valid openui-lang code with the supplied component library only when visuals, structure, or interactivity genuinely add value (plans, itineraries, comparisons, explanations of how things work, calculators, interactive tools). Never mix raw Markdown inside openui-lang. When you answer in plain Markdown after a web or image search, add a short "Sources" section at the end with Markdown links to the real result URLs.`
 
 const systemPrompt = generateSystemPrompt({
   library: spec as LibrarySpec,
@@ -41,7 +47,10 @@ const systemPrompt = generateSystemPrompt({
     ].join('\n\n'),
     additionalRules: [
       ...(promptOptions.additionalRules ?? []),
-      'Respond in the same language as the user.'
+      'Respond in the same language as the user.',
+      'Use web_search when the user explicitly asks to search the web or when current, changing, niche, or uncertain facts need verification. Do not use either search tool for greetings, acknowledgements, or stable everyday facts. Use image_search only when the user asks for image results. Search calls are optional: decide from the request instead of searching on every turn.',
+      'Ground facts in web_search results. In OpenUI Lang, cite each relevant factual claim inline with SearchCitation(resultNumber, toolCallId), using the exact 1-based result number and toolCallId from that search output. In plain Markdown, cite each relevant claim with a Markdown link [resultNumber](exact result URL) from that output. Never invent citations or imply a search ran when it did not.',
+      'For image_search, use returned image URLs verbatim with Image(url, alt). Use SearchImage only for relevant illustrative photos when requested or materially useful.'
     ]
   }
 })
@@ -189,12 +198,36 @@ export async function POST(request: Request) {
   const selectedModel = `${model.providerId}:${model.id}`
   console.info(`[OpenUI] Generating with ${selectedModel}`)
 
-  let result: ReturnType<typeof streamText>
+  const baseSearchTool = createSearchTool(selectedModel)
+  const webSearch = {
+    ...baseSearchTool,
+    description:
+      'Search the web for current or requested information. The assistant may choose when this is useful.',
+    execute: (
+      input: Parameters<NonNullable<typeof baseSearchTool.execute>>[0],
+      context: Parameters<NonNullable<typeof baseSearchTool.execute>>[1]
+    ) => baseSearchTool.execute?.({ ...input, content_types: ['web'] }, context)
+  }
+  const imageSearch = {
+    ...baseSearchTool,
+    description:
+      'Search the web for images when the user explicitly asks for image results.',
+    execute: (
+      input: Parameters<NonNullable<typeof baseSearchTool.execute>>[0],
+      context: Parameters<NonNullable<typeof baseSearchTool.execute>>[1]
+    ) =>
+      baseSearchTool.execute?.({ ...input, content_types: ['image'] }, context)
+  }
+  const tools = { web_search: webSearch, image_search: imageSearch }
+
+  let result: ReturnType<typeof streamText<typeof tools>>
   try {
     result = streamText({
       model: getModel(selectedModel),
       system: systemPrompt,
       messages,
+      tools,
+      stopWhen: stepCountIs(4),
       maxOutputTokens: MAX_OUTPUT_TOKENS,
       abortSignal: request.signal
     })
@@ -208,8 +241,112 @@ export async function POST(request: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const itemId = `msg_${crypto.randomUUID()}`
+      const toolItems = new Map<string, string>()
+      const toolArguments = new Map<string, string>()
+      const finishedToolCalls = new Set<string>()
+      const searches: OpenUISearchMetadata = {}
+      let answer = ''
+
+      const startToolCall = (toolCallId: string, toolName: string) => {
+        if (toolItems.has(toolCallId)) return
+        const itemId = `call_${crypto.randomUUID()}`
+        toolItems.set(toolCallId, itemId)
+        toolArguments.set(toolCallId, '')
+        encodeEvent(controller, {
+          type: 'response.output_item.added',
+          item: {
+            id: itemId,
+            type: 'function_call',
+            call_id: toolCallId,
+            name: toolName,
+            arguments: ''
+          },
+          output_index: toolItems.size
+        })
+      }
+
+      const finishToolCall = (
+        toolCallId: string,
+        fallbackArguments?: string
+      ) => {
+        const itemId = toolItems.get(toolCallId)
+        if (!itemId || finishedToolCalls.has(toolCallId)) return
+        finishedToolCalls.add(toolCallId)
+        const argumentsText = toolArguments.get(toolCallId) ?? ''
+        const finalArguments =
+          argumentsText || fallbackArguments || argumentsText
+        encodeEvent(controller, {
+          type: 'response.function_call_arguments.done',
+          item_id: itemId,
+          arguments: finalArguments
+        })
+      }
+
       try {
+        for await (const event of result.fullStream) {
+          if (event.type === 'text-delta') {
+            answer += event.text
+          } else if (event.type === 'tool-input-start') {
+            startToolCall(event.id, event.toolName)
+          } else if (event.type === 'tool-input-delta') {
+            const itemId = toolItems.get(event.id)
+            if (itemId) {
+              toolArguments.set(
+                event.id,
+                `${toolArguments.get(event.id) ?? ''}${event.delta}`
+              )
+              encodeEvent(controller, {
+                type: 'response.function_call_arguments.delta',
+                item_id: itemId,
+                delta: event.delta
+              })
+            }
+          } else if (event.type === 'tool-input-end') {
+            finishToolCall(event.id)
+          } else if (event.type === 'tool-call') {
+            startToolCall(event.toolCallId, event.toolName)
+            finishToolCall(
+              event.toolCallId,
+              typeof event.input === 'string'
+                ? event.input
+                : JSON.stringify(event.input)
+            )
+          } else if (event.type === 'tool-result') {
+            const toolCallId = event.toolCallId
+            if (
+              event.toolName === 'web_search' ||
+              event.toolName === 'image_search'
+            ) {
+              const output = event.output as Partial<OpenUISearchCall> | null
+              if (output && typeof output === 'object') {
+                searches[toolCallId] = {
+                  query: typeof output.query === 'string' ? output.query : '',
+                  results: Array.isArray(output.results) ? output.results : [],
+                  images: Array.isArray(output.images) ? output.images : []
+                }
+              }
+            }
+            encodeEvent(controller, {
+              type: 'response.output_item.added',
+              item: {
+                id: `result_${crypto.randomUUID()}`,
+                type: 'function_call_output',
+                call_id: toolCallId,
+                output: JSON.stringify(event.output)
+              },
+              output_index: toolItems.size
+            })
+          } else if (event.type === 'error') {
+            throw event.error
+          }
+        }
+
+        if (!answer.trim()) {
+          throw new Error('The model completed without an OpenUI answer.')
+        }
+
+        const itemId = `msg_${crypto.randomUUID()}`
+        const finalText = appendOpenUISearchMetadata(answer, searches)
         encodeEvent(controller, {
           type: 'response.output_item.added',
           item: {
@@ -219,27 +356,21 @@ export async function POST(request: Request) {
             content: [],
             status: 'in_progress'
           },
-          output_index: 0
+          output_index: toolItems.size
         })
-
-        let text = ''
-        for await (const delta of result.textStream) {
-          text += delta
-          encodeEvent(controller, {
-            type: 'response.output_text.delta',
-            item_id: itemId,
-            output_index: 0,
-            content_index: 0,
-            delta
-          })
-        }
-
+        encodeEvent(controller, {
+          type: 'response.output_text.delta',
+          item_id: itemId,
+          output_index: toolItems.size,
+          content_index: 0,
+          delta: finalText
+        })
         encodeEvent(controller, {
           type: 'response.output_text.done',
           item_id: itemId,
-          output_index: 0,
+          output_index: toolItems.size,
           content_index: 0,
-          text
+          text: finalText
         })
         encodeEvent(controller, { type: 'response.completed' })
       } catch (error) {

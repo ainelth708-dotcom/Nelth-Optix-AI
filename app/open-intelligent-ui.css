@@ -5,6 +5,10 @@
   overflow: hidden;
 }
 
+.openui-answer-with-actions {
+  min-width: 0;
+}
+
 .openui-integration-shell .welcome-mascot {
   width: 96px;
   height: 96px;
