@@ -7,5 +7,74 @@
 
 .openui-integration-shell .welcome-mascot {
   width: 112px;
-  height: auto;
+  height: 112px;
+}
+
+.openui-integration-shell .openui-agent-sidebar-header__logo {
+  filter: none;
+}
+
+.dark .openui-integration-shell .openui-agent-sidebar-header__logo {
+  filter: invert(1);
+}
+
+.openui-integration-shell
+  .openui-agent-sidebar-header__toggle-button
+  .openui-icon-button-icon,
+.openui-integration-shell
+  .openui-agent-mobile-header
+  [aria-label='Open sidebar']
+  .openui-icon-button-icon {
+  display: none;
+}
+
+.openui-integration-shell .openui-agent-sidebar-header__toggle-button::after,
+.openui-integration-shell
+  .openui-agent-mobile-header
+  [aria-label='Open sidebar']::after {
+  width: 1em;
+  height: 1em;
+  display: block;
+  background-color: currentColor;
+  content: '';
+  -webkit-mask: url('/nelth-logo.svg') center / contain no-repeat;
+  mask: url('/nelth-logo.svg') center / contain no-repeat;
+}
+
+.openui-integration-shell .openui-agent-mobile-logo {
+  width: 20px;
+  height: 20px;
+}
+
+.openui-integration-shell .openui-agent-mascot-loader {
+  width: 40px;
+  height: 40px;
+  background-color: currentColor;
+  -webkit-mask: url('/nelth-logo.svg') center / contain no-repeat;
+  mask: url('/nelth-logo.svg') center / contain no-repeat;
+  animation: nelth-loader-pulse 1.6s ease-in-out infinite;
+}
+
+.openui-integration-shell .openui-agent-mascot-loader > * {
+  visibility: hidden;
+}
+
+@keyframes nelth-loader-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .openui-integration-shell .openui-agent-mascot-loader {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }

@@ -32,6 +32,7 @@ import {
 } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/chat-storage'
 import { webUrl } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/components/style'
 import { library } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/library'
+import { NelthLogo } from './ui/nelth-logo'
 
 import '../app/open-intelligent-ui.css'
 import '@openuidev/react-ui/styles/index.css'
@@ -219,10 +220,21 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
         componentLibrary={library}
         onAction={onAction}
         agentName="Nelth-IA"
-        logoUrl="/shiro-face.svg"
+        logoUrl="/nelth-logo.svg"
         theme={{ mode }}
         starters={starters}
       >
+        <AgentInterface.SidebarHeader />
+        <AgentInterface.MobileHeader
+          logo={
+            <NelthLogo
+              variant="active"
+              animate={false}
+              className="openui-nelth-mobile-logo"
+              aria-hidden="true"
+            />
+          }
+        />
         <AgentInterface.SidebarFooter>
           <AgentInterface.ThemeModeToggle
             mode={mode}
@@ -232,10 +244,10 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
         <AgentInterface.ThreadHeader showChatTitle={false} />
         <AgentInterface.Welcome
           image={
-            <img
-              src="/shiro-woodworker.svg"
-              alt=""
+            <NelthLogo
+              variant="active"
               className="welcome-mascot"
+              aria-hidden="true"
             />
           }
           title="Que puis-je faire pour vous ?"
