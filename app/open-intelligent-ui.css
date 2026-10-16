@@ -41,11 +41,6 @@
   mask: url('/nelth-logo.svg') center / contain no-repeat;
 }
 
-.openui-integration-shell .openui-agent-mobile-logo {
-  width: 20px;
-  height: 20px;
-}
-
 .openui-integration-shell .openui-agent-mascot-loader {
   width: 40px;
   height: 40px;

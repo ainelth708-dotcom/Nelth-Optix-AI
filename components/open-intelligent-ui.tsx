@@ -225,16 +225,6 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
         starters={starters}
       >
         <AgentInterface.SidebarHeader />
-        <AgentInterface.MobileHeader
-          logo={
-            <NelthLogo
-              variant="active"
-              animate={false}
-              className="openui-nelth-mobile-logo"
-              aria-hidden="true"
-            />
-          }
-        />
         <AgentInterface.SidebarFooter>
           <AgentInterface.ThemeModeToggle
             mode={mode}
