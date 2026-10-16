@@ -14,6 +14,10 @@ import {
 import { SearchMode } from '@/lib/types/search'
 import { selectModel } from '@/lib/utils/model-selection'
 import { getModel, isProviderEnabled } from '@/lib/utils/registry'
+import {
+  CONVERSATIONAL_BEHAVIOR,
+  OPENUI_RESPONSE_ROUTING_POLICY
+} from '@/lib/agents/prompts/conversational-behavior'
 
 import spec from '@/open-intelligent-ui-main/open-intelligent-ui-main/src/generated/spec.json'
 import { promptOptions } from '@/open-intelligent-ui-main/open-intelligent-ui-main/src/lib/prompt-options'
@@ -24,11 +28,17 @@ export const maxDuration = 300
 const MAX_BODY_BYTES = 1_000_000
 const MAX_MESSAGES = 60
 const MAX_OUTPUT_TOKENS = 16_000
+const OPENUI_PREAMBLE = `You are Nelth-IA, a natural and helpful conversational assistant. Your entire response must be valid openui-lang code using the supplied component library; do not output raw Markdown or explanations outside that format.`
 
 const systemPrompt = generateSystemPrompt({
   library: spec as LibrarySpec,
   promptOptions: {
     ...promptOptions,
+    preamble: [
+      OPENUI_PREAMBLE,
+      CONVERSATIONAL_BEHAVIOR,
+      OPENUI_RESPONSE_ROUTING_POLICY
+    ].join('\n\n'),
     additionalRules: [
       ...(promptOptions.additionalRules ?? []),
       'Respond in the same language as the user.'
