@@ -235,7 +235,7 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
         <AgentInterface.Welcome
           image={
             <NelthLogo
-              variant="active"
+              variant="periodic"
               className="welcome-mascot"
               aria-hidden="true"
             />

@@ -11,8 +11,9 @@ type NelthLogoProps = React.ComponentProps<'svg'> & {
   /**
    * idle   -> draw, fill, hold 20s, then repeat forever (chrome / login)
    * active -> infinite alternate draw+fill while the AI is responding
+   * periodic -> animate once on mount, then repeat every 60 seconds
    */
-  variant?: 'idle' | 'active'
+  variant?: 'idle' | 'active' | 'periodic'
   /** For the active variant: when false the logo settles into its filled state */
   animate?: boolean
 }
@@ -26,7 +27,9 @@ export function NelthLogo({
   const pathClassName =
     variant === 'active'
       ? cn('nelth-logo-active', !animate && 'nelth-logo-paused')
-      : 'nelth-logo-idle'
+      : variant === 'periodic'
+        ? 'nelth-logo-periodic'
+        : 'nelth-logo-idle'
 
   const style =
     variant === 'active'
@@ -56,6 +59,32 @@ export function NelthLogo({
         @keyframes nelthFill {
           0%, 20% { fill: transparent; stroke: currentColor; }
           80%, 100% { fill: currentColor; stroke: currentColor; }
+        }
+      `
+      : variant === 'periodic'
+        ? `
+        .nelth-logo-periodic {
+          fill: transparent;
+          stroke: currentColor;
+          stroke-width: 7;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+          stroke-dasharray: 1800;
+          stroke-dashoffset: 1800;
+          animation: nelthPeriodic 60s linear infinite;
+        }
+        @keyframes nelthPeriodic {
+          0% { stroke-dashoffset: 1800; fill: transparent; }
+          3% { stroke-dashoffset: 0; fill: transparent; }
+          4% { stroke-dashoffset: 0; fill: currentColor; }
+          100% { stroke-dashoffset: 0; fill: currentColor; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .nelth-logo-periodic {
+            stroke-dashoffset: 0;
+            fill: currentColor;
+            animation: none;
+          }
         }
       `
       : `
