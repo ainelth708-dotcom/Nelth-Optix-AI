@@ -254,50 +254,6 @@ export async function POST(request: Request) {
   )
   const fallbackText = FALLBACK_TEXTS[detectFallbackLanguage(lastUserText)]
 
-  // Classic-chat style grounding: preload fresh web results for any non-trivial
-  // turn, number them in the system prompt, and let the model cite them with
-  // [n] markers. The client turns the trailing metadata envelope back into
-  // citation chips, the sources footer and the right-hand results panel.
-  let preloadedSearch: OpenUISearchCall | undefined
-  if (lastUserText.trim().length > 0 && !isPureGreeting(lastUserText)) {
-    try {
-      const searchResult = await Promise.race([
-        runWebSearch(lastUserText, 7, 'basic', [], [], ['web']),
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error('Preloaded search timeout')),
-            SEARCH_PRELOAD_TIMEOUT_MS
-          )
-        )
-      ])
-
-      if (searchResult?.results?.length) {
-        preloadedSearch = {
-          query: searchResult.query || lastUserText,
-          results: searchResult.results,
-          images: searchResult.images ?? []
-        }
-        console.info(
-          `[OpenUI] Preloaded ${preloadedSearch.results.length} search results`
-        )
-      }
-    } catch (searchError) {
-      console.warn(
-        '[OpenUI] Preloaded search failed or timed out:',
-        searchError instanceof Error ? searchError.message : searchError
-      )
-    }
-  }
-
-  const effectiveSystemPrompt = preloadedSearch
-    ? `${systemPrompt}\n\nWEB SEARCH RESULTS (fresh, numbered sources — cite with the matching [n] marker after each claim they support; never invent numbers):\n\n${preloadedSearch.results
-        .map(
-          (result, index) =>
-            `[${index + 1}] ${result.title}: ${result.url}\n  ${result.content}`
-        )
-        .join('\n\n')}`
-    : systemPrompt
-
   let activeAttempt: AbortController | undefined
   let clientGone = false
 
@@ -325,7 +281,7 @@ export async function POST(request: Request) {
         watchdog = setTimeout(() => activeAttempt?.abort(), timeoutMs)
       }
       const keepalive = setInterval(() => {
-        if (emitted) return
+        if (text.length > 0) return
         try {
           controller.enqueue(encoder.encode(': keep-alive\n\n'))
         } catch {}
@@ -347,6 +303,61 @@ export async function POST(request: Request) {
       }
 
       try {
+        // Open the HTTP response immediately — the classic-style web search
+        // preload below can take up to SEARCH_PRELOAD_TIMEOUT_MS, and waiting
+        // for it before returning the Response left the client with zero bytes
+        // (and nothing to render) until the model answered.
+        try {
+          controller.enqueue(encoder.encode(': keep-alive\n\n'))
+        } catch {}
+
+        // Classic-chat style grounding: preload fresh web results for any
+        // non-trivial turn, number them in the system prompt, and let the model
+        // cite them with [n] markers. The client turns the trailing metadata
+        // envelope back into citation chips, the sources footer and the
+        // right-hand results panel.
+        let preloadedSearch: OpenUISearchCall | undefined
+        if (lastUserText.trim().length > 0 && !isPureGreeting(lastUserText)) {
+          try {
+            const searchResult = await Promise.race([
+              runWebSearch(lastUserText, 7, 'basic', [], [], ['web']),
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error('Preloaded search timeout')),
+                  SEARCH_PRELOAD_TIMEOUT_MS
+                )
+              )
+            ])
+
+            if (searchResult?.results?.length) {
+              preloadedSearch = {
+                query: searchResult.query || lastUserText,
+                results: searchResult.results,
+                images: searchResult.images ?? []
+              }
+              console.info(
+                `[OpenUI] Preloaded ${preloadedSearch.results.length} search results`
+              )
+            }
+          } catch (searchError) {
+            console.warn(
+              '[OpenUI] Preloaded search failed or timed out:',
+              searchError instanceof Error ? searchError.message : searchError
+            )
+          }
+        }
+
+        if (request.signal.aborted || clientGone) return
+
+        const effectiveSystemPrompt = preloadedSearch
+          ? `${systemPrompt}\n\nWEB SEARCH RESULTS (fresh, numbered sources — cite with the matching [n] marker after each claim they support; never invent numbers):\n\n${preloadedSearch.results
+              .map(
+                (result, index) =>
+                  `[${index + 1}] ${result.title}: ${result.url}\n  ${result.content}`
+              )
+              .join('\n\n')}`
+          : systemPrompt
+
         for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
           if (request.signal.aborted || clientGone) break
 
