@@ -20,15 +20,15 @@ describe('OpenUI conversational prompt policy', () => {
     expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
       'Pure greetings, thanks, acknowledgements, and casual small talk'
     )
-    expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain('in plain Markdown text')
+    expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain('root = Col([Text(')
     expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
-      'Use a structured openui-lang page with relevant components when the user asks for a plan'
+      'Use a structured page with relevant components when the user asks for a plan'
     )
     expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
       'Never use SearchImage as decoration'
     )
     expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
-      'basic prompts keep the text-only format'
+      'All answers must still be valid openui-lang'
     )
   })
 })

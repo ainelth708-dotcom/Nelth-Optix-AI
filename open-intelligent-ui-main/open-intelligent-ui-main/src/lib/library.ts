@@ -1,5 +1,4 @@
 import { createLibrary } from "@openuidev/react-lang";
-import { defineComponent } from "@openuidev/react-lang";
 import { actions } from "./actions";
 import { functions } from "./functions";
 import "./components/theme.css";
@@ -28,15 +27,6 @@ import { Icon, Image, SearchImage } from "./components/media";
 import { svgComponents } from "./components/svg";
 import { Table } from "./components/table";
 import { Badge, Caption, Label, Link, List, ListItem, Markdown, Text, Title } from "./components/text";
-import { z } from "zod/v4";
-
-const SearchCitation = defineComponent({
-  name: "SearchCitation",
-  props: z.object({ number: z.number().int().positive(), toolCallId: z.string() }),
-  description:
-    "Inline citation for a web search result. Place SearchCitation(resultNumber, toolCallId) after each factual claim from web_search, using the exact result number and toolCallId from that search result.",
-  component: () => null,
-});
 
 /**
  * Primitives the model arranges itself, plus a few widgets for what a model
@@ -50,7 +40,7 @@ export const library = createLibrary({
     Col, Row, Box, Grid, Card, Carousel, Popover, Divider, Spacer,
     Title, Text, Caption, Label, Badge, Link, List, ListItem, Markdown, Quote, Code, MathBlock,
     Button, IconButton, Pressable, Input, TextArea, Select, SegmentedControl, Slider, Checkbox, RadioGroup, DatePicker, Timer, Form,
-    SearchImage, Image, Icon, Table, Chart, MapView, MapMarker, YouTube, SearchCitation,
+    SearchImage, Image, Icon, Table, Chart, MapView, MapMarker, YouTube,
     Flashcard, Celebration,
     ...svgComponents, HtmlView,
   ],
@@ -75,7 +65,6 @@ export const library = createLibrary({
       ],
     },
     { name: "Media and data", components: ["SearchImage", "Image", "Icon", "Table", "Chart", "Map", "MapMarker", "YouTube"] },
-    { name: "Sources", components: ["SearchCitation"], notes: ["Use SearchCitation(resultNumber, toolCallId) for verified claims from web_search."] },
     { name: "Play", components: ["Flashcard", "Celebration"] },
     { name: "Drawing", components: ["Svg", "G", "Circle", "Ellipse", "Rect", "Line", "Path", "Polyline", "Polygon", "SvgText", "HtmlView"] },
   ],

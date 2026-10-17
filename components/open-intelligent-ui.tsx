@@ -15,7 +15,6 @@ import {
   useThread,
   useThreadList
 } from '@openuidev/react-ui'
-import { ToolLabelsProvider } from '@openuidev/react-ui/ToolCall'
 import {
   CalendarDays,
   ChefHat,
@@ -35,8 +34,6 @@ import { webUrl } from '../open-intelligent-ui-main/open-intelligent-ui-main/src
 import { library } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/library'
 
 import { NelthLogo } from './ui/nelth-logo'
-import { OpenUIAssistantMessage } from './openui-assistant-message'
-import { OpenUICitationPanelProvider } from './openui-citation-context'
 
 import '../app/open-intelligent-ui.css'
 import '@openuidev/react-ui/styles/index.css'
@@ -46,22 +43,6 @@ const llm = fetchLLM({
   streamAdapter: openAIResponsesAdapter(),
   messageFormat: openAIConversationMessageFormat
 })
-
-// French activity labels for the turn-level tool timeline: while a search
-// runs, the timeline shows "Recherche au web…" (same animation as Working)
-// instead of the generic English tool name, then settles back to Working.
-const searchToolLabels = {
-  web_search: {
-    running: 'Recherche au web…',
-    done: 'Recherche au web terminée',
-    failed: 'Échec de la recherche au web'
-  },
-  image_search: {
-    running: 'Recherche d’images…',
-    done: 'Recherche d’images terminée',
-    failed: 'Échec de la recherche d’images'
-  }
-}
 
 const starters = [
   {
@@ -233,44 +214,39 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
   }, [mode])
 
   return (
-    <OpenUICitationPanelProvider>
-      <div className="openui-integration-shell">
-        <ToolLabelsProvider labels={searchToolLabels}>
-          <AgentInterface
-            llm={llm}
-            storage={storage}
-            componentLibrary={library}
-            components={{ AssistantMessage: OpenUIAssistantMessage }}
-            onAction={onAction}
-            agentName="Nelth-IA"
-            logoUrl="/nelth-logo.svg"
-            theme={{ mode }}
-            starters={starters}
-          >
-            <AgentInterface.SidebarHeader />
-            <AgentInterface.SidebarFooter>
-              <AgentInterface.ThemeModeToggle
-                mode={mode}
-                onModeChange={setPreference}
-              />
-            </AgentInterface.SidebarFooter>
-            <AgentInterface.ThreadHeader showChatTitle={false} />
-            <AgentInterface.Welcome
-              image={
-                <NelthLogo
-                  variant="periodic"
-                  className="welcome-mascot"
-                  aria-hidden="true"
-                />
-              }
-              title="Que puis-je faire pour vous ?"
-              starterVariant="card"
-              glowAnimation
+    <div className="openui-integration-shell">
+      <AgentInterface
+        llm={llm}
+        storage={storage}
+        componentLibrary={library}
+        onAction={onAction}
+        agentName="Nelth-IA"
+        logoUrl="/nelth-logo.svg"
+        theme={{ mode }}
+        starters={starters}
+      >
+        <AgentInterface.SidebarHeader />
+        <AgentInterface.SidebarFooter>
+          <AgentInterface.ThemeModeToggle
+            mode={mode}
+            onModeChange={setPreference}
+          />
+        </AgentInterface.SidebarFooter>
+        <AgentInterface.ThreadHeader showChatTitle={false} />
+        <AgentInterface.Welcome
+          image={
+            <NelthLogo
+              variant="periodic"
+              className="welcome-mascot"
+              aria-hidden="true"
             />
-            {isGuest ? <SaveMessages /> : <SaveDatabaseMessages />}
-          </AgentInterface>
-        </ToolLabelsProvider>
-      </div>
-    </OpenUICitationPanelProvider>
+          }
+          title="Que puis-je faire pour vous ?"
+          starterVariant="card"
+          glowAnimation
+        />
+        {isGuest ? <SaveMessages /> : <SaveDatabaseMessages />}
+      </AgentInterface>
+    </div>
   )
 }
