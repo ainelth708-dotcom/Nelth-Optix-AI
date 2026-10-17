@@ -34,6 +34,7 @@ import { webUrl } from '../open-intelligent-ui-main/open-intelligent-ui-main/src
 import { library } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/library'
 
 import { NelthLogo } from './ui/nelth-logo'
+import { OpenUIAssistantMessage } from './openui-assistant-message'
 
 import '../app/open-intelligent-ui.css'
 import '@openuidev/react-ui/styles/index.css'
@@ -219,6 +220,7 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
         llm={llm}
         storage={storage}
         componentLibrary={library}
+        components={{ AssistantMessage: OpenUIAssistantMessage }}
         onAction={onAction}
         agentName="Nelth-IA"
         logoUrl="/nelth-logo.svg"
