@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 
 import { generateSystemPrompt, type LibrarySpec } from '@openuidev/lang-core'
-import { type ModelMessage, streamText } from 'ai'
+import { type ModelMessage, smoothStream, streamText } from 'ai'
 
 import {
   CONVERSATIONAL_BEHAVIOR,
@@ -364,6 +364,10 @@ export async function POST(request: Request) {
               system: effectiveSystemPrompt,
               messages,
               maxOutputTokens: MAX_OUTPUT_TOKENS,
+              // Same as the classic chat route: re-chunk upstream bursts into
+              // word-level deltas so the answer visibly types out even when the
+              // gateway delivers the whole completion at once.
+              experimental_transform: smoothStream({ chunking: 'word' }),
               abortSignal: attemptAbort.signal
             })
 
