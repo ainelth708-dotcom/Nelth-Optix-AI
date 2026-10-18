@@ -71,3 +71,29 @@
     transform: none;
   }
 }
+
+/* While the chat route runs its web search preload, the loading shimmer's
+   "Working" label becomes "Recherche sur le Web" and reverts as soon as the
+   search ends. The visible text is a pseudo-element so React's static label
+   node stays untouched (the shimmer recipe is inherited from the label). */
+[data-nelth-web-searching]
+  .openui-agent-thread-message-loading
+  .openui-behind-the-scenes__toggle-label--shimmer {
+  font-size: 0;
+}
+
+[data-nelth-web-searching]
+  .openui-agent-thread-message-loading
+  .openui-behind-the-scenes__toggle-label--shimmer::after {
+  content: 'Recherche sur le Web';
+  font: var(--openui-text-body-sm);
+  letter-spacing: var(--openui-text-body-sm-letter-spacing);
+  background-image: inherit;
+  background-size: inherit;
+  background-repeat: inherit;
+  background-position: inherit;
+  animation: inherit;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: rgba(0, 0, 0, 0);
+}

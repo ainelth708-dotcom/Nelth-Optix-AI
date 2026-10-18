@@ -25,6 +25,11 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import {
+  createSearchStatusWatcher,
+  WEB_SEARCH_STATUS_ATTRIBUTE
+} from '@/lib/openui/web-search-status'
+
 import { runLibraryAction } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/actions'
 import {
   localChatStorage,
@@ -39,10 +44,56 @@ import { OpenUIAssistantMessage } from './openui-assistant-message'
 import '../app/open-intelligent-ui.css'
 import '@openuidev/react-ui/styles/index.css'
 
+const OPENUI_CHAT_PATH = '/api/openui/chat'
+
+// While the route runs its web search preload it emits nelth.search.status
+// events; the watcher flags <html> so the stylesheet can swap the loading
+// shimmer's "Working" label for the web-search one, then back again.
+async function watchSearchStatus(stream: ReadableStream<Uint8Array>) {
+  const push = createSearchStatusWatcher(searching => {
+    document.documentElement.toggleAttribute(
+      WEB_SEARCH_STATUS_ATTRIBUTE,
+      searching
+    )
+  })
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      push(decoder.decode(value, { stream: true }))
+    }
+    push(decoder.decode())
+  } catch {
+    // Aborted or broken streams simply reset the label below.
+  } finally {
+    document.documentElement.removeAttribute(WEB_SEARCH_STATUS_ATTRIBUTE)
+  }
+}
+
+const sniffingFetch: typeof fetch = async (input, init) => {
+  const response = await globalThis.fetch(input, init)
+  const url = input instanceof Request ? input.url : String(input)
+  if (!url.includes(OPENUI_CHAT_PATH) || !response.ok || !response.body) {
+    return response
+  }
+
+  const [forward, watched] = response.body.tee()
+  void watchSearchStatus(watched)
+  return new Response(forward, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  })
+}
+
 const llm = fetchLLM({
   url: '/api/openui/chat',
   streamAdapter: openAIResponsesAdapter(),
-  messageFormat: openAIConversationMessageFormat
+  messageFormat: openAIConversationMessageFormat,
+  fetch: sniffingFetch
 })
 
 const starters = [

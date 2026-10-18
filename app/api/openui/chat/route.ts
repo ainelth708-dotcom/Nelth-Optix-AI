@@ -360,6 +360,9 @@ export async function POST(request: Request) {
           (searchMode === 'adaptive' || searchIntent.needsWebSearch)
 
         if (shouldSearch) {
+          // Tells the client to swap its "Working" shimmer label for a
+          // web-search label while the preload below runs.
+          send({ type: 'nelth.search.status', status: 'searching' })
           try {
             const searchResult = await Promise.race([
               runWebSearch(lastUserText, 7, 'basic', [], [], ['web']),
@@ -387,6 +390,7 @@ export async function POST(request: Request) {
               searchError instanceof Error ? searchError.message : searchError
             )
           }
+          send({ type: 'nelth.search.status', status: 'done' })
         }
 
         if (request.signal.aborted || clientGone) return
