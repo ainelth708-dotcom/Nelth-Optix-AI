@@ -8,8 +8,29 @@ import { Glyph } from "./glyph";
 import { inline, MarkdownBlocks } from "./markdown";
 import { children, color, cx, fg, webUrl } from "./style";
 
-const str = (value: unknown) => (value == null ? "" : String(value));
 const HEADING_LEVEL: Record<string, number> = { "3xl": 1, "2xl": 2, xl: 2, lg: 2, md: 3, sm: 4 };
+
+const TEXT_KEYS = ["text", "title", "label", "name", "description", "value"] as const;
+
+const pickText = (record: Record<string, unknown>): string => {
+  for (const key of TEXT_KEYS) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && candidate) return candidate;
+    if (typeof candidate === "number" && Number.isFinite(candidate)) return String(candidate);
+  }
+  return "";
+};
+
+/** Text for any value; objects fall back to a matching text field (or their props), never "[object Object]". */
+export const str = (value: unknown): string => {
+  if (value == null) return "";
+  if (typeof value !== "object") return String(value);
+  const record = value as Record<string, unknown>;
+  const direct = pickText(record);
+  if (direct) return direct;
+  if (record.props && typeof record.props === "object") return pickText(record.props as Record<string, unknown>);
+  return "";
+};
 
 export const Title = defineComponent({
   name: "Title",
@@ -167,7 +188,7 @@ export const List = defineComponent({
               <span className={cx("iui-list-marker", custom && (step ? "iui-list-marker-chip" : "iui-list-marker-text"))} aria-hidden={!custom}>
                 {step ? <span>{custom}</span> : custom ?? (marker === "number" ? i + 1 : null)}
               </span>
-              {isItem(item) ? renderNode(item) : <div className="iui-list-body">{inline(str(item))}</div>}
+              {isItem(item) ? renderNode(item) : isNode(item) ? renderNode(item) : <div className="iui-list-body">{inline(str(item))}</div>}
             </li>
           );
         })}

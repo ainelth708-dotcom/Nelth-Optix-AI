@@ -8,6 +8,7 @@ import {
   OPENUI_RESPONSE_ROUTING_POLICY
 } from '@/lib/agents/prompts/conversational-behavior'
 import { getCurrentUserId } from '@/lib/auth/get-current-user'
+import { decideWebSearch } from '@/lib/openui/search-decision'
 import {
   appendOpenUISearchMetadata,
   type OpenUISearchCall,
@@ -311,13 +312,24 @@ export async function POST(request: Request) {
           controller.enqueue(encoder.encode(': keep-alive\n\n'))
         } catch {}
 
-        // Classic-chat style grounding: preload fresh web results for any
-        // non-trivial turn, number them in the system prompt, and let the model
-        // cite them with [n] markers. The client turns the trailing metadata
-        // envelope back into citation chips, the sources footer and the
-        // right-hand results panel.
+        // ChatGPT-, Claude- and Gemini-style search routing: in quick mode the
+        // model itself decides whether the turn needs fresh web results, so
+        // conversational, coding, writing or knowledge turns skip the search
+        // round-trip entirely. Adaptive mode (deep research) always grounds.
+        // When a search runs, its results are numbered in the system prompt and
+        // the client turns the trailing metadata envelope back into citation
+        // chips, the sources footer and the right-hand results panel.
         let preloadedSearch: OpenUISearchCall | undefined
-        if (lastUserText.trim().length > 0 && !isPureGreeting(lastUserText)) {
+        const shouldSearch =
+          lastUserText.trim().length > 0 &&
+          !isPureGreeting(lastUserText) &&
+          (searchMode === 'adaptive' ||
+            (await decideWebSearch({
+              model: getModel(selectedModel),
+              messages
+            })))
+
+        if (shouldSearch) {
           try {
             const searchResult = await Promise.race([
               runWebSearch(lastUserText, 7, 'basic', [], [], ['web']),

@@ -13,6 +13,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent
 import { z } from "zod/v4";
 import { Glyph } from "./glyph";
 import { bg, children, color, onColor, cx, option, radius, radiusSchema, space, textOf, toOption, type Option } from "./style";
+import { str } from "./text";
 
 type Plan = Parameters<ReturnType<typeof useTriggerAction>>[2];
 
@@ -357,7 +358,7 @@ export const Checkbox = defineComponent({
     return (
       <label className={cx("iui-check", checked && props.lineThrough && "is-done")}>
         <input type="checkbox" checked={checked} onChange={(event) => field.setValue(event.target.checked)} />
-        <span>{String(props.label ?? "")}</span>
+        <span>{str(props.label)}</span>
       </label>
     );
   },

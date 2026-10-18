@@ -4,6 +4,7 @@ import { defineComponent } from "@openuidev/react-lang";
 import { z } from "zod/v4";
 import { inline } from "./markdown";
 import { cx } from "./style";
+import { str } from "./text";
 
 const NUMERIC = /^[-+−]?[$€£¥₹]?\s?\d[\d,]*(\.\d+)?\s?(%|[kKmMbB]|bn)?$/;
 const isElement = (value: unknown) => !!value && typeof value === "object" && (value as { type?: unknown }).type === "element";
@@ -16,7 +17,7 @@ export const Table = defineComponent({
   }),
   description: "Each row lists its cells in column order; a cell may be a component. Number columns align right.",
   component: ({ props, renderNode }) => {
-    const columns = Array.isArray(props.columns) ? props.columns.map((c) => String(c ?? "")) : [];
+    const columns = Array.isArray(props.columns) ? props.columns.map((c) => str(c)) : [];
     const rows = (Array.isArray(props.rows) ? props.rows : []).filter(Array.isArray) as unknown[][];
     // A column of numbers (or amounts like "$1.2k" and "45%") aligns right.
     const numeric = columns.map((_, c) => {
@@ -24,7 +25,7 @@ export const Table = defineComponent({
       return cells.length > 0 && cells.every((v) => typeof v === "number" || (typeof v === "string" && NUMERIC.test(v.trim())));
     });
     const cell = (value: unknown) =>
-      isElement(value) ? renderNode(value) : typeof value === "number" ? value.toLocaleString("en-US", { maximumFractionDigits: 2 }) : inline(String(value ?? ""));
+      isElement(value) ? renderNode(value) : typeof value === "number" ? value.toLocaleString("en-US", { maximumFractionDigits: 2 }) : inline(str(value));
     return (
       <div className="iui-table-scroll">
         <table className="iui-table">
