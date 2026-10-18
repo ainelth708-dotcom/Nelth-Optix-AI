@@ -9,10 +9,6 @@ import {
 } from '@/lib/agents/prompts/conversational-behavior'
 import { getCurrentUserId } from '@/lib/auth/get-current-user'
 import {
-  decideWebSearch,
-  isTimeSensitiveQuestion
-} from '@/lib/openui/search-decision'
-import {
   appendOpenUISearchMetadata,
   type OpenUISearchCall,
   type OpenUISearchMetadata
@@ -20,6 +16,10 @@ import {
 import { checkAndEnforceAdaptiveLimit } from '@/lib/rate-limit/adaptive-limit'
 import { checkAndEnforceOverallChatLimit } from '@/lib/rate-limit/chat-limits'
 import { checkAndEnforceGuestLimit } from '@/lib/rate-limit/guest-limit'
+import {
+  detectWebSearchIntent,
+  type WebSearchDetectorContext
+} from '@/lib/search/web-search-detector'
 import {
   ADAPTIVE_MODE_AUTH_REQUIRED_MESSAGE,
   isAdaptiveModeAuthBlocked
@@ -92,6 +92,25 @@ function messageText(message: ModelMessage | undefined): string {
 // client. Strip it before replaying history to the model.
 function stripSearchMetadata(content: string): string {
   return content.replace(/<!--nelth-search:[\s\S]*?-->/g, '').trimEnd()
+}
+
+// Lightweight window of previous turns for follow-up detection in the
+// deterministic web-search detector: plain text only, most recent last, and
+// never the full history.
+const DETECTOR_CONTEXT_TURNS = 4
+const DETECTOR_CONTEXT_CHARS = 600
+
+function buildDetectorContext(
+  history: ModelMessage[]
+): WebSearchDetectorContext | undefined {
+  const recentTurns = history
+    .slice(0, -1)
+    .slice(-DETECTOR_CONTEXT_TURNS)
+    .map(message => stripSearchMetadata(messageText(message)))
+    .filter(content => content.length > 0)
+    .map(content => content.slice(0, DETECTOR_CONTEXT_CHARS))
+
+  return recentTurns.length > 0 ? { recentTurns } : undefined
 }
 
 function toModelMessages(value: unknown): ModelMessage[] | null {
@@ -316,29 +335,29 @@ export async function POST(request: Request) {
           controller.enqueue(encoder.encode(': keep-alive\n\n'))
         } catch {}
 
-        // ChatGPT-, Claude- and Gemini-style search routing: unmistakably
-        // time-sensitive questions (news, casting, release dates, weather,
-        // prices...) always search; otherwise the model itself decides whether
-        // the turn needs fresh web results, so conversational, coding, writing
-        // or knowledge turns skip the search round-trip entirely. Adaptive mode
+        // Deterministic search routing with no extra LLM call: an explicit
+        // search request or a fresh-fact question (news, casting, release
+        // dates, weather, prices, latest versions, verification asks...) runs
+        // the web search preload; greetings, translations, coding help and
+        // stable-knowledge turns skip the round-trip entirely. Adaptive mode
         // (deep research) always grounds. When a search runs, its results are
         // numbered in the system prompt and the client turns the trailing
         // metadata envelope back into citation chips, the sources footer and
         // the right-hand results panel.
         let preloadedSearch: OpenUISearchCall | undefined
-        const timeSensitive = isTimeSensitiveQuestion(lastUserText)
-        if (timeSensitive) {
-          console.info('[OpenUI] Time-sensitive question, searching the web')
-        }
+        const searchIntent = detectWebSearchIntent(
+          lastUserText,
+          buildDetectorContext(messages)
+        )
+        console.info(
+          `[OpenUI] Web search detector: ${
+            searchIntent.needsWebSearch ? 'SEARCH' : 'DIRECT'
+          } (score ${searchIntent.score}; ${searchIntent.reason})`
+        )
         const shouldSearch =
           lastUserText.trim().length > 0 &&
           !isPureGreeting(lastUserText) &&
-          (searchMode === 'adaptive' ||
-            timeSensitive ||
-            (await decideWebSearch({
-              model: getModel(selectedModel),
-              messages
-            })))
+          (searchMode === 'adaptive' || searchIntent.needsWebSearch)
 
         if (shouldSearch) {
           try {
