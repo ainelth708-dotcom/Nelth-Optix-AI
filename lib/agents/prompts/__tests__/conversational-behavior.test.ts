@@ -16,6 +16,15 @@ describe('OpenUI conversational prompt policy', () => {
     expect(CONVERSATIONAL_BEHAVIOR).toContain('reply briefly and warmly')
   })
 
+  it('scales answer depth from normal answers to ChatGPT-style detail', () => {
+    expect(CONVERSATIONAL_BEHAVIOR).toContain(
+      'normal, natural answers for simple questions'
+    )
+    expect(CONVERSATIONAL_BEHAVIOR).toContain(
+      'detailed, ChatGPT-style answers for complex or open questions'
+    )
+  })
+
   it('uses concise text for greetings and reserves rich UI for suitable requests', () => {
     expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
       'Pure greetings, thanks, acknowledgements, and casual small talk'
@@ -29,6 +38,15 @@ describe('OpenUI conversational prompt policy', () => {
     )
     expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
       'basic prompts keep the text-only format'
+    )
+  })
+
+  it('keeps simple replies normal and makes deep questions detailed', () => {
+    expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
+      'a normal, complete reply to a simple question'
+    )
+    expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
+      'detailed, ChatGPT-style answer'
     )
   })
 })

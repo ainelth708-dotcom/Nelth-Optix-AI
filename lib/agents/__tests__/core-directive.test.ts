@@ -35,6 +35,15 @@ describe('core directive continuity', () => {
     expect(CONVERSATIONAL_BEHAVIOR).toContain('NEVER deny access')
   })
 
+  it('conversational behavior scales depth from normal answers to ChatGPT-style detail', () => {
+    expect(CONVERSATIONAL_BEHAVIOR).toContain(
+      'normal, natural answers for simple questions'
+    )
+    expect(CONVERSATIONAL_BEHAVIOR).toContain(
+      'detailed, ChatGPT-style answers for complex or open questions'
+    )
+  })
+
   it('continuity policy forbids branch relapse and arbitrary branch picks', () => {
     expect(CONVERSATION_CONTINUITY_POLICY).toContain(
       'LATEST EXPLICIT REQUEST WINS'
