@@ -30,6 +30,8 @@ const OpenUIResponse = dynamic(
 )
 
 import 'katex/dist/katex.min.css'
+// Keyframes and rules ([data-sd-animate]) for the streaming fadeIn animation.
+import 'streamdown/styles.css'
 
 const rehypePlugins = Object.values(defaultRehypePlugins)
 
