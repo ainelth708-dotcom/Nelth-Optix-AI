@@ -13,6 +13,7 @@ const MAX_DECISION_TOKENS = 32
 
 const TIME_SENSITIVE_PATTERNS = [
   /\bactus?\b|\bactualit/i,
+  /\brécente?s?\b|\bnouveautés?\b|\bmise à jour\b/i,
   /dernières? (nouvelles|infos|informations)/i,
   /\bnews\b|breaking news|latest (news|update|version)/i,
   /date de sortie|date de diffusion|sortie (au cinéma|prévue|confirmée)|release date/i,

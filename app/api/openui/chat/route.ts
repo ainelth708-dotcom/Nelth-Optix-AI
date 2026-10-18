@@ -44,7 +44,7 @@ const FIRST_TOKEN_TIMEOUT_MS = 60_000
 const STALL_TIMEOUT_MS = 30_000
 const MAX_ATTEMPTS = 2
 const KEEPALIVE_INTERVAL_MS = 10_000
-const SEARCH_PRELOAD_TIMEOUT_MS = 6_000
+const SEARCH_PRELOAD_TIMEOUT_MS = 15_000
 const OPENUI_PREAMBLE = `You are Nelth-IA, a natural and helpful conversational assistant. Choose the response format from the user's intent, like ChatGPT's Intelligent UI does: for greetings, thanks, small talk, and simple questions or short factual answers, reply in plain Markdown text — never wrap those in UI components. Use valid openui-lang code with the supplied component library only when visuals, structure, or interactivity genuinely add value (plans, itineraries, comparisons, explanations of how things work, calculators, interactive tools). Never mix raw Markdown inside openui-lang. When the conversation provides numbered WEB SEARCH RESULTS, cite each relevant factual claim inline with the matching [n] marker, and in plain Markdown answers add a short "Sources" section at the end with Markdown links to the real result URLs. Never invent citation numbers.`
 
 const systemPrompt = generateSystemPrompt({
@@ -60,7 +60,7 @@ const systemPrompt = generateSystemPrompt({
       ...(promptOptions.additionalRules ?? []),
       'Respond in the same language as the user.',
       'Ground factual claims in the numbered WEB SEARCH RESULTS provided in the conversation when they are present: cite each supported claim inline with its exact [n] marker (for example "… [1]."), never invent numbers, and never claim to have searched when no results are provided.',
-      'You DO have a live web search pipeline: the platform runs the search on its own and pastes the numbered results into the conversation, and it may also show search result cards next to your answer. Never tell the user that you cannot access the web, cannot search live, or cannot open pages, and never hand out search-engine recipes or links asking them to search themselves. When the user wants fresh information but no WEB SEARCH RESULTS are provided, answer with what you know and note briefly that live results were not available for this turn.'
+      'You DO have a live web search pipeline: the platform runs the search on its own and pastes the numbered results into the conversation, and it may also show search result cards next to your answer. Never tell the user that you cannot access the web, cannot search live, or cannot open pages, and never hand out search-engine recipes or links asking them to search themselves. Never mention search results, the platform, tools or their absence in your answer: when WEB SEARCH RESULTS are present, just use and cite them; when they are absent, simply answer from your knowledge (for clearly time-sensitive topics you may add a brief natural caveat that your information might not be up to date, but never a mechanical note about missing search results or search availability).'
     ]
   }
 })

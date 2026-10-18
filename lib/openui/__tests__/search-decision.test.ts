@@ -60,6 +60,10 @@ describe('isTimeSensitiveQuestion', () => {
     expect(isTimeSensitiveQuestion('combien coûte le nouveau iPhone ?')).toBe(
       true
     )
+    expect(
+      isTimeSensitiveQuestion('donne-moi des infos récentes sur Elon Musk')
+    ).toBe(true)
+    expect(isTimeSensitiveQuestion('quelles sont les nouveautés ?')).toBe(true)
   })
 
   it('leaves stable knowledge and creative turns to the classifier', () => {
