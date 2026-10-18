@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef } from 'react'
 
 import {
   type ActionEvent,
@@ -26,7 +26,6 @@ import { runLibraryAction } from '../open-intelligent-ui-main/open-intelligent-u
 import { useArtifact } from './artifact/artifact-context'
 import { CitationProvider } from './openui/citation-context'
 import { MarkdownMessage } from './openui/message'
-import { SearchSection } from './openui/search-section'
 import { SourceFavicons } from './openui/source-favicons'
 
 function continueMessage(event: ActionEvent): string {
@@ -63,7 +62,6 @@ export function OpenUIAssistantMessage({
   isStreaming: boolean
 }) {
   const answerRef = useRef<HTMLDivElement>(null)
-  const [searchSectionOpen, setSearchSectionOpen] = useState(false)
   const messages = useThread(state => state.messages)
   const processMessage = useThread(state => state.processMessage)
   const setMessages = useThread(state => state.setMessages)
@@ -240,16 +238,6 @@ export function OpenUIAssistantMessage({
           )}
         </CitationProvider>
       </div>
-      {/* The exact classic /classic search component: header with query, result
-          count and favicons, an expandable Sources list + image grid, and the
-          inspect button that opens the right-hand results panel. */}
-      {searchPart && (
-        <SearchSection
-          tool={searchPart}
-          isOpen={searchSectionOpen}
-          onOpenChange={setSearchSectionOpen}
-        />
-      )}
       {!isStreaming && (
         <div className="mt-2 flex flex-wrap items-center gap-1">
           <button
