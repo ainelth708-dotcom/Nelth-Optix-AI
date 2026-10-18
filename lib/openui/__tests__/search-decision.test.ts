@@ -7,7 +7,8 @@ import { generateText } from 'ai'
 
 import {
   buildSearchDecisionTranscript,
-  decideWebSearch
+  decideWebSearch,
+  isTimeSensitiveQuestion
 } from '../search-decision'
 
 const mockedGenerateText = vi.mocked(generateText)
@@ -35,6 +36,37 @@ describe('buildSearchDecisionTranscript', () => {
 
     expect(transcript.endsWith('…')).toBe(true)
     expect(transcript.length).toBeLessThan(660)
+  })
+})
+
+describe('isTimeSensitiveQuestion', () => {
+  it('forces the search for news-style questions', () => {
+    expect(
+      isTimeSensitiveQuestion(
+        'Quelles sont les dernières infos sur Aashiqui 3 ?'
+      )
+    ).toBe(true)
+    expect(
+      isTimeSensitiveQuestion(
+        'Aashiqui 3 : casting officiel, date de sortie confirmée, teaser'
+      )
+    ).toBe(true)
+    expect(
+      isTimeSensitiveQuestion('il fait quel temps demain ? la météo ?')
+    ).toBe(true)
+    expect(
+      isTimeSensitiveQuestion('What is the latest news about Tesla?')
+    ).toBe(true)
+    expect(isTimeSensitiveQuestion('combien coûte le nouveau iPhone ?')).toBe(
+      true
+    )
+  })
+
+  it('leaves stable knowledge and creative turns to the classifier', () => {
+    expect(isTimeSensitiveQuestion('Écris-moi un poème sur la mer')).toBe(false)
+    expect(isTimeSensitiveQuestion('Explique-moi la photosynthèse')).toBe(false)
+    expect(isTimeSensitiveQuestion('Corrige ce code TypeScript')).toBe(false)
+    expect(isTimeSensitiveQuestion('')).toBe(false)
   })
 })
 

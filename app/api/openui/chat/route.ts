@@ -8,7 +8,10 @@ import {
   OPENUI_RESPONSE_ROUTING_POLICY
 } from '@/lib/agents/prompts/conversational-behavior'
 import { getCurrentUserId } from '@/lib/auth/get-current-user'
-import { decideWebSearch } from '@/lib/openui/search-decision'
+import {
+  decideWebSearch,
+  isTimeSensitiveQuestion
+} from '@/lib/openui/search-decision'
 import {
   appendOpenUISearchMetadata,
   type OpenUISearchCall,
@@ -56,7 +59,8 @@ const systemPrompt = generateSystemPrompt({
     additionalRules: [
       ...(promptOptions.additionalRules ?? []),
       'Respond in the same language as the user.',
-      'Ground factual claims in the numbered WEB SEARCH RESULTS provided in the conversation when they are present: cite each supported claim inline with its exact [n] marker (for example "… [1]."), never invent numbers, and never claim to have searched when no results are provided.'
+      'Ground factual claims in the numbered WEB SEARCH RESULTS provided in the conversation when they are present: cite each supported claim inline with its exact [n] marker (for example "… [1]."), never invent numbers, and never claim to have searched when no results are provided.',
+      'You DO have a live web search pipeline: the platform runs the search on its own and pastes the numbered results into the conversation, and it may also show search result cards next to your answer. Never tell the user that you cannot access the web, cannot search live, or cannot open pages, and never hand out search-engine recipes or links asking them to search themselves. When the user wants fresh information but no WEB SEARCH RESULTS are provided, answer with what you know and note briefly that live results were not available for this turn.'
     ]
   }
 })
@@ -312,18 +316,25 @@ export async function POST(request: Request) {
           controller.enqueue(encoder.encode(': keep-alive\n\n'))
         } catch {}
 
-        // ChatGPT-, Claude- and Gemini-style search routing: in quick mode the
-        // model itself decides whether the turn needs fresh web results, so
-        // conversational, coding, writing or knowledge turns skip the search
-        // round-trip entirely. Adaptive mode (deep research) always grounds.
-        // When a search runs, its results are numbered in the system prompt and
-        // the client turns the trailing metadata envelope back into citation
-        // chips, the sources footer and the right-hand results panel.
+        // ChatGPT-, Claude- and Gemini-style search routing: unmistakably
+        // time-sensitive questions (news, casting, release dates, weather,
+        // prices...) always search; otherwise the model itself decides whether
+        // the turn needs fresh web results, so conversational, coding, writing
+        // or knowledge turns skip the search round-trip entirely. Adaptive mode
+        // (deep research) always grounds. When a search runs, its results are
+        // numbered in the system prompt and the client turns the trailing
+        // metadata envelope back into citation chips, the sources footer and
+        // the right-hand results panel.
         let preloadedSearch: OpenUISearchCall | undefined
+        const timeSensitive = isTimeSensitiveQuestion(lastUserText)
+        if (timeSensitive) {
+          console.info('[OpenUI] Time-sensitive question, searching the web')
+        }
         const shouldSearch =
           lastUserText.trim().length > 0 &&
           !isPureGreeting(lastUserText) &&
           (searchMode === 'adaptive' ||
+            timeSensitive ||
             (await decideWebSearch({
               model: getModel(selectedModel),
               messages
