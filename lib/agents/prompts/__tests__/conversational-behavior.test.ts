@@ -41,6 +41,18 @@ describe('OpenUI conversational prompt policy', () => {
     )
   })
 
+  it('decides exactly one response format per answer', () => {
+    expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
+      'Decide exactly ONE format for the whole answer'
+    )
+    expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
+      'never both in the same answer'
+    )
+    expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
+      'never repeat in text what the page already shows'
+    )
+  })
+
   it('keeps simple replies normal and makes deep questions detailed', () => {
     expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
       'a normal, complete reply to a simple question'

@@ -227,6 +227,61 @@ function SaveDatabaseMessages() {
   return null
 }
 
+/**
+ * Mobile layouts anchor the user message at the top and let the answer block
+ * grow downwards, so once an answer is taller than the screen the newest
+ * streamed words slip below the fold while desktop keeps the run in view.
+ * While a run is streaming, keep the mobile scroller pinned to the tail —
+ * unless the user scrolls away, and re-arm once they come back to the bottom.
+ */
+function FollowStreamTail() {
+  const isRunning = useThread(state => state.isRunning)
+
+  useEffect(() => {
+    if (!isRunning) return
+
+    const scroller = document.querySelector<HTMLElement>(
+      '.openui-agent-container--mobile .openui-agent-thread-scroll-area'
+    )
+    if (!scroller || typeof ResizeObserver === 'undefined') return
+
+    const nearBottom = () =>
+      scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 64
+    let following = true
+
+    const pinToTail = () => {
+      if (following) scroller.scrollTop = scroller.scrollHeight
+    }
+    const pauseFollowing = () => {
+      following = false
+    }
+    const resumeAtBottom = () => {
+      if (!following && nearBottom()) following = true
+    }
+
+    const observer = new ResizeObserver(pinToTail)
+    const messages = scroller.querySelector('.openui-agent-thread-messages')
+    if (messages) observer.observe(messages)
+    if (scroller.firstElementChild) {
+      observer.observe(scroller.firstElementChild)
+    }
+
+    scroller.addEventListener('touchmove', pauseFollowing, { passive: true })
+    scroller.addEventListener('wheel', pauseFollowing, { passive: true })
+    scroller.addEventListener('scroll', resumeAtBottom, { passive: true })
+    pinToTail()
+
+    return () => {
+      observer.disconnect()
+      scroller.removeEventListener('touchmove', pauseFollowing)
+      scroller.removeEventListener('wheel', pauseFollowing)
+      scroller.removeEventListener('scroll', resumeAtBottom)
+    }
+  }, [isRunning])
+
+  return null
+}
+
 function onAction(event: ActionEvent) {
   const result = runLibraryAction(event)
   if (result) {
@@ -299,6 +354,7 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
           glowAnimation
         />
         {isGuest ? <SaveMessages /> : <SaveDatabaseMessages />}
+        <FollowStreamTail />
       </AgentInterface>
     </div>
   )
