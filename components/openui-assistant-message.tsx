@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useMemo, useRef, useState } from 'react'
 
@@ -136,16 +136,16 @@ export function OpenUIAssistantMessage({
   async function copyAnswer() {
     const visibleAnswer = answerRef.current?.innerText.trim()
     if (!visibleAnswer) {
-      toast.error("Il n'y a pas de rÃ©ponse Ã  copier.")
+      toast.error("Il n'y a pas de réponse à copier.")
       return
     }
 
     try {
       await navigator.clipboard.writeText(visibleAnswer)
-      toast.success('RÃ©ponse copiÃ©e.')
+      toast.success('Réponse copiée.')
     } catch (error) {
       console.error('Unable to copy the OpenUI answer:', error)
-      toast.error('Impossible de copier la rÃ©ponse.')
+      toast.error('Impossible de copier la réponse.')
     }
   }
 
@@ -164,7 +164,7 @@ export function OpenUIAssistantMessage({
       (typeof userMessage.content !== 'string' &&
         !Array.isArray(userMessage.content))
     ) {
-      toast.error("Impossible de retrouver la question Ã  rÃ©gÃ©nÃ©rer.")
+      toast.error("Impossible de retrouver la question à régénérer.")
       return
     }
 
@@ -255,16 +255,16 @@ export function OpenUIAssistantMessage({
           <button
             type="button"
             onClick={() => void regenerateAnswer()}
-            aria-label="RÃ©gÃ©nÃ©rer la rÃ©ponse"
+            aria-label="Régénérer la réponse"
             className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <RotateCcw className="size-3.5" />
-            RÃ©gÃ©nÃ©rer
+            Régénérer
           </button>
           <button
             type="button"
             onClick={() => void copyAnswer()}
-            aria-label="Copier la rÃ©ponse"
+            aria-label="Copier la réponse"
             className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <Copy className="size-3.5" />
@@ -282,7 +282,7 @@ export function OpenUIAssistantMessage({
                 }
               }}
               className="flex cursor-pointer items-center gap-1.5 pl-1 text-muted-foreground text-xs transition-opacity hover:opacity-80"
-              title="Ouvrir les rÃ©sultats de recherche"
+              title="Ouvrir les résultats de recherche"
             >
               <SourceFavicons results={searchResults} maxDisplay={5} />
               <span>{searchResults.length} sources</span>
