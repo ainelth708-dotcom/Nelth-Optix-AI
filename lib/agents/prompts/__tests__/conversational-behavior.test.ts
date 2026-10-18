@@ -49,4 +49,16 @@ describe('OpenUI conversational prompt policy', () => {
       'detailed, ChatGPT-style answer'
     )
   })
+
+  it('forbids the redundant closing Sources section on web-search answers', () => {
+    expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
+      'NEVER append a closing "Sources" section'
+    )
+    expect(OPENUI_RESPONSE_ROUTING_POLICY).toContain(
+      'cite each supported claim inline with its exact [n] marker'
+    )
+    expect(OPENUI_RESPONSE_ROUTING_POLICY).not.toContain(
+      'also end with a short "Sources" section'
+    )
+  })
 })

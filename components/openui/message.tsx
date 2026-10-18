@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 
 import { createMathPlugin } from '@streamdown/math'
 import {
+  type AnimateOptions,
   defaultRehypePlugins,
   Streamdown,
   type StreamdownProps
@@ -32,6 +33,17 @@ import 'katex/dist/katex.min.css'
 
 const rehypePlugins = Object.values(defaultRehypePlugins)
 
+// Fade new words in while the answer streams instead of letting them pop in.
+// Streamdown only runs this animation while `isAnimating` is true and never
+// re-animates characters that were already visible during previous renders.
+const STREAMING_ANIMATION: AnimateOptions = {
+  animation: 'fadeIn',
+  duration: 260,
+  easing: 'ease-out',
+  sep: 'word',
+  stagger: 24
+}
+
 const customComponents = {
   a: Citing
 }
@@ -52,6 +64,7 @@ export function MarkdownMessage({
   const streamdownProps = useMemo<Partial<StreamdownProps>>(
     () => ({
       mode: 'streaming' as const,
+      animated: STREAMING_ANIMATION,
       plugins: mergeStreamdownSpecRenderer({
         math: createMathPlugin({ singleDollarTextMath: true })
       })
@@ -95,6 +108,7 @@ export function MarkdownMessage({
             <Streamdown
               key={`markdown-${index}`}
               {...streamdownProps}
+              isAnimating={isStreaming}
               rehypePlugins={rehypePlugins}
               components={
                 {
