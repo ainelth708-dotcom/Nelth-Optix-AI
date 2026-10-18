@@ -1,10 +1,10 @@
-'use client'
+﻿'use client'
 
 import { defineComponent } from '@openuidev/react-lang'
 import { z } from 'zod/v4'
 
-import { useCitation } from '@/components/citation-context'
-import { MarkdownMessage } from '@/components/message'
+import { useCitation } from '@/components/openui/citation-context'
+import { MarkdownMessage } from '@/components/openui/message'
 
 import { library as vendorLibrary } from '@/open-intelligent-ui-main/open-intelligent-ui-main/src/lib/library'
 

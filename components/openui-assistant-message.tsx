@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useMemo, useRef, useState } from 'react'
 
@@ -24,10 +24,10 @@ import { processCitations } from '@/lib/utils/citation'
 import { runLibraryAction } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/actions'
 
 import { useArtifact } from './artifact/artifact-context'
-import { CitationProvider } from './citation-context'
-import { MarkdownMessage } from './message'
-import { SearchSection } from './search-section'
-import { SourceFavicons } from './source-favicons'
+import { CitationProvider } from './openui/citation-context'
+import { MarkdownMessage } from './openui/message'
+import { SearchSection } from './openui/search-section'
+import { SourceFavicons } from './openui/source-favicons'
 
 function continueMessage(event: ActionEvent): string {
   const context: unknown[] = [`User clicked: ${event.humanFriendlyMessage}`]
@@ -136,16 +136,16 @@ export function OpenUIAssistantMessage({
   async function copyAnswer() {
     const visibleAnswer = answerRef.current?.innerText.trim()
     if (!visibleAnswer) {
-      toast.error("Il n'y a pas de réponse à copier.")
+      toast.error("Il n'y a pas de rÃ©ponse Ã  copier.")
       return
     }
 
     try {
       await navigator.clipboard.writeText(visibleAnswer)
-      toast.success('Réponse copiée.')
+      toast.success('RÃ©ponse copiÃ©e.')
     } catch (error) {
       console.error('Unable to copy the OpenUI answer:', error)
-      toast.error('Impossible de copier la réponse.')
+      toast.error('Impossible de copier la rÃ©ponse.')
     }
   }
 
@@ -164,7 +164,7 @@ export function OpenUIAssistantMessage({
       (typeof userMessage.content !== 'string' &&
         !Array.isArray(userMessage.content))
     ) {
-      toast.error("Impossible de retrouver la question à régénérer.")
+      toast.error("Impossible de retrouver la question Ã  rÃ©gÃ©nÃ©rer.")
       return
     }
 
@@ -255,16 +255,16 @@ export function OpenUIAssistantMessage({
           <button
             type="button"
             onClick={() => void regenerateAnswer()}
-            aria-label="Régénérer la réponse"
+            aria-label="RÃ©gÃ©nÃ©rer la rÃ©ponse"
             className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <RotateCcw className="size-3.5" />
-            Régénérer
+            RÃ©gÃ©nÃ©rer
           </button>
           <button
             type="button"
             onClick={() => void copyAnswer()}
-            aria-label="Copier la réponse"
+            aria-label="Copier la rÃ©ponse"
             className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <Copy className="size-3.5" />
@@ -282,7 +282,7 @@ export function OpenUIAssistantMessage({
                 }
               }}
               className="flex cursor-pointer items-center gap-1.5 pl-1 text-muted-foreground text-xs transition-opacity hover:opacity-80"
-              title="Ouvrir les résultats de recherche"
+              title="Ouvrir les rÃ©sultats de recherche"
             >
               <SourceFavicons results={searchResults} maxDisplay={5} />
               <span>{searchResults.length} sources</span>
