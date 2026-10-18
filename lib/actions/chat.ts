@@ -7,6 +7,7 @@ import { getCurrentUserId } from '@/lib/auth/get-current-user'
 import * as dbActions from '@/lib/db/actions'
 import type { Chat, Message } from '@/lib/db/schema'
 import { generateId } from '@/lib/db/schema'
+import { OPENUI_CHAT_PREFIX } from '@/lib/openui/persistence'
 import { signFilePartUrlsInMessages } from '@/lib/storage/r2-client'
 import type { UIMessage } from '@/lib/types/ai'
 import { getTextFromParts } from '@/lib/utils/message-utils'
@@ -33,7 +34,7 @@ export async function getChatsPage(limit = 20, offset = 0) {
   if (!userId) {
     return { chats: [], nextOffset: null }
   }
-  return dbActions.getChatsPage(userId, limit, offset)
+  return dbActions.getChatsPage(userId, limit, offset, OPENUI_CHAT_PREFIX)
 }
 
 /**
@@ -216,6 +217,7 @@ export async function clearChats() {
   const chats = await dbActions.getChats(userId)
 
   for (const chat of chats) {
+    if (chat.id.startsWith(OPENUI_CHAT_PREFIX)) continue
     await dbActions.deleteChat(chat.id, userId)
   }
 

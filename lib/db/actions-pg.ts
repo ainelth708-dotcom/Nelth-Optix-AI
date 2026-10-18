@@ -1,4 +1,16 @@
-import { and, asc, desc, eq, gt, ilike, inArray, isNull, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  ilike,
+  inArray,
+  isNull,
+  like,
+  not,
+  sql
+} from 'drizzle-orm'
 
 import type { UIMessage } from '@/lib/types/ai'
 import type { PersistableUIMessage } from '@/lib/types/message-persistence'
@@ -14,6 +26,7 @@ import {
 import { perfLog, perfTime } from '@/lib/utils/perf-logging'
 import { incrementDbOperationCount } from '@/lib/utils/perf-tracking'
 
+import { type ChatMessageRow, chatMessages, type ChatRow,chats } from './chat-schema'
 import { getPostgresDb } from './postgres'
 import type {
   Chat,
@@ -24,14 +37,12 @@ import type {
   Note
 } from './schema'
 import { generateId } from './schema'
-import { chatMessages, chats, type ChatMessageRow, type ChatRow } from './chat-schema'
 import {
   feedback,
-  libraryFiles,
-  userNotes,
   type LibraryFileRow,
-  type UserNoteRow
-} from './user-schema'
+  libraryFiles,
+  type UserNoteRow,
+  userNotes} from './user-schema'
 
 /**
  * Chat persistence on PostgreSQL. Same signatures and semantics as the
@@ -330,15 +341,22 @@ export async function getChats(userId: string): Promise<Chat[]> {
 export async function getChatsPage(
   userId: string,
   limit = 20,
-  offset = 0
+  offset = 0,
+  excludeIdPrefix?: string
 ): Promise<{ chats: Chat[]; nextOffset: number | null }> {
   try {
     const db = getPostgresDb()
     const pageLimit = Math.max(1, Math.min(limit, 100))
+    const scope = excludeIdPrefix
+      ? and(
+          eq(chats.userId, userId),
+          not(like(chats.id, `${excludeIdPrefix}%`))
+        )
+      : eq(chats.userId, userId)
     const rows = await db
       .select()
       .from(chats)
-      .where(eq(chats.userId, userId))
+      .where(scope)
       .orderBy(desc(chats.createdAt))
       .limit(pageLimit + 1)
       .offset(offset)

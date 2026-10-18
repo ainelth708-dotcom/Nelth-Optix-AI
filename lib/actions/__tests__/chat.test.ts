@@ -88,7 +88,7 @@ describe('Chat Actions', () => {
       const result = await getChatsPage(20, 0)
 
       expect(result).toEqual(mockResult)
-      expect(dbActions.getChatsPage).toHaveBeenCalledWith(userId, 20, 0)
+      expect(dbActions.getChatsPage).toHaveBeenCalledWith(userId, 20, 0, 'oiu_')
     })
 
     it('should return empty result for unauthenticated user', async () => {
@@ -425,6 +425,13 @@ describe('Chat Actions', () => {
           userId,
           visibility: 'private',
           createdAt: new Date()
+        },
+        {
+          id: 'oiu_openui-1',
+          title: 'OpenUI Chat',
+          userId,
+          visibility: 'private',
+          createdAt: new Date()
         }
       ]
 
@@ -438,6 +445,10 @@ describe('Chat Actions', () => {
       expect(dbActions.deleteChat).toHaveBeenCalledTimes(2)
       expect(dbActions.deleteChat).toHaveBeenCalledWith('chat-1', userId)
       expect(dbActions.deleteChat).toHaveBeenCalledWith('chat-2', userId)
+      expect(dbActions.deleteChat).not.toHaveBeenCalledWith(
+        'oiu_openui-1',
+        userId
+      )
       expect(revalidateTag).toHaveBeenCalledWith('chat', 'max')
     })
   })
