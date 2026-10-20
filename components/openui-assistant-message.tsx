@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 import { isOpenUILangResponse } from '@/lib/openui/content-format'
 import { pageLibrary } from '@/lib/openui/page-library'
 import { splitOpenUIResponses } from '@/lib/openui/response'
+import type { OpenUISearchCall } from '@/lib/openui/search-metadata'
 import { splitOpenUISearchMetadata } from '@/lib/openui/search-metadata'
 import { useSearchResults } from '@/lib/openui/search-results-context'
 import type { SearchResultItem } from '@/lib/types'
@@ -109,24 +110,46 @@ export function OpenUIAssistantMessage({
   const { open: openArtifact } = useArtifact()
 
   const {
-    results: searchResults,
-    query: searchQuery,
-    images: searchImages
+    results: contextResults,
+    query: contextQuery,
+    images: contextImages
   } = useSearchResults()
 
-  // Strip the trailing search-metadata envelope from the displayed text (the
-  // route still appends it at the end of the stream). Citation maps come from
-  // the preloaded search results pushed via the nelth.search.results SSE
-  // event — available from the very first chunk, not only at the end.
-  const content = useMemo(() => {
+  // Two sources for the same search results:
+  // - the SearchResults context, filled as soon as the route pushes the
+  //   nelth.search.results event (available from the first chunk);
+  // - the metadata envelope the route appends at the END of the stream.
+  // The context wins when present, the envelope is the fallback — so inline
+  // [n] citations resolve into clickable citation components with favicons
+  // while the answer streams AND still resolve once the stream is over.
+  const { content, envelopeSearch } = useMemo(() => {
     try {
       const parsed = splitOpenUISearchMetadata(message.content ?? '')
-      return parsed.content
+      return {
+        content: parsed.content,
+        envelopeSearch: parsed.metadata['preloaded-search'] as
+          | OpenUISearchCall
+          | undefined
+      }
     } catch (error) {
       console.error('Unable to read OpenUI search citations:', error)
-      return message.content ?? ''
+      return { content: message.content ?? '', envelopeSearch: undefined }
     }
   }, [message.content])
+
+  const searchResults = useMemo(
+    () =>
+      contextResults.length > 0
+        ? contextResults
+        : (envelopeSearch?.results ?? []),
+    [contextResults, envelopeSearch]
+  )
+  const searchQuery = contextQuery || envelopeSearch?.query || ''
+  const searchImages = useMemo(
+    () =>
+      contextImages.length > 0 ? contextImages : (envelopeSearch?.images ?? []),
+    [contextImages, envelopeSearch]
+  )
 
   const citationMaps = useMemo(() => {
     if (!searchResults || searchResults.length === 0) return undefined
@@ -137,13 +160,10 @@ export function OpenUIAssistantMessage({
     return { 'preloaded-search': citationMap }
   }, [searchResults])
 
-  const searchResultsFromContext = searchResults
-
   // The same synthetic tool part the classic chat surfaces for preloaded
   // searches, so the right-hand panel renders web results and images.
   const searchPart = useMemo<ToolPart<'search'> | undefined>(() => {
-    if (!searchResultsFromContext || searchResultsFromContext.length === 0)
-      return undefined
+    if (!searchResults || searchResults.length === 0) return undefined
     return {
       type: 'tool-search',
       toolCallId: 'preloaded-search',
@@ -160,13 +180,13 @@ export function OpenUIAssistantMessage({
       output: {
         state: 'complete',
         query: searchQuery,
-        results: searchResultsFromContext,
+        results: searchResults,
         images: searchImages,
-        number_of_results: searchResultsFromContext.length,
+        number_of_results: searchResults.length,
         toolCallId: 'preloaded-search'
       }
     }
-  }, [searchResultsFromContext, searchQuery, searchImages])
+  }, [searchResults, searchQuery, searchImages])
 
   // ChatGPT Intelligent UI rule: basic prompts keep the text-only format.
   // The model may answer in plain Markdown; only OpenUI Lang programs go
