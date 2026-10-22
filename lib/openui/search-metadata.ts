@@ -9,6 +9,11 @@ export type OpenUISearchCall = {
 export type OpenUISearchMetadata = Record<string, OpenUISearchCall>
 
 const MARKER = '\n<!--nelth-search:'
+// The route sends the metadata as the FIRST chunk of the stream, so the
+// search results are known from the very first delta: inline [n] citations
+// resolve into clickable citation components while the answer still streams.
+// The leading form has no newline before the marker.
+const PREFIX_MARKER = '<!--nelth-search:'
 
 function isSearchCall(value: unknown): value is OpenUISearchCall {
   if (!value || typeof value !== 'object') return false
@@ -43,25 +48,21 @@ export function appendOpenUISearchMetadata(
   return `${response}${MARKER}${encodeURIComponent(JSON.stringify(metadata))}-->`
 }
 
-export function splitOpenUISearchMetadata(response: string): {
-  content: string
+/**
+ * Metadata envelope placed BEFORE the answer text. The route sends it as the
+ * first chunk of the stream, so the client knows the search results from the
+ * very first delta and inline [n] citations resolve into clickable citation
+ * components while the answer is still streaming.
+ */
+export function prependOpenUISearchMetadata(
   metadata: OpenUISearchMetadata
-} {
-  const markerIndex = response.lastIndexOf(MARKER)
-  if (markerIndex < 0) return { content: response, metadata: {} }
+): string {
+  if (Object.keys(metadata).length === 0) return ''
+  return `${PREFIX_MARKER}${encodeURIComponent(JSON.stringify(metadata))}-->`
+}
 
-  const payloadStart = markerIndex + MARKER.length
-  const payloadEnd = response.indexOf('-->', payloadStart)
-  if (payloadEnd < 0) {
-    return { content: response.slice(0, markerIndex), metadata: {} }
-  }
-  if (response.slice(payloadEnd + 3).trim()) {
-    return { content: response, metadata: {} }
-  }
-
-  const parsed: unknown = JSON.parse(
-    decodeURIComponent(response.slice(payloadStart, payloadEnd))
-  )
+function parseOpenUISearchMetadata(payload: string): OpenUISearchMetadata {
+  const parsed: unknown = JSON.parse(decodeURIComponent(payload))
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('OpenUI search metadata must be an object.')
   }
@@ -76,8 +77,42 @@ export function splitOpenUISearchMetadata(response: string): {
     throw new Error('OpenUI search metadata contains an invalid search result.')
   }
 
+  return parsed as OpenUISearchMetadata
+}
+
+export function splitOpenUISearchMetadata(response: string): {
+  content: string
+  metadata: OpenUISearchMetadata
+} {
+  // Prefix form: the metadata leads the message (streamed first).
+  if (response.startsWith(PREFIX_MARKER)) {
+    const payloadStart = PREFIX_MARKER.length
+    const payloadEnd = response.indexOf('-->', payloadStart)
+    if (payloadEnd < 0) {
+      return { content: '', metadata: {} }
+    }
+    const metadata = parseOpenUISearchMetadata(
+      response.slice(payloadStart, payloadEnd)
+    )
+    return { content: response.slice(payloadEnd + 3), metadata }
+  }
+
+  const markerIndex = response.lastIndexOf(MARKER)
+  if (markerIndex < 0) return { content: response, metadata: {} }
+
+  const payloadStart = markerIndex + MARKER.length
+  const payloadEnd = response.indexOf('-->', payloadStart)
+  if (payloadEnd < 0) {
+    return { content: response.slice(0, markerIndex), metadata: {} }
+  }
+  if (response.slice(payloadEnd + 3).trim()) {
+    return { content: response, metadata: {} }
+  }
+
   return {
     content: response.slice(0, markerIndex),
-    metadata: parsed as OpenUISearchMetadata
+    metadata: parseOpenUISearchMetadata(
+      response.slice(payloadStart, payloadEnd)
+    )
   }
 }

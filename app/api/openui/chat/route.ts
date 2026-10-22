@@ -9,9 +9,8 @@ import {
 } from '@/lib/agents/prompts/conversational-behavior'
 import { getCurrentUserId } from '@/lib/auth/get-current-user'
 import {
-  appendOpenUISearchMetadata,
   type OpenUISearchCall,
-  type OpenUISearchMetadata
+  prependOpenUISearchMetadata
 } from '@/lib/openui/search-metadata'
 import { checkAndEnforceAdaptiveLimit } from '@/lib/rate-limit/adaptive-limit'
 import { checkAndEnforceOverallChatLimit } from '@/lib/rate-limit/chat-limits'
@@ -88,10 +87,14 @@ function messageText(message: ModelMessage | undefined): string {
   return message.content
 }
 
-// Stored assistant answers carry a trailing search-metadata envelope for the
-// client. Strip it before replaying history to the model.
+// Stored assistant answers carry a search-metadata envelope for the client
+// (streamed first, so the results are known from the first delta). Strip it
+// before replaying history to the model.
 function stripSearchMetadata(content: string): string {
-  return content.replace(/<!--nelth-search:[\s\S]*?-->/g, '').trimEnd()
+  return content
+    .replace(/<!--nelth-search:[\s\S]*?-->/g, '')
+    .replace(/^\s+/, '')
+    .trimEnd()
 }
 
 // Lightweight window of previous turns for follow-up detection in the
@@ -286,6 +289,8 @@ export async function POST(request: Request) {
       const encoder = new TextEncoder()
       const itemId = `msg_${crypto.randomUUID()}`
       let text = ''
+      // The search-metadata envelope streamed before the answer text.
+      let searchPrefix = ''
       let emitted = false
       let watchdog: ReturnType<typeof setTimeout> | undefined
 
@@ -383,16 +388,6 @@ export async function POST(request: Request) {
               console.info(
                 `[OpenUI] Preloaded ${preloadedSearch.results.length} search results`
               )
-              // Send results to the client as early as possible so inline
-              // citations ([n]) resolve into clickable citation components
-              // while the answer still streams — no need to wait for the
-              // trailing metadata envelope at the end of the stream.
-              send({
-                type: 'nelth.search.results',
-                query: preloadedSearch.query,
-                results: preloadedSearch.results,
-                images: preloadedSearch.images
-              })
             }
           } catch (searchError) {
             console.warn(
@@ -413,6 +408,29 @@ export async function POST(request: Request) {
               )
               .join('\n\n')}`
           : systemPrompt
+
+        // Send the search results as the FIRST text chunk of the stream, so
+        // the client knows them from the very first delta: inline [n]
+        // citations resolve into clickable citation components (with their
+        // favicon) while the answer is still streaming. The envelope is kept
+        // out of `text` so the retry/fallback logic below still sees only the
+        // model's own output.
+        if (preloadedSearch) {
+          const prefix = prependOpenUISearchMetadata({
+            'preloaded-search': preloadedSearch
+          })
+          if (prefix) {
+            markStarted()
+            searchPrefix = prefix
+            send({
+              type: 'response.output_text.delta',
+              item_id: itemId,
+              output_index: 0,
+              content_index: 0,
+              delta: prefix
+            })
+          }
+        }
 
         for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
           if (request.signal.aborted || clientGone) break
@@ -490,21 +508,6 @@ export async function POST(request: Request) {
             content_index: 0,
             delta: text
           })
-        } else if (preloadedSearch) {
-          const metadata: OpenUISearchMetadata = {
-            'preloaded-search': preloadedSearch
-          }
-          const envelope = appendOpenUISearchMetadata('', metadata)
-          if (envelope) {
-            text += envelope
-            send({
-              type: 'response.output_text.delta',
-              item_id: itemId,
-              output_index: 0,
-              content_index: 0,
-              delta: envelope
-            })
-          }
         }
 
         send({
@@ -512,7 +515,7 @@ export async function POST(request: Request) {
           item_id: itemId,
           output_index: 0,
           content_index: 0,
-          text
+          text: searchPrefix + text
         })
         send({ type: 'response.completed' })
       } catch (error) {

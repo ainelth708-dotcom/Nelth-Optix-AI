@@ -17,7 +17,6 @@ import { pageLibrary } from '@/lib/openui/page-library'
 import { splitOpenUIResponses } from '@/lib/openui/response'
 import type { OpenUISearchCall } from '@/lib/openui/search-metadata'
 import { splitOpenUISearchMetadata } from '@/lib/openui/search-metadata'
-import { useSearchResults } from '@/lib/openui/search-results-context'
 import type { SearchResultItem } from '@/lib/types'
 import type { ToolPart } from '@/lib/types/ai'
 import { processCitations } from '@/lib/utils/citation'
@@ -109,19 +108,11 @@ export function OpenUIAssistantMessage({
   const setMessages = useThread(state => state.setMessages)
   const { open: openArtifact } = useArtifact()
 
-  const {
-    results: contextResults,
-    query: contextQuery,
-    images: contextImages
-  } = useSearchResults()
-
-  // Two sources for the same search results:
-  // - the SearchResults context, filled as soon as the route pushes the
-  //   nelth.search.results event (available from the first chunk);
-  // - the metadata envelope the route appends at the END of the stream.
-  // The context wins when present, the envelope is the fallback — so inline
-  // [n] citations resolve into clickable citation components with favicons
-  // while the answer streams AND still resolve once the stream is over.
+  // The route streams the search-metadata envelope as the FIRST chunk of the
+  // answer, so the results are known from the very first delta: inline [n]
+  // citations resolve into clickable citation components (with their
+  // favicon) while the answer is still streaming. The envelope is stripped
+  // from the displayed text.
   const { content, envelopeSearch } = useMemo(() => {
     try {
       const parsed = splitOpenUISearchMetadata(message.content ?? '')
@@ -138,17 +129,13 @@ export function OpenUIAssistantMessage({
   }, [message.content])
 
   const searchResults = useMemo(
-    () =>
-      contextResults.length > 0
-        ? contextResults
-        : (envelopeSearch?.results ?? []),
-    [contextResults, envelopeSearch]
+    () => envelopeSearch?.results ?? [],
+    [envelopeSearch]
   )
-  const searchQuery = contextQuery || envelopeSearch?.query || ''
+  const searchQuery = envelopeSearch?.query ?? ''
   const searchImages = useMemo(
-    () =>
-      contextImages.length > 0 ? contextImages : (envelopeSearch?.images ?? []),
-    [contextImages, envelopeSearch]
+    () => envelopeSearch?.images ?? [],
+    [envelopeSearch]
   )
 
   const citationMaps = useMemo(() => {

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   appendOpenUISearchMetadata,
+  prependOpenUISearchMetadata,
   splitOpenUISearchMetadata
 } from '@/lib/openui/search-metadata'
 
@@ -68,5 +69,26 @@ describe('appendOpenUISearchMetadata / splitOpenUISearchMetadata', () => {
     expect(() => splitOpenUISearchMetadata(malformed)).toThrow(
       'invalid search result'
     )
+  })
+})
+
+describe('prependOpenUISearchMetadata', () => {
+  test('exposes the results from the very first streamed chunk', () => {
+    const prefix = prependOpenUISearchMetadata({ call_1: CALL_A })
+
+    // The prefix alone (first delta of the stream) already carries the
+    // results, so inline citations resolve while the answer streams.
+    const first = splitOpenUISearchMetadata(prefix)
+    expect(first.metadata).toEqual({ call_1: CALL_A })
+    expect(first.content).toBe('')
+
+    // Text streamed after the prefix keeps both the results and the answer.
+    const streamed = splitOpenUISearchMetadata(prefix + 'Elon Musk est [1] ici')
+    expect(streamed.metadata).toEqual({ call_1: CALL_A })
+    expect(streamed.content).toBe('Elon Musk est [1] ici')
+  })
+
+  test('returns an empty prefix when there is no metadata', () => {
+    expect(prependOpenUISearchMetadata({})).toBe('')
   })
 })
