@@ -324,7 +324,7 @@ export function OpenUIAssistantMessage({
           )}
         </CitationProvider>
       </div>
-      {(!isStreaming || searchResults.length > 0) && (
+      {!isStreaming && (
         <div className="mt-2 flex flex-wrap items-center gap-1">
           {searchResults.length > 0 && (
             <div
@@ -344,28 +344,24 @@ export function OpenUIAssistantMessage({
               <span>{searchResults.length} sources</span>
             </div>
           )}
-          {!isStreaming && (
-            <>
-              <button
-                type="button"
-                onClick={() => void regenerateAnswer()}
-                aria-label="Régénérer la réponse"
-                className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <RotateCcw className="size-3.5" />
-                Régénérer
-              </button>
-              <button
-                type="button"
-                onClick={() => void copyAnswer()}
-                aria-label="Copier la réponse"
-                className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <Copy className="size-3.5" />
-                Copier
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={() => void regenerateAnswer()}
+            aria-label="Régénérer la réponse"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <RotateCcw className="size-3.5" />
+            Régénérer
+          </button>
+          <button
+            type="button"
+            onClick={() => void copyAnswer()}
+            aria-label="Copier la réponse"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Copy className="size-3.5" />
+            Copier
+          </button>
         </div>
       )}
     </div>
