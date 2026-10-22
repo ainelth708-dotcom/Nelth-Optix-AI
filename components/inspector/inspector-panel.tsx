@@ -8,7 +8,6 @@ import {
   IconX as X
 } from '@tabler/icons-react'
 
-import { Separator } from '@/components/ui/separator'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { TooltipButton } from '@/components/ui/tooltip-button'
 
@@ -24,30 +23,31 @@ export function InspectorPanel() {
   const getIconAndTitle = () => {
     switch (part.type) {
       case 'tool-search':
-      case 'tool-askQuestion':
+      case 'tool-askQuestion': {
         const toolName = part.type.replace('tool-', '')
         return {
-          icon: <Search size={18} />,
-          title: toolName
+          icon: <Search size={16} />,
+          title: toolName === 'search' ? 'Sources' : toolName
         }
+      }
       case 'tool-todoWrite':
         return {
-          icon: <ListTodo size={18} />,
+          icon: <ListTodo size={16} />,
           title: 'Todo List'
         }
       case 'reasoning':
         return {
-          icon: <LightbulbIcon size={18} />,
+          icon: <LightbulbIcon size={16} />,
           title: 'Thoughts'
         }
       case 'text':
         return {
-          icon: <MessageSquare size={18} />,
+          icon: <MessageSquare size={16} />,
           title: 'Text'
         }
       default:
         return {
-          icon: <MessageSquare size={18} />,
+          icon: <MessageSquare size={16} />,
           title: 'Content'
         }
     }
@@ -57,29 +57,32 @@ export function InspectorPanel() {
 
   return (
     <TooltipProvider>
-      <div className="h-full flex flex-col overflow-hidden bg-muted md:px-4 md:pt-14 md:pb-4">
-        <div className="flex flex-col h-full bg-background rounded-xl md:border overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2">
-            <h3 className="flex items-center gap-2">
-              <div className="p-2 rounded-md flex items-center gap-2">
-                {icon}
-              </div>
-              <span className="text-sm font-medium capitalize">{title}</span>
+      <div className="flex h-full flex-col overflow-hidden bg-background">
+        {/* Flat header, the way a side panel reads: title on the left, close
+            on the right. No floating card, no gutter. */}
+        <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 text-muted-foreground">{icon}</span>
+            <h3 className="truncate text-sm font-medium text-foreground">
+              {title}
             </h3>
-            <TooltipButton
-              variant="ghost"
-              size="icon"
-              onClick={close}
-              aria-label="Close panel"
-              tooltipContent="Close"
-            >
-              <X className="size-4" />
-            </TooltipButton>
           </div>
-          <Separator className="my-1 bg-border/50" />
-          <div data-vaul-no-drag className="flex-1 overflow-y-auto p-4">
-            <ArtifactContent part={part} />
-          </div>
+          <TooltipButton
+            variant="ghost"
+            size="icon"
+            onClick={close}
+            aria-label="Close panel"
+            tooltipContent="Close"
+            className="size-8 text-muted-foreground hover:text-foreground"
+          >
+            <X className="size-4" />
+          </TooltipButton>
+        </div>
+        <div
+          data-vaul-no-drag
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4"
+        >
+          <ArtifactContent part={part} />
         </div>
       </div>
     </TooltipProvider>

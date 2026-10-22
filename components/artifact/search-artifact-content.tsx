@@ -5,7 +5,7 @@ import type { ToolPart } from '@/lib/types/ai'
 
 import { SearchResults } from '@/components/search-results'
 import { SearchResultsImageSection } from '@/components/search-results-image'
-import { Section, ToolArgsSection } from '@/components/section'
+import { Section } from '@/components/section'
 import {
   createVideoSearchResults,
   VideoSearchResults
@@ -29,17 +29,12 @@ export function SearchArtifactContent({ tool }: { tool: ToolPart<'search'> }) {
   }
 
   return (
-    <div className="space-y-2">
-      <div className="pb-2">
-        <ToolArgsSection
-          tool="search"
-          number={
-            (searchResults.results?.length || 0) +
-            (searchResults.videos?.length || 0) +
-            (searchResults.images?.length || 0)
-          }
-        >{`${query}`}</ToolArgsSection>
-      </div>
+    <div className="space-y-4">
+      {query ? (
+        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+          {query}
+        </p>
+      ) : null}
 
       {/* Skip the grid for large image sets (image search): answer shows them directly. */}
       {searchResults.images &&
@@ -62,9 +57,12 @@ export function SearchArtifactContent({ tool }: { tool: ToolPart<'search'> }) {
       )}
 
       {searchResults.results && searchResults.results.length > 0 && (
-        <Section title="Sources">
+        <section>
+          <h4 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Sources
+          </h4>
           <SearchResults results={searchResults.results} displayMode="list" />
-        </Section>
+        </section>
       )}
     </div>
   )

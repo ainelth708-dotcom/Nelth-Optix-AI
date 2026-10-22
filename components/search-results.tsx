@@ -15,6 +15,16 @@ export interface SearchResultsProps {
   displayMode?: 'grid' | 'list'
 }
 
+/** A search result URL can be malformed, so it is never parsed blindly. */
+function parseUrl(url: string): { hostname: string; pathname: string } | null {
+  try {
+    const parsed = new URL(url)
+    return { hostname: parsed.hostname, pathname: parsed.pathname }
+  } catch {
+    return null
+  }
+}
+
 export function SearchResults({
   results,
   displayMode = 'grid'
@@ -31,47 +41,50 @@ export function SearchResults({
   const additionalResultsCount = results.length > 3 ? results.length - 3 : 0
 
   // --- List Mode Rendering ---
+  // Side panel (citations): a flat list of sources, the way ChatGPT shows
+  // them — favicon, title, domain and a short snippet, no heavy card.
   if (displayMode === 'list') {
     return (
-      <div className="flex flex-col gap-2">
-        {results.map((result, index) => (
-          <Link
-            href={result.url}
-            key={index}
-            passHref
-            target="_blank"
-            className="block"
-          >
-            <Card className="w-full hover:bg-muted/50 transition-colors">
-              <CardContent className="p-2 flex items-start space-x-2">
-                <Avatar className="h-4 w-4 mt-1 shrink-0">
-                  <AvatarImage
-                    src={`https://www.google.com/s2/favicons?domain=${
-                      new URL(result.url).hostname
-                    }`}
-                    alt={new URL(result.url).hostname}
-                  />
-                  <AvatarFallback className="text-xs">
-                    {new URL(result.url).hostname[0]}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="grow overflow-hidden space-y-0.5">
-                  <p className="text-sm font-medium line-clamp-1">
-                    {result.title || new URL(result.url).pathname}
-                  </p>
-                  <p className="text-xs text-muted-foreground line-clamp-2">
+      <div className="flex flex-col">
+        {results.map((result, index) => {
+          const url = parseUrl(result.url)
+          const hostname = url?.hostname ?? ''
+          const title = result.title || url?.pathname || hostname
+
+          return (
+            <Link
+              href={result.url}
+              key={index}
+              passHref
+              target="_blank"
+              rel="noopener noreferrer"
+              className="-mx-2 flex gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none"
+            >
+              <Avatar className="mt-0.5 size-5 shrink-0 rounded-[5px]">
+                <AvatarImage
+                  src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=64`}
+                  alt={hostname}
+                />
+                <AvatarFallback className="rounded-[5px] text-[10px]">
+                  {hostname.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
+                  {title}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {hostname}
+                </p>
+                {result.content ? (
+                  <p className="mt-1.5 line-clamp-3 text-[13px] leading-relaxed text-muted-foreground">
                     {result.content}
                   </p>
-                  <div className="text-xs text-muted-foreground/80 mt-1 truncate">
-                    <span className="underline">
-                      {new URL(result.url).hostname}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+                ) : null}
+              </div>
+            </Link>
+          )
+        })}
       </div>
     )
   }
@@ -91,12 +104,12 @@ export function SearchResults({
                   <Avatar className="h-4 w-4 shrink-0">
                     <AvatarImage
                       src={`https://www.google.com/s2/favicons?domain=${
-                        new URL(result.url).hostname
+                        parseUrl(result.url)?.hostname ?? ''
                       }`}
-                      alt={new URL(result.url).hostname}
+                      alt={parseUrl(result.url)?.hostname ?? ''}
                     />
                     <AvatarFallback>
-                      {new URL(result.url).hostname[0]}
+                      {parseUrl(result.url)?.hostname.charAt(0) ?? '?'}
                     </AvatarFallback>
                   </Avatar>
                   <div className="text-xs opacity-60 truncate min-w-0">

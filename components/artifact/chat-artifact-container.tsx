@@ -144,8 +144,8 @@ export function ChatArtifactContainer({
         {panelOpen && (
           <div
             className={cn(
-              'w-1 mx-0.5 my-6 hover:bg-border transition-colors duration-200 cursor-col-resize select-none relative',
-              isResizing && 'bg-border/50'
+              'group relative my-0 w-1 cursor-col-resize select-none transition-colors duration-200 hover:bg-border/60',
+              isResizing && 'bg-border/60'
             )}
             onMouseDown={startResize}
           >
@@ -156,7 +156,7 @@ export function ChatArtifactContainer({
         {/* Right Panel - Independent with own animation */}
         <div
           className={cn(
-            'bg-background overflow-hidden',
+            'overflow-hidden border-l border-border/70 bg-background',
             panelOpen ? 'opacity-100' : 'w-0 opacity-0',
             !isResizing &&
               'transition-[opacity,width] duration-[260ms] ease-[var(--motion-ease-in-out)]'
