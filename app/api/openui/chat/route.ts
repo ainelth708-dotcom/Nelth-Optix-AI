@@ -16,9 +16,10 @@ import { checkAndEnforceAdaptiveLimit } from '@/lib/rate-limit/adaptive-limit'
 import { checkAndEnforceOverallChatLimit } from '@/lib/rate-limit/chat-limits'
 import { checkAndEnforceGuestLimit } from '@/lib/rate-limit/guest-limit'
 import {
-  detectWebSearchIntent,
-  type WebSearchDetectorContext
-} from '@/lib/search/web-search-detector'
+  decideWebSearch,
+  type WebSearchDecision,
+  type WebSearchDecisionTurn
+} from '@/lib/search/web-search-decision'
 import {
   ADAPTIVE_MODE_AUTH_REQUIRED_MESSAGE,
   isAdaptiveModeAuthBlocked
@@ -97,23 +98,23 @@ function stripSearchMetadata(content: string): string {
     .trimEnd()
 }
 
-// Lightweight window of previous turns for follow-up detection in the
-// deterministic web-search detector: plain text only, most recent last, and
-// never the full history.
-const DETECTOR_CONTEXT_TURNS = 4
-const DETECTOR_CONTEXT_CHARS = 600
+// Lightweight window of previous turns for web-search routing: plain text
+// only, most recent last, and never the full history.
+const DECISION_CONTEXT_TURNS = 6
+const DECISION_CONTEXT_CHARS = 700
 
-function buildDetectorContext(
-  history: ModelMessage[]
-): WebSearchDetectorContext | undefined {
-  const recentTurns = history
+function buildDecisionTurns(history: ModelMessage[]): WebSearchDecisionTurn[] {
+  return history
     .slice(0, -1)
-    .slice(-DETECTOR_CONTEXT_TURNS)
-    .map(message => stripSearchMetadata(messageText(message)))
-    .filter(content => content.length > 0)
-    .map(content => content.slice(0, DETECTOR_CONTEXT_CHARS))
-
-  return recentTurns.length > 0 ? { recentTurns } : undefined
+    .slice(-DECISION_CONTEXT_TURNS)
+    .map(message => ({
+      role: message.role,
+      text: stripSearchMetadata(messageText(message)).slice(
+        0,
+        DECISION_CONTEXT_CHARS
+      )
+    }))
+    .filter(turn => turn.text.length > 0)
 }
 
 function toModelMessages(value: unknown): ModelMessage[] | null {
@@ -340,37 +341,67 @@ export async function POST(request: Request) {
           controller.enqueue(encoder.encode(': keep-alive\n\n'))
         } catch {}
 
-        // Deterministic search routing with no extra LLM call: an explicit
-        // search request or a fresh-fact question (news, casting, release
-        // dates, weather, prices, latest versions, verification asks...) runs
-        // the web search preload; greetings, translations, coding help and
-        // stable-knowledge turns skip the round-trip entirely. Adaptive mode
-        // (deep research) always grounds. When a search runs, its results are
-        // numbered in the system prompt and the client turns the trailing
-        // metadata envelope back into citation chips, the sources footer and
-        // the right-hand results panel.
+        // Web-search routing decided by the LLM (no hard-coded rules): a
+        // classification call reads the last user message plus a short window
+        // of recent turns, decides whether fresh results are required and,
+        // when they are, writes an effective search query. Adaptive mode
+        // (deep research) always grounds without a decision call. When a
+        // search runs, its results are numbered in the system prompt and the
+        // client turns the leading metadata envelope back into citation
+        // chips, the sources footer and the right-hand results panel.
         let preloadedSearch: OpenUISearchCall | undefined
-        const searchIntent = detectWebSearchIntent(
-          lastUserText,
-          buildDetectorContext(messages)
-        )
-        console.info(
-          `[OpenUI] Web search detector: ${
-            searchIntent.needsWebSearch ? 'SEARCH' : 'DIRECT'
-          } (score ${searchIntent.score}; ${searchIntent.reason})`
-        )
-        const shouldSearch =
+        let searchQuery = lastUserText
+        const adaptiveSearch = searchMode === 'adaptive'
+        let decision: WebSearchDecision | undefined
+
+        if (
+          !adaptiveSearch &&
           lastUserText.trim().length > 0 &&
-          !isPureGreeting(lastUserText) &&
-          (searchMode === 'adaptive' || searchIntent.needsWebSearch)
+          !isPureGreeting(lastUserText)
+        ) {
+          const decisionStartedAt = Date.now()
+          try {
+            decision = await decideWebSearch({
+              model: getModel(selectedModel),
+              latestUserMessage: lastUserText,
+              recentTurns: buildDecisionTurns(messages),
+              // A client that disconnected mid-decision aborts the call.
+              signal: request.signal
+            })
+            console.info(
+              `[OpenUI] Web-search decision (LLM, ${
+                Date.now() - decisionStartedAt
+              }ms): ${decision.needsSearch ? 'SEARCH' : 'DIRECT'}` +
+                (decision.query ? ` — query "${decision.query}"` : '')
+            )
+          } catch (decisionError) {
+            // No grounded facts this turn: the answer simply draws on the
+            // model's own knowledge, like the caveat rule allows.
+            if (!request.signal.aborted) {
+              console.warn(
+                '[OpenUI] Web-search decision failed — answering from knowledge:',
+                decisionError instanceof Error
+                  ? decisionError.message
+                  : decisionError
+              )
+            }
+          }
+        }
+
+        const shouldSearch = adaptiveSearch || decision?.needsSearch === true
 
         if (shouldSearch) {
+          searchQuery =
+            decision?.query && decision.query.length > 0
+              ? decision.query
+              : lastUserText
+          console.info(`[OpenUI] Searching "${searchQuery}"`)
           // Tells the client to swap its "Working" shimmer label for a
           // web-search label while the preload below runs.
           send({ type: 'nelth.search.status', status: 'searching' })
           try {
             const searchResult = await Promise.race([
-              runWebSearch(lastUserText, 7, 'basic', [], [], ['web']),
+              runWebSearch(searchQuery, 7, 'basic', [], [], ['web']),
               new Promise<never>((_, reject) =>
                 setTimeout(
                   () => reject(new Error('Preloaded search timeout')),
@@ -381,7 +412,7 @@ export async function POST(request: Request) {
 
             if (searchResult?.results?.length) {
               preloadedSearch = {
-                query: searchResult.query || lastUserText,
+                query: searchResult.query || searchQuery,
                 results: searchResult.results,
                 images: searchResult.images ?? []
               }
