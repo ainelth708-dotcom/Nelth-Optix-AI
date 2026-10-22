@@ -5,6 +5,22 @@
   overflow: hidden;
 }
 
+/* The agent interface lives inside the artifact container, next to the right
+   panel (sources / citations). The library sizes its container to the whole
+   viewport (100dvw), so opening the panel pushed the chat underneath it and
+   hid the text. Sizing it to the column instead lets the chat shrink and
+   stay fully visible beside the panel, the way ChatGPT does it. */
+.openui-integration-shell .openui-agent-container {
+  width: 100%;
+}
+
+/* Same idea for the chat column itself: it may reflow instead of forcing a
+   360px minimum, otherwise it overflows (and gets clipped) on narrow
+   screens once the right panel takes its space. */
+.openui-integration-shell .openui-agent-thread-chat-panel {
+  min-width: 0;
+}
+
 .openui-answer-with-actions {
   min-width: 0;
 }
