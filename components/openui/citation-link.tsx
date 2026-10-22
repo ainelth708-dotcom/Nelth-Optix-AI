@@ -5,6 +5,7 @@ import { memo } from 'react'
 import type { SearchResultItem } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { isCitationLabel } from '@/lib/utils/citation'
+import { textFromChildren } from '@/lib/utils/react-text'
 
 import {
   Citation,
@@ -35,7 +36,7 @@ export const CitationLink = memo(function CitationLink({
   className,
   citationData
 }: CitationLinkProps) {
-  const childrenText = children?.toString() || ''
+  const childrenText = textFromChildren(children)
   const isCitation = isCitationLabel(childrenText)
 
   // Regular (non-citation) links stay untouched.
