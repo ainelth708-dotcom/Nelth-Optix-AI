@@ -26,7 +26,10 @@ import {
 } from '@/lib/search-mode-availability'
 import { search as runWebSearch } from '@/lib/tools/search'
 import { SearchMode } from '@/lib/types/search'
-import { isPureGreeting } from '@/lib/utils/message-utils'
+import {
+  isPureGreeting,
+  StreamTextSanitizer
+} from '@/lib/utils/message-utils'
 import { selectModel } from '@/lib/utils/model-selection'
 import { getModel, isProviderEnabled } from '@/lib/utils/registry'
 
@@ -45,7 +48,7 @@ const STALL_TIMEOUT_MS = 30_000
 const MAX_ATTEMPTS = 2
 const KEEPALIVE_INTERVAL_MS = 10_000
 const SEARCH_PRELOAD_TIMEOUT_MS = 7_000
-const OPENUI_PREAMBLE = `You are Nelth-IA, a natural and helpful conversational assistant. Choose the response format from the user's intent, like ChatGPT's Intelligent UI does: for greetings, thanks, small talk, and simple questions or short factual answers, reply in plain Markdown text — never wrap those in UI components. Use valid openui-lang code with the supplied component library only when visuals, structure, or interactivity genuinely add value (plans, itineraries, comparisons, explanations of how things work, calculators, interactive tools). Decide exactly ONE format for the whole answer — either plain Markdown text or a single openui-lang program — and never produce both in the same answer: never answer in prose and then add a page, never add a page and then close with prose commentary, and never repeat in text what the page already shows. Never mix raw Markdown inside openui-lang. Use SearchImage inside openui-lang pages when the user asks for pictures or when real imagery from the search results materially improves the page. When the conversation provides numbered WEB SEARCH RESULTS, ground every factual claim in them and cite each with the matching [n] marker — do NOT fall back to Wikipedia or internal knowledge for facts the search results cover. Never invent citation numbers, and never append a "Sources" section, a source list, or raw result URLs at the end of the answer: the interface already displays the search results with their links next to the answer.`
+const OPENUI_PREAMBLE = `You are Nelth-IA, a natural and helpful conversational assistant. Choose the response format from the user's intent, like ChatGPT's Intelligent UI does: for greetings, thanks, small talk, and simple questions or short factual answers, reply in plain Markdown text — never wrap those in UI components. Use valid openui-lang code with the supplied component library only when visuals, structure, or interactivity genuinely add value (plans, itineraries, comparisons, explanations of how things work, calculators, interactive tools). Decide exactly ONE format for the whole answer — either plain Markdown text or a single openui-lang program — and never produce both in the same answer: never answer in prose and then add a page, never add a page and then close with prose commentary, and never repeat in text what the page already shows. Never mix raw Markdown inside openui-lang. Use SearchImage inside openui-lang pages when the user asks for pictures or when real imagery from the search results materially improves the page. When the conversation provides numbered WEB SEARCH RESULTS, ground every factual claim in them and cite each with the matching [n] marker — do NOT fall back to Wikipedia or internal knowledge for facts the search results cover. Never invent citation numbers, and never append a "Sources" section, a source list, or raw result URLs at the end of the answer: the interface already displays the search results with their links next to the answer. You have no tools here: never output tool-call or function-call markup such as <dots_function_call>, <tool_call>, <invoke>, <function> or <search>, and never wrap a search request in tag syntax — if the conversation does not already include WEB SEARCH RESULTS, answer directly from your knowledge.`
 
 const systemPrompt = generateSystemPrompt({
   library: spec as LibrarySpec,
@@ -487,19 +490,43 @@ export async function POST(request: Request) {
               abortSignal: attemptAbort.signal
             })
 
+            // Fresh sanitizer per attempt — attempt 1 state must never leak
+            // into a retry. Openui mode: only the unambiguous fake tool-call
+            // families (dots-style *_function_call, tool_call/tool-search) are
+            // recognized, so valid OpenUI Lang programs stream untouched.
+            const textSanitizer = new StreamTextSanitizer({ mode: 'openui' })
             let attemptText = ''
             for await (const delta of result.textStream) {
               if (typeof delta !== 'string' || delta.length === 0) continue
               markStarted()
               armWatchdog(STALL_TIMEOUT_MS)
-              attemptText += delta
-              text += delta
+              // Suppress confirmed fake tool-call markup (e.g.
+              // <dots_function_call>…</dots_function_call>) that weak models
+              // emit as text instead of calling tools.
+              const cleanDelta = textSanitizer.process(delta)
+              if (cleanDelta.length === 0) continue
+              attemptText += cleanDelta
+              text += cleanDelta
               send({
                 type: 'response.output_text.delta',
                 item_id: itemId,
                 output_index: 0,
                 content_index: 0,
-                delta
+                delta: cleanDelta
+              })
+            }
+            // An open fake tag still suppressed at stream end (never closed):
+            // flush() drops the fake payload instead of leaking it as text.
+            const sanitizedTail = textSanitizer.flush()
+            if (sanitizedTail.length > 0) {
+              attemptText += sanitizedTail
+              text += sanitizedTail
+              send({
+                type: 'response.output_text.delta',
+                item_id: itemId,
+                output_index: 0,
+                content_index: 0,
+                delta: sanitizedTail
               })
             }
 

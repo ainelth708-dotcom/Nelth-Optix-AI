@@ -476,6 +476,75 @@ export function stripLeadingIntroReset(
 }
 
 /**
+ * Stream sanitization context:
+ * - `classic`: the legacy classic-route behavior — every legacy fake-call
+ *   family, including the `<search …>` / attribute-carrying
+ *   `<invoke|function>` heuristics the classic weak model is known to emit.
+ * - `openui`: only the unambiguous fake families (dots-style
+ *   `*_function_call`, `tool_calls?`, `tool-search`). OpenUI Lang programs
+ *   are PascalCase component markup (`<SearchImage query="…"/>`), so
+ *   lowercase-only recognition means legit component tags can never match,
+ *   and the broad `<search>`/`/>`-style cleanup probes are skipped so the
+ *   renderer receives the program exactly as generated.
+ */
+export type StreamSanitizerMode = 'classic' | 'openui'
+
+/**
+ * Confirmed fake tool-call families — never part of legitimate content:
+ * - dots/Laguna style `*_function_call` variants
+ *   (`<dots_function_call>…</dots_function_call>` …)
+ * - `tool_call(s)` / `tool-search` blocks.
+ * An opening tag from one of these flips the sanitizer into its suppressed
+ * state; the payload (the fake args the weak model writes as plain text)
+ * is held until the matching closing tag.
+ */
+const FAKE_OPEN_TAG_RE =
+  /<[a-z0-9_-]*function_call[^>]*>|<(?:tool_calls?|tool-search)\b[^>]*>/i
+const FAKE_CLOSE_TAG_RE =
+  /<\/[a-z0-9_-]*function_call[^>]*>|<\/(?:tool_calls?|tool-search)\b[^>]*>/i
+
+/**
+ * Classic-route extra families: any `<search …>` open tag (including the
+ * `<search">` beast — the legacy patterns line-strip it at release time),
+ * and attribute-carrying `<invoke|function>` calls. Bare `<invoke>` /
+ * `<function>` prose ("the <function> keyword") must NOT trigger suppression.
+ */
+const FAKE_CLASSIC_OPEN_RE =
+  /<search\b[^>\n]*>|<(?:invoke|function)\b[^>]*\b(?:name|id|tool|query|args?|params?)\b[^>]*>/i
+const FAKE_CLASSIC_CLOSE_RE = /<\/(?:invoke|function|search)\s*>/i
+
+/**
+ * A trailing "<…" fragment that may still grow into a fake tool tag shot has
+ * to be HELD, never emitted (legacy behavior for the known families, extended
+ * to dots-style names the legacy prefix list missed — `<dots_function_…`):
+ * 1. a name-like run with no '>' yet — `<dots_function_`, `</tool_`, `<s`…
+ * 2. a complete family name with attributes in flight
+ *    (`<tool_call name="search"` — held until '>' or a newline, as before).
+ * Anything else (spaces, uppercase, `:`/`/` — URLs, `<`, PascalCase
+ * components…) stops matching and streams out normally.
+ */
+const PARTIAL_FAKE_NAME_RE = /^<\/?[a-z0-9_-]*$/
+const PARTIAL_FAKE_ATTRS_RE =
+  /^<\/?[a-z0-9_-]*function_call[^>\n]*$|^<\/?(?:tool_calls?|tool-search|invoke|function|search)\b[^>\n]*$/i
+
+/**
+ * Memory bound for the suppressed-payload buffer. NOT a correctness
+ * mechanism: suppression ends on the closing tag or on an abandoned-tag
+ * recovery (paragraph boundary); this cap only guarantees buffering cannot
+ * grow forever when a pathological stream feeds lowercase sludge with
+ * neither. Real fake payloads are short query/JSON one-liners, orders of
+ * magnitude below this bound.
+ */
+const MAX_SUPPRESSED_BUFFER_CHARS = 8192
+
+/**
+ * Memory bound for the held unresolved partial tag (see drain step 3). NOT a
+ * correctness mechanism: a real tag resolves on '>' (or a newline) far below
+ * this; the bound only guarantees holding cannot grow forever.
+ */
+const MAX_PARTIAL_TAG_CHARS = 2048
+
+/**
  * Real-time streaming sanitizer to strip fake tool-call pseudo-XML tokens
  * as text chunks arrive from the model during SSE streaming.
  */
@@ -486,6 +555,20 @@ export class StreamTextSanitizer {
   private dropPureGreeting: boolean
   private introChecked = false
   private head = ''
+  private mode: StreamSanitizerMode
+  /**
+   * Suppressed state: a confirmed fake tool-call OPEN tag was seen and
+   * everything after it is that fake call's tool-args payload — never
+   * user-visible. Held across arbitrarily many deltas until:
+   * 1. the matching closing tag arrives — payload dropped, suppression
+   *    lifts, trailing legit text resumes normal streaming; or
+   * 2. the open tag proves abandoned (a paragraph boundary `\n\n` after a
+   *    single-line fake payload, meaning the model moved on to real prose
+   *    without ever closing) — payload dropped, text after it streams; or
+   * 3. the memory cap above is hit (no close, no `\n\n`) — release cleaned,
+   *    never silently discard an entire answer.
+   */
+  private suppressed = false
 
   constructor(opts?: {
     stripLeadingIntroReset?: boolean
@@ -497,10 +580,16 @@ export class StreamTextSanitizer {
      * orchestrators compute this from the conversation state.
      */
     dropPureGreeting?: boolean
+    /**
+     * Text-streaming context (see StreamSanitizerMode). Defaults to
+     * `classic` so every existing call site keeps its exact behavior.
+     */
+    mode?: StreamSanitizerMode
   }) {
     this.stripIntro = !!opts?.stripLeadingIntroReset
     this.keepSelfIntro = isIdentityQuery(opts?.userQuery ?? '')
     this.dropPureGreeting = !!opts?.dropPureGreeting
+    this.mode = opts?.mode ?? 'classic'
   }
 
   /**
@@ -544,7 +633,172 @@ export class StreamTextSanitizer {
       this.buffer += delta
     }
 
-    // 1. If buffer has any complete fake tool call blocks or closed tags
+    return this.drain()
+  }
+
+  /**
+   * Drains the current buffer through the fake-tool-call state machine.
+   * Split from process() so the suppressed-state flow can recurse back into
+   * it after a closing tag or an abandoned-tag recovery.
+   */
+  private drain(): string {
+    // 1. Suppressed state: everything after a confirmed fake open tag is
+    //    that fake call's payload — hold it across deltas until the closing
+    //    tag or an explicit recovery trigger (see `suppressed`). Payload
+    //    text is tool args, never a user-visible answer.
+    if (this.suppressed) {
+      const close =
+        this.mode === 'classic'
+          ? FAKE_CLOSE_TAG_RE.exec(this.buffer) ??
+            FAKE_CLASSIC_CLOSE_RE.exec(this.buffer)
+          : FAKE_CLOSE_TAG_RE.exec(this.buffer)
+      if (close && close.index !== undefined) {
+        // The fake block closed: drop its whole payload and resume normal
+        // processing of whatever follows it (another block may trail).
+        this.buffer = this.buffer.slice(close.index + close[0].length)
+        this.suppressed = false
+        return this.drain()
+      }
+      // Abandoned open tag: the model never wrote a closing tag and moved on
+      // to real prose. Fake payloads are short single-line query/JSON blobs,
+      // so a paragraph boundary deterministically marks the payload's end:
+      // drop the payload, stream on from there so a valid answer is never
+      // swallowed because of one stray tag.
+      const blankLine = this.buffer.indexOf('\n\n')
+      if (blankLine !== -1) {
+        this.buffer = this.buffer.slice(blankLine)
+        this.suppressed = false
+        return this.drain()
+      }
+      // Memory bound only (MAX_SUPPRESSED_BUFFER_CHARS): no closing tag and
+      // no paragraph boundary in sight. Release cleaned so buffering can
+      // never grow unbounded, with the leftover markup stripped.
+      if (this.buffer.length > MAX_SUPPRESSED_BUFFER_CHARS) {
+        const cleaned = stripFakeToolCallXml(this.buffer)
+        this.buffer = ''
+        this.suppressed = false
+        return cleaned
+      }
+      return ''
+    }
+
+    // 2. A confirmed fake OPEN tag: everything from it onward is the fake
+    //    call's payload — enter the suppressed state and release the safe
+    //    text before the tag (the strip cleans any earlier closed blocks).
+    //    A close tag already present in the same buffer is resolved right
+    //    away so the trailing legit text streams in the same round.
+    const open =
+      this.mode === 'classic'
+        ? FAKE_OPEN_TAG_RE.exec(this.buffer) ??
+          FAKE_CLASSIC_OPEN_RE.exec(this.buffer)
+        : FAKE_OPEN_TAG_RE.exec(this.buffer)
+    if (open && open.index !== undefined) {
+      const before = this.buffer.slice(0, open.index)
+      this.buffer = this.buffer.slice(open.index)
+      this.suppressed = true
+      const ahead = this.drain()
+      return stripFakeToolCallXml(before) + ahead
+    }
+
+    // 3. Partial tag at the end of the buffer: never emit an unresolved tag
+    //    prefix (see isPotentialFakeTag). The WHOLE unresolved tail is held
+    //    — not released raw around the partial '<' — so the strip-release
+    //    probes below still see it once it resolves; the legacy probe-first
+    //    order let a partial tag dodge the strip and leak chunk by chunk
+    //    (stripFakeToolCallXml cannot strip an incomplete tag).
+    const lastOpenBracket = this.buffer.lastIndexOf('<')
+    const potentialTag =
+      lastOpenBracket !== -1 && !this.buffer.includes('>', lastOpenBracket)
+        ? this.buffer.slice(lastOpenBracket)
+        : ''
+    if (potentialTag && this.isPotentialFakeTag(potentialTag)) {
+      // Memory valve only (not a correctness mechanism): a fake tag resolves
+      // on '>' (or a newline); pathological sludge with neither must not
+      // buffer forever.
+      if (this.buffer.length > MAX_PARTIAL_TAG_CHARS) {
+        const cleaned = stripFakeToolCallXml(this.buffer)
+        this.buffer = ''
+        return cleaned
+      }
+      return ''
+    }
+
+    // 4. JSON-style fake tool call ({"name":"gmail","parameters":{…}}) plus
+    //    the legacy classic-route hygiene probes (leftover close-only fake
+    //    markup, the `/>` debris…). Classic-only: OpenUI Lang legitimately
+    //    contains self-closing PascalCase components, which that broad
+    //    filter must never touch.
+    const hasJsonFakeTool =
+      /"name"\s*:\s*"[^"]+"\s*,\s*"(?:parameters|input|args)"\s*:\s*\{/.test(
+        this.buffer
+      ) && this.buffer.includes('}')
+    const hasLoneFakeClose =
+      FAKE_CLOSE_TAG_RE.test(this.buffer) ||
+      (this.mode === 'classic' && FAKE_CLASSIC_CLOSE_RE.test(this.buffer))
+    if (
+      hasJsonFakeTool ||
+      hasLoneFakeClose ||
+      (this.mode === 'classic' && this.hasLegacyFakeMarkup())
+    ) {
+      const cleaned = stripFakeToolCallXml(this.buffer)
+      this.buffer = ''
+      return cleaned
+    }
+
+    // 5. Legacy classic heuristic: an unclosed bare fake-family tag still in
+    //    flight (bare <search / <invoke …) — hold until it resolves.
+    if (this.mode === 'classic' && this.hasUnclosedLegacyFakeTag()) {
+      // If buffer is growing very large (> 300 chars) or has double newline, flush cleaned
+      if (this.buffer.length > 300 || this.buffer.includes('\n\n')) {
+        const cleaned = stripFakeToolCallXml(this.buffer)
+        this.buffer = ''
+        return cleaned
+      }
+      // Hold in buffer until the tag completes
+      return ''
+    }
+
+    // 6. Partial JSON fake tool call: buffer starts with { and has "name" key
+    // but no closing } yet — hold until the JSON completes so it can be
+    // stripped in one shot on the next delta.
+    if (
+      this.buffer.trimStart().startsWith('{') &&
+      /"name"\s*:/.test(this.buffer) &&
+      !this.buffer.includes('}')
+    ) {
+      return ''
+    }
+
+    const output = this.buffer
+    this.buffer = ''
+    return output
+  }
+
+  /**
+   * Could this trailing "<…" fragment still grow into one of the watched
+   * fake tool tags? Two shapes are held, never emitted:
+   * 1. a name-like run with no '>' yet — `<dots_function_`, `</tool_`,
+   *    `<s`… (extends the legacy hold to dots-style names the old prefix
+   *    list missed, which is exactly what leaked `dots_function_call` when
+   *    the tag was split across streaming chunks);
+   * 2. a complete family name with attributes still in flight
+   *    (`<tool_call name="search"` …) — held until '>' or a newline,
+   *    exactly like the legacy behavior for the same families.
+   * Everything else (spaces, `:`/`/` in URLs, PascalCase components…)
+   * stops matching and streams out normally.
+   */
+  private isPotentialFakeTag(potentialTag: string): boolean {
+    if (PARTIAL_FAKE_NAME_RE.test(potentialTag)) return true
+    if (PARTIAL_FAKE_ATTRS_RE.test(potentialTag)) return true
+    return false
+  }
+
+  /**
+   * Legacy classic-route hygiene probes — the verbatim legacy block, kept
+   * byte-identical and now only called in classic mode (never on OpenUI
+   * content, where self-closing PascalCase components are legitimate).
+   */
+  private hasLegacyFakeMarkup(): boolean {
     const hasClosedFakeTag =
       this.buffer.includes('</invoke>') ||
       this.buffer.includes('</tool_call>') ||
@@ -566,14 +820,14 @@ export class StreamTextSanitizer {
       /"name"\s*:\s*"[^"]+"\s*,\s*"(?:parameters|input|args)"\s*:\s*\{/.test(
         this.buffer
       ) && this.buffer.includes('}')
+    return hasClosedFakeTag || hasJsonFakeTool
+  }
 
-    if (hasClosedFakeTag || hasJsonFakeTool) {
-      const cleaned = stripFakeToolCallXml(this.buffer)
-      this.buffer = ''
-      return cleaned
-    }
-
-    // 2. If buffer has an unclosed fake tool tag (<tool_call... or </tool_call...)
+  /**
+   * Legacy classic-route check for an UNCLOSED bare fake-family tag still
+   * in flight (bare <search / <invoke …) — verbatim, classic-mode only.
+   */
+  private hasUnclosedLegacyFakeTag(): boolean {
     const hasOpenToolTag =
       this.buffer.includes('<tool_call') ||
       this.buffer.includes('</tool_call') ||
@@ -589,76 +843,37 @@ export class StreamTextSanitizer {
       this.buffer.includes('</search') ||
       this.buffer.includes('search">') ||
       this.buffer.includes('function_call')
-
-    if (hasOpenToolTag) {
-      // If buffer is growing very large (> 300 chars) or has double newline, flush cleaned
-      if (this.buffer.length > 300 || this.buffer.includes('\n\n')) {
-        const cleaned = stripFakeToolCallXml(this.buffer)
-        this.buffer = ''
-        return cleaned
-      }
-      // Hold in buffer until the tag completes
-      return ''
-    }
-
-    // 3. Check if buffer ends with a partial tag starting with '<'
-    const lastOpenBracket = this.buffer.lastIndexOf('<')
-    if (lastOpenBracket !== -1 && !this.buffer.includes('>', lastOpenBracket)) {
-      const potentialTag = this.buffer.slice(lastOpenBracket)
-      const matchesPotential =
-        '<tool_call'.startsWith(potentialTag) ||
-        '</tool_call'.startsWith(potentialTag) ||
-        '<tool_calls'.startsWith(potentialTag) ||
-        '</tool_calls'.startsWith(potentialTag) ||
-        '<invoke'.startsWith(potentialTag) ||
-        '</invoke'.startsWith(potentialTag) ||
-        '<function'.startsWith(potentialTag) ||
-        '</function'.startsWith(potentialTag) ||
-        '<tool-search'.startsWith(potentialTag) ||
-        '</tool-search'.startsWith(potentialTag) ||
-        '<search'.startsWith(potentialTag) ||
-        '</search'.startsWith(potentialTag) ||
-        'function_call'.startsWith(potentialTag.replace(/^</, ''))
-
-      if (matchesPotential) {
-        // Emit everything before the partial tag, hold partial tag in buffer
-        const safe = this.buffer.slice(0, lastOpenBracket)
-        this.buffer = potentialTag
-        return safe
-      }
-    }
-
-    // 4. Partial JSON fake tool call: buffer starts with { and has "name" key
-    // but no closing } yet — hold until the JSON completes so it can be
-    // stripped in one shot on the next delta.
-    if (
-      this.buffer.trimStart().startsWith('{') &&
-      /"name"\s*:/.test(this.buffer) &&
-      !this.buffer.includes('}')
-    ) {
-      return ''
-    }
-
-    const output = this.buffer
-    this.buffer = ''
-    return output
+    return hasOpenToolTag
   }
 
   /**
-   * Flushes any remaining clean text at stream end.
+   * Flushes any remaining clean text at stream end. Each orchestrator owns
+   * one sanitizer per stream attempt, so nothing here carries state into
+   * another request.
    */
   flush(): string {
-    let tail = this.buffer
+    // A confirmed fake open tag was never closed: everything buffered since
+    // is that fake call’s payload, and an incomplete fake block must NOT be
+    // flushed to the frontend as ordinary text — drop it. The two recovery
+    // triggers in process() already guarantee real prose after an abandoned
+    // tag is almost always released before flush.
+    if (this.suppressed) {
+      this.suppressed = false
+      this.buffer = ''
+    }
+    const tail = this.buffer
     this.buffer = ''
     if (this.stripIntro && !this.introChecked) {
-      tail = stripLeadingIntroReset(this.head + tail, {
+      const stripped = stripLeadingIntroReset(this.head + tail, {
         keepSelfIntro: this.keepSelfIntro,
         dropPureGreeting: this.dropPureGreeting
       })
       this.head = ''
       this.introChecked = true
+      return stripFakeToolCallXml(stripped)
     }
     // Flush also runs stripFakeToolCallXml which handles JSON fake tool calls
+    // and releases any still-held partial tag fragments.
     const remaining = stripFakeToolCallXml(tail)
     return remaining
   }
