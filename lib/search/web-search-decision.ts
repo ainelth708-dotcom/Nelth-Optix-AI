@@ -43,8 +43,9 @@ NO SEARCH (needsSearch: false) when the assistant already answers well without i
 
 TIE-BREAKERS
 - Resolve pronouns and ellipses with the recent conversation before judging ("et lui ?", "cette version" → the entity or version they designate).
-- A famous entity used as the TOPIC of a timeless question ("explique comment fonctionne Airbnb") → NO.
-- The same entity asked as a CURRENT state ("How many users does Airbnb have today?") → SEARCH.
+- A famous entity used as the TOPIC of a timeless EXPLANATORY question with an explicit verb like "explique", "how", "what is", "qui est", "comment fonctionne", "définis" ("explique comment fonctionne Airbnb", "qui est Einstein") → NO.
+- The same entity asked as a CURRENT STATE ("How many users does Airbnb have today?", "valeur nette Elon Musk", "où en est Elon Musk") → SEARCH.
+- BARE ENTITY NAME with no verb ("Elon Musk", "Tesla", "Bitcoin", "Macron") → SEARCH. The user likely wants current status, net worth, latest news, or current role — not a static biography. Only treat as NO SEARCH if the conversation context clearly asks for a timeless explanation.
 - Anything the user dates explicitly ("aujourd'hui", "cette année", "en ce moment", "as of now") → SEARCH.
 - If the answer would still hold years from now unchanged → NO; if it could already be wrong since last month → SEARCH.
 - When a balanced ask needs both knowledge and fresh data → SEARCH: the runner grounds the current part, and freshness must not break it.
