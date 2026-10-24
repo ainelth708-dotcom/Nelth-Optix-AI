@@ -170,7 +170,9 @@ export function processCitations(
     // before matching the full citation syntax below.
     const normalized = normalizeBareCitations(segment, citationMaps)
 
-    // Replace [number](#toolCallId) with [domain](actual-url)
+    // Replace [number](#toolCallId) with [number](actual-url) — ChatGPT style:
+    // keep the citation NUMBER in the link text so the chip renders "[9]"
+    // with a favicon, instead of "[domain](url)" which renders "domain".
     // Also handle cases with spaces: [ number ]
     return normalized.replace(
       /\[\s*(\d+)\s*\]\(#([^)]+)\)/g,
@@ -205,11 +207,9 @@ export function processCitations(
           return '' // Return empty string for invalid citations
         }
 
-        // Extract domain name from URL (removes TLD and subdomain)
-        const domainName = displayUrlName(citation.url)
-
+        // Keep the citation NUMBER as link text (ChatGPT style: [9])
         // Encode URI to prevent injection attacks
-        return `[${domainName}](${encodeURI(citation.url)})`
+        return `[${citationNum}](${encodeURI(citation.url)})`
       }
     )
   })

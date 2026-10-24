@@ -413,21 +413,31 @@ export async function POST(request: Request) {
               )
             ])
 
-            if (searchResult?.results?.length) {
-              preloadedSearch = {
-                query: searchResult.query || searchQuery,
-                results: searchResult.results,
-                images: searchResult.images ?? []
-              }
-              console.info(
-                `[OpenUI] Preloaded ${preloadedSearch.results.length} search results`
-              )
+            // Always create preloadedSearch when a search was decided, even if
+            // results are empty — so the client can show the search panel with
+            // the query and the model gets the "WEB SEARCH RESULTS" context
+            // (empty but explicit). This prevents the "search decided but no
+            // panel" silent failure.
+            preloadedSearch = {
+              query: searchResult?.query || searchQuery,
+              results: searchResult?.results ?? [],
+              images: searchResult?.images ?? []
             }
+            console.info(
+              `[OpenUI] Preloaded ${preloadedSearch.results.length} search results`
+            )
           } catch (searchError) {
             console.warn(
               '[OpenUI] Preloaded search failed or timed out:',
               searchError instanceof Error ? searchError.message : searchError
             )
+            // Fallback: still create preloadedSearch with empty results so the
+            // client knows a search was attempted and can show the panel.
+            preloadedSearch = {
+              query: searchQuery,
+              results: [],
+              images: []
+            }
           }
           send({ type: 'nelth.search.status', status: 'done' })
         }
