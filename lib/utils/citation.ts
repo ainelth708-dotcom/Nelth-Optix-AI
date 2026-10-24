@@ -125,6 +125,9 @@ function expandGroupedCitations(content: string): string {
  * Rewrite these bare tokens into `[n](#toolCallId)` matching against all available
  * citation maps so they resolve to the real source URL. Tokens already followed
  * by `(#...)` and real markdown links like `[google](url)` are left untouched.
+ *
+ * Enhanced: tries 'preloaded-search' first, then ANY toolCallId that has the
+ * citation number, and also handles keys that may have prefixes (toolu_, call_).
  */
 function normalizeBareCitations(
   content: string,
@@ -139,15 +142,38 @@ function normalizeBareCitations(
     /(?<![A-Za-z0-9_])\[\s*(\d{1,2})\s*\](?!\()/g,
     (_m, numStr) => {
       const num = parseInt(numStr, 10)
-      // Only rewrite bare tokens that actually resolve to a search result.
+      if (num < 1 || num > 100) return _m
+
+      // 1. Try exact 'preloaded-search' key (most common for OpenUI route)
       if (citationMaps['preloaded-search']?.[num]) {
         return `[${num}](#preloaded-search)`
       }
-      // Find any toolCallId that has this citation number
-      const foundId = toolCallIds.find(id => citationMaps[id]?.[num])
+
+      // 2. Try any toolCallId that has this citation number (direct match)
+      let foundId = toolCallIds.find(id => citationMaps[id]?.[num])
       if (foundId) {
         return `[${num}](#${foundId})`
       }
+
+      // 3. Try prefix-normalized match (model may emit toolu_<id>, call_<id>, search-<id>)
+      const normalizedIds = new Map<string, string>()
+      for (const id of toolCallIds) {
+        const norm = stripToolCallPrefix(id)
+        if (norm !== id) normalizedIds.set(norm, id)
+      }
+      for (const [norm, original] of normalizedIds) {
+        if (citationMaps[original]?.[num]) {
+          return `[${num}](#${original})`
+        }
+      }
+
+      // 4. As last resort, check if any normalized key has the citation
+      for (const [norm, original] of normalizedIds) {
+        if (citationMaps[norm]?.[num]) {
+          return `[${num}](#${original})`
+        }
+      }
+
       return _m
     }
   )
@@ -170,10 +196,10 @@ export function processCitations(
     // before matching the full citation syntax below.
     const normalized = normalizeBareCitations(segment, citationMaps)
 
-    // Replace [number](#toolCallId) with [number](actual-url) — ChatGPT style:
-    // keep the citation NUMBER in the link text so the chip renders "[9]"
-    // with a favicon, instead of "[domain](url)" which renders "domain".
-    // Also handle cases with spaces: [ number ]
+    // Replace [number](#toolCallId) with [domain](actual-url) — display the
+    // DOMAIN NAME in the link text (e.g., "[google](url)") so the chip shows
+    // the source brand with favicon. Bare [n] are normalized first, so they
+    // also become domain links. Also handle cases with spaces: [ number ]
     return normalized.replace(
       /\[\s*(\d+)\s*\]\(#([^)]+)\)/g,
       (_match, num, toolCallId) => {
@@ -207,9 +233,12 @@ export function processCitations(
           return '' // Return empty string for invalid citations
         }
 
-        // Keep the citation NUMBER as link text (ChatGPT style: [9])
+        // Extract domain name from URL (removes TLD and subdomain) — this is
+        // what the chip renders as label (e.g., "google", "github", "wikipedia")
+        const domainName = displayUrlName(citation.url)
+
         // Encode URI to prevent injection attacks
-        return `[${citationNum}](${encodeURI(citation.url)})`
+        return `[${domainName}](${encodeURI(citation.url)})`
       }
     )
   })
