@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 
 import type { ActionEvent } from '@openuidev/react-lang'
 import {
@@ -19,6 +20,7 @@ import {
   CalendarDays,
   ChefHat,
   Compass,
+  Image as ImageIcon,
   Lightbulb,
   MapPinned,
   Sparkles
@@ -291,6 +293,25 @@ function onAction(event: ActionEvent) {
   }
 }
 
+/**
+ * Imagine studio entry for the OpenUI agent sidebar. Vendor `SidebarItem`
+ * keeps the ThreadList row look (icon-only + tooltip when the sidebar is
+ * collapsed); the destination is a real Next route, so `router.push` is used
+ * instead of the vendor's internal nav system.
+ */
+function ImagineSidebarItem() {
+  const router = useRouter()
+
+  return (
+    <AgentInterface.SidebarItem
+      icon={<ImageIcon size={16} />}
+      onClick={() => router.push('/imagine')}
+    >
+      Imagine
+    </AgentInterface.SidebarItem>
+  )
+}
+
 export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
   const { setPreference, mode } = useThemeModePreference()
   const storage = useMemo(
@@ -333,13 +354,29 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
         theme={{ mode }}
         starters={starters}
       >
-        <AgentInterface.SidebarHeader />
-        <AgentInterface.SidebarFooter>
-          <AgentInterface.ThemeModeToggle
-            mode={mode}
-            onModeChange={setPreference}
-          />
-        </AgentInterface.SidebarFooter>
+        {/* Sidebar composed manually (vendor "Mode C") to keep the default
+            arrangement and add the Imagine item below the thread list — the
+            vendor component is never modified. */}
+        <AgentInterface.Sidebar>
+          <div className="openui-agent-sidebar-actions">
+            <AgentInterface.SidebarHeader />
+            <div className="openui-agent-sidebar-primary-actions">
+              <AgentInterface.NewChatButton />
+              <AgentInterface.HistoryButton />
+              <AgentInterface.ArtifactNav className="openui-agent-sidebar-artifact-nav" />
+            </div>
+          </div>
+          <AgentInterface.SidebarContent>
+            <AgentInterface.ThreadList />
+            <ImagineSidebarItem />
+          </AgentInterface.SidebarContent>
+          <AgentInterface.SidebarFooter>
+            <AgentInterface.ThemeModeToggle
+              mode={mode}
+              onModeChange={setPreference}
+            />
+          </AgentInterface.SidebarFooter>
+        </AgentInterface.Sidebar>
         <AgentInterface.ThreadHeader showChatTitle={false} />
         <AgentInterface.Welcome
           image={
