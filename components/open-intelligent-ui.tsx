@@ -363,12 +363,12 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
             <div className="openui-agent-sidebar-primary-actions">
               <AgentInterface.NewChatButton />
               <AgentInterface.HistoryButton />
+              <ImagineSidebarItem />
               <AgentInterface.ArtifactNav className="openui-agent-sidebar-artifact-nav" />
             </div>
           </div>
           <AgentInterface.SidebarContent>
             <AgentInterface.ThreadList />
-            <ImagineSidebarItem />
           </AgentInterface.SidebarContent>
           <AgentInterface.SidebarFooter>
             <AgentInterface.ThemeModeToggle
