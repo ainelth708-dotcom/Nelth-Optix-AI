@@ -294,17 +294,19 @@ function onAction(event: ActionEvent) {
 }
 
 /**
- * Imagine studio entry for the OpenUI agent sidebar. Vendor `SidebarItem`
- * keeps the ThreadList row look (icon-only + tooltip when the sidebar is
- * collapsed); the destination is a real Next route, so `router.push` is used
- * instead of the vendor's internal nav system.
+ * Imagine studio entry for the OpenUI agent sidebar.
+ * Uses the vendor's `SidebarItem` but with a custom class that makes its
+ * expanded-mode style match `NewChatButton` exactly (same height, padding,
+ * radius, typography, icon size, gap, hover/active states). Collapsed mode
+ * uses the vendor's native SidebarItem behavior (icon-only, 32px, tooltip).
  */
 function ImagineSidebarItem() {
   const router = useRouter()
 
   return (
     <AgentInterface.SidebarItem
-      icon={<ImageIcon size={16} />}
+      className="openui-agent-primary-action-item"
+      icon={<ImageIcon size={14} />}
       onClick={() => router.push('/imagine')}
     >
       Imagine
