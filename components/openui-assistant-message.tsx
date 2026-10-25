@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef } from 'react'
 
 import {
   type ActionEvent,
@@ -30,7 +30,7 @@ import { useArtifact } from './artifact/artifact-context'
 import { CitationProvider } from './openui/citation-context'
 import { MarkdownMessage } from './openui/message'
 import { SourceFavicons } from './openui/source-favicons'
-import { useThrottledStreamValue } from './openui/use-throttled-stream-value'
+import { useSettledOpenUIProgram } from './openui/use-settled-opui-program'
 
 // Keyframes `sd-fadeIn` + `[data-sd-animate]` rules: same stylesheet the
 // Streamdown Markdown path uses so the rich-UI blocks can fade in too.
@@ -45,13 +45,11 @@ import 'streamdown/styles.css'
 function RichBlock({
   response,
   isStreaming,
-  onAction,
-  onError
+  onAction
 }: {
   response: string
   isStreaming: boolean
   onAction: (event: ActionEvent) => void
-  onError: (errors: unknown) => void
 }) {
   return (
     <div
@@ -64,82 +62,41 @@ function RichBlock({
         response={response}
         isStreaming={isStreaming}
         onAction={onAction}
-        onError={errors => {
-          onError(errors)
-        }}
       />
     </div>
   )
 }
 
 /**
- * Throttled Renderer wrapper. The Lang Renderer re-parses + re-evaluates the
- * entire program every time the response string changes, so feeding it the raw
- * word-level stream made rich pages janky. The final value always resolves
- * immediately when the stream settles.
- *
- * It also guards against the worst "mal appliqué" failure mode: a program the
- * parser rejects at the END of the stream renders nothing. Instead of leaving
- * a blank frame, the raw source is shown in a collapsible block.
+ * Renderer wrapper that hardens the settled result:
+ * - while streaming: the throttle keeps the render smooth and the Renderer
+ *   builds the page progressively (best-effort parsing is streaming-native);
+ * - at settle: the program goes through the repair/salvage ladder
+ *   (repairOpenUIProgram + the real Lang parser) so the page ALWAYS renders
+ *   — never a blank frame, never raw source code.
  */
 function RichBlockRenderer({
   response,
   isStreaming,
-  onAction,
-  onError
+  onAction
 }: {
   response: string
   isStreaming: boolean
   onAction: (event: ActionEvent) => void
-  onError: (errors: unknown) => void
 }) {
-  const throttledResponse = useThrottledStreamValue(response, isStreaming)
-  // Errors are only reported once the stream settles (the Renderer suppresses
-  // them while streaming), so track the settled outcome for the fallback.
-  // ONLY parser-level errors trigger the source fallback: a page with a
-  // runtime or query failure still renders partially and must stay visible.
-  // The reset is synchronized at render time — when a new run streams into
-  // this block, a previously-settled parse error state must not linger.
-  const [hasFinalParseError, setHasFinalParseError] = useState(false)
-  if (isStreaming && hasFinalParseError) setHasFinalParseError(false)
-
-  const handleErrors = useCallback(
-    (errors: unknown) => {
-      if (!isStreaming) {
-        const list = Array.isArray(errors) ? errors : []
-        setHasFinalParseError(
-          list.length > 0 &&
-            list.every(
-              error =>
-                (error as { source?: string } | undefined)?.source === 'parser'
-            )
-        )
-      }
-      onError(errors)
-    },
-    [isStreaming, onError]
-  )
-
-  if (!isStreaming && hasFinalParseError && response.trim().length > 0) {
-    return (
-      <details className="mt-1 rounded-md border border-border/60 p-2">
-        <summary className="cursor-pointer text-muted-foreground text-xs">
-          ⚠️ Rendu de la page indisponible — afficher la source générée
-        </summary>
-        <pre className="mt-2 max-h-96 overflow-auto rounded bg-muted/40 p-3 text-xs whitespace-pre-wrap break-words">
-          {response}
-        </pre>
-      </details>
-    )
-  }
+  const program = useSettledOpenUIProgram(response, isStreaming, pageLibrary)
 
   return (
     <Renderer
-      response={throttledResponse}
+      response={program}
       library={pageLibrary}
       isStreaming={isStreaming}
       onAction={onAction}
-      onError={handleErrors}
+      onError={errors => {
+        // Parse/runtime diagnostics for dev tooling only — the UI keeps
+        // rendering the repaired page, so this is never user-facing.
+        console.error('OpenUI response validation errors:', errors)
+      }}
     />
   )
 }
@@ -379,9 +336,6 @@ export function OpenUIAssistantMessage({
               response={renderedLang}
               isStreaming={isStreaming}
               onAction={handleAction}
-              onError={errors => {
-                console.error('OpenUI response validation errors:', errors)
-              }}
             />
           ) : (
             <>
@@ -395,12 +349,6 @@ export function OpenUIAssistantMessage({
                     )}
                     isStreaming={isStreaming}
                     onAction={handleAction}
-                    onError={errors => {
-                      console.error(
-                        'OpenUI response validation errors:',
-                        errors
-                      )
-                    }}
                   />
                 ) : (
                   <MarkdownMessage

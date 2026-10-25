@@ -8,7 +8,7 @@ import { useOptionalChatContext } from '@/lib/contexts/chat-context'
 import { appendOpenUIContext } from '@/lib/openui/context'
 import { library } from '@/lib/openui/library'
 
-import { useThrottledStreamValue } from './use-throttled-stream-value'
+import { useSettledOpenUIProgram } from './use-settled-opui-program'
 
 export function OpenUIResponse({
   response,
@@ -78,15 +78,13 @@ export function OpenUIResponse({
     stateRef.current = state
   }, [])
 
-  // The Renderer re-parses + re-evaluates the whole program on every response
-  // change; word-level deltas triggered that work ~30 times per second. The
-  // throttled value keeps the streaming render smooth, and the final value
-  // always resolves immediately when the stream ends.
-  const throttledResponse = useThrottledStreamValue(response, isStreaming)
+  // Same contract as the OpenUI assistant message: stream-throttled while
+  // streaming, then repair/salvage at settle — the page always renders.
+  const program = useSettledOpenUIProgram(response, isStreaming, library)
 
   return (
     <Renderer
-      response={throttledResponse}
+      response={program}
       library={library}
       isStreaming={isStreaming}
       onAction={handleAction}
