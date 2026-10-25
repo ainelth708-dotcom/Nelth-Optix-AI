@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 
 import {
   type ActionEvent,
@@ -14,7 +14,10 @@ import { toast } from 'sonner'
 
 import { isOpenUILangResponse } from '@/lib/openui/content-format'
 import { pageLibrary } from '@/lib/openui/page-library'
-import { splitOpenUIResponses } from '@/lib/openui/response'
+import {
+  extractOpenUIResponse,
+  splitOpenUIResponses
+} from '@/lib/openui/response'
 import type { OpenUISearchCall } from '@/lib/openui/search-metadata'
 import { splitOpenUISearchMetadata } from '@/lib/openui/search-metadata'
 import type { SearchResultItem } from '@/lib/types'
@@ -27,6 +30,7 @@ import { useArtifact } from './artifact/artifact-context'
 import { CitationProvider } from './openui/citation-context'
 import { MarkdownMessage } from './openui/message'
 import { SourceFavicons } from './openui/source-favicons'
+import { useThrottledStreamValue } from './openui/use-throttled-stream-value'
 
 // Keyframes `sd-fadeIn` + `[data-sd-animate]` rules: same stylesheet the
 // Streamdown Markdown path uses so the rich-UI blocks can fade in too.
@@ -56,9 +60,8 @@ function RichBlock({
         animation: isStreaming ? 'sd-fadeIn 200ms ease-out both' : 'none'
       }}
     >
-      <Renderer
+      <RichBlockRenderer
         response={response}
-        library={pageLibrary}
         isStreaming={isStreaming}
         onAction={onAction}
         onError={errors => {
@@ -66,6 +69,78 @@ function RichBlock({
         }}
       />
     </div>
+  )
+}
+
+/**
+ * Throttled Renderer wrapper. The Lang Renderer re-parses + re-evaluates the
+ * entire program every time the response string changes, so feeding it the raw
+ * word-level stream made rich pages janky. The final value always resolves
+ * immediately when the stream settles.
+ *
+ * It also guards against the worst "mal appliqué" failure mode: a program the
+ * parser rejects at the END of the stream renders nothing. Instead of leaving
+ * a blank frame, the raw source is shown in a collapsible block.
+ */
+function RichBlockRenderer({
+  response,
+  isStreaming,
+  onAction,
+  onError
+}: {
+  response: string
+  isStreaming: boolean
+  onAction: (event: ActionEvent) => void
+  onError: (errors: unknown) => void
+}) {
+  const throttledResponse = useThrottledStreamValue(response, isStreaming)
+  // Errors are only reported once the stream settles (the Renderer suppresses
+  // them while streaming), so track the settled outcome for the fallback.
+  // ONLY parser-level errors trigger the source fallback: a page with a
+  // runtime or query failure still renders partially and must stay visible.
+  // The reset is synchronized at render time — when a new run streams into
+  // this block, a previously-settled parse error state must not linger.
+  const [hasFinalParseError, setHasFinalParseError] = useState(false)
+  if (isStreaming && hasFinalParseError) setHasFinalParseError(false)
+
+  const handleErrors = useCallback(
+    (errors: unknown) => {
+      if (!isStreaming) {
+        const list = Array.isArray(errors) ? errors : []
+        setHasFinalParseError(
+          list.length > 0 &&
+            list.every(
+              error =>
+                (error as { source?: string } | undefined)?.source === 'parser'
+            )
+        )
+      }
+      onError(errors)
+    },
+    [isStreaming, onError]
+  )
+
+  if (!isStreaming && hasFinalParseError && response.trim().length > 0) {
+    return (
+      <details className="mt-1 rounded-md border border-border/60 p-2">
+        <summary className="cursor-pointer text-muted-foreground text-xs">
+          ⚠️ Rendu de la page indisponible — afficher la source générée
+        </summary>
+        <pre className="mt-2 max-h-96 overflow-auto rounded bg-muted/40 p-3 text-xs whitespace-pre-wrap break-words">
+          {response}
+        </pre>
+      </details>
+    )
+  }
+
+  return (
+    <Renderer
+      response={throttledResponse}
+      library={pageLibrary}
+      isStreaming={isStreaming}
+      onAction={onAction}
+      onError={handleErrors}
+    />
   )
 }
 
@@ -178,12 +253,25 @@ export function OpenUIAssistantMessage({
   // ChatGPT Intelligent UI rule: basic prompts keep the text-only format.
   // The model may answer in plain Markdown; only OpenUI Lang programs go
   // through the Renderer, everything else renders as classic prose.
-  const isLangResponse = isOpenUILangResponse(content)
-  const renderedLang = useMemo(
-    () =>
-      isLangResponse ? processCitations(content, citationMaps ?? {}) : content,
-    [citationMaps, content, isLangResponse]
-  )
+  const isLangResponse = useMemo(() => {
+    if (!isOpenUILangResponse(content)) return false
+    // The fence signal alone is too weak — a text answer may QUOTE a
+    // ```openui sample inside a code block. A real pure program's body
+    // starts with the `root =` statement; only then route it to the
+    // Renderer ("mal appliqué" guard). Bare (fence-less) programs already
+    // passed OPENUI_ROOT_RE, so they stay true.
+    const unfenced = extractOpenUIResponse(content)
+    return unfenced ? /^\s*root\s*=/.test(unfenced) : true
+  }, [content])
+  const renderedLang = useMemo(() => {
+    if (!isLangResponse) return content
+    // Pure program wrapped in a ```openui fence: strip it before the Renderer
+    // — it parses the RAW program, so the fence markers would themselves be
+    // parsed as opui-lang source and break validation ("mal appliqué").
+    // Models oscillate between fence-wrapped and bare programs mid-stream.
+    const unfenced = extractOpenUIResponse(content)
+    return processCitations(unfenced ?? content, citationMaps ?? {})
+  }, [citationMaps, content, isLangResponse])
 
   // Découpe la réponse en segments Markdown / OpenUI Lang. Les cas purs
   // (tout Markdown ou tout programme) conservent leur rendu actuel. Une
@@ -191,8 +279,11 @@ export function OpenUIAssistantMessage({
   // OpenUI ne conserve que ce qui est joignable depuis `root`, donc sans
   // cela la prose autour d'un bloc ```openui disparaît silencieusement —
   // et un programme invalide en cours de stream rend un blanc.
-  const segments = splitOpenUIResponses(content)
-  const hasOpenUI = segments.some(segment => segment.type === 'openui')
+  const segments = useMemo(() => splitOpenUIResponses(content), [content])
+  const hasOpenUI = useMemo(
+    () => segments.some(segment => segment.type === 'openui'),
+    [segments]
+  )
   const mixed = hasOpenUI && segments.length > 1
 
   async function copyAnswer() {

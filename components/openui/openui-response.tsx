@@ -2,11 +2,13 @@
 
 import { useCallback, useRef } from 'react'
 
-import { type ActionEvent,Renderer } from '@openuidev/react-lang'
+import { type ActionEvent, Renderer } from '@openuidev/react-lang'
 
 import { useOptionalChatContext } from '@/lib/contexts/chat-context'
 import { appendOpenUIContext } from '@/lib/openui/context'
 import { library } from '@/lib/openui/library'
+
+import { useThrottledStreamValue } from './use-throttled-stream-value'
 
 export function OpenUIResponse({
   response,
@@ -76,9 +78,15 @@ export function OpenUIResponse({
     stateRef.current = state
   }, [])
 
+  // The Renderer re-parses + re-evaluates the whole program on every response
+  // change; word-level deltas triggered that work ~30 times per second. The
+  // throttled value keeps the streaming render smooth, and the final value
+  // always resolves immediately when the stream ends.
+  const throttledResponse = useThrottledStreamValue(response, isStreaming)
+
   return (
     <Renderer
-      response={response}
+      response={throttledResponse}
       library={library}
       isStreaming={isStreaming}
       onAction={handleAction}
