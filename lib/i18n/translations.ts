@@ -11,6 +11,7 @@ const en: Dict = {
   'common.toUse':
     'To use Nelth-IA, sign in to your account or create a new one.',
   'common.newChat': 'New Chat',
+  'common.imagineStudio': 'Imagine studio',
   'common.send': 'Send',
   'common.stop': 'Stop',
   'common.searchHistory': 'Search history',
@@ -139,6 +140,7 @@ const fr: Dict = {
   'common.toUse':
     'Pour utiliser Nelth-IA, connectez-vous à votre compte ou créez-en un nouveau.',
   'common.newChat': 'Nouvelle conversation',
+  'common.imagineStudio': 'Studio Imagine',
   'common.send': 'Envoyer',
   'common.stop': 'Arrêter',
   'common.searchHistory': 'Historique',

@@ -18,6 +18,7 @@ import {
 
 import { ChatHistorySection } from './sidebar/chat-history-section'
 import { ChatHistorySkeleton } from './sidebar/chat-history-skeleton'
+import { ImagineMenuItem } from './sidebar/imagine-menu-item'
 import { NewChatMenuItem } from './sidebar/new-chat-menu-item'
 import { IconLogo } from './ui/icons'
 import GuestMenu from './guest-menu'
@@ -45,6 +46,10 @@ export default function AppSidebar({ user }: { user: AppUser | null }) {
             <ChatHistorySection />
           </Suspense>
         </div>
+        {/* Imagine studio entry, right below the (scrollable) chat history. */}
+        <SidebarMenu className="mt-1 shrink-0">
+          <ImagineMenuItem />
+        </SidebarMenu>
       </SidebarContent>
       <SidebarFooter className="border-t p-2">
         <div className="flex items-center gap-2 min-w-0">
