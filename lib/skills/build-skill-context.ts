@@ -324,12 +324,13 @@ export async function buildSkillContext(
       followUp ? previousActiveSlugs : undefined
     )
 
-    // READ-ONLY INTENT GUARD: when the user uploads a file and asks to READ /
-    // ANALYZE / SUMMARIZE it (not to create a new one), do NOT inject a
-    // document-generation skill. Injecting one makes the model generate a brand
-    // new file before answering — the unwanted "generate then read" behaviour.
-    // For a pure read the model should just read the attached file and answer
-    // (like ChatGPT). Only block when there is no explicit create/export verb.
+    // READ-ONLY INTENT GUARD (protocol-based): when the user uploads a file and
+    // asks to READ / ANALYZE / SUMMARIZE it, the matching document skill stays
+    // ACTIVE — its SKILL.md genuinely holds the read/extract instructions the
+    // model needs. But a READ-ONLY MODE protocol is injected (readOnlyBlock)
+    // so the model answers from the attached file instead of generating a
+    // brand-new document first (the unwanted "generate then read" behaviour).
+    // A create/export verb in the query switches back to full generation mode.
     const READ_VERB_RE =
       /\b(lis|lire|lisez|read|reading|analyse|analyze|analys|résum|resum|resume|summari|summary|extrais|extract|comprend|comprenez|understand|parcours|parcour|décris|decris|describe|explique|expliqu|que dit|what does|review)\b/i
     const CREATE_VERB_RE =
@@ -344,19 +345,6 @@ export async function buildSkillContext(
       'spreadsheets',
       'presentations'
     ])
-    if (isReadOnlyIntent) {
-      const filtered = selections.filter(s => {
-        const meta = registry.find(r => r.slug === s.slug)
-        return !DOC_GEN_DOMAINS.has((meta?.domain ?? '').toLowerCase())
-      })
-      if (filtered.length !== selections.length) {
-        perfTime(
-          '[TTFT] read-only intent: dropped document-generation skills',
-          tBuild
-        )
-      }
-      selections = filtered
-    }
 
     // CONNECTOR-READ GUARD (same bug class, no attachment needed): a
     // personal-data request ("résume mes mails", "relève mon courrier")
@@ -680,9 +668,29 @@ Only mark a skill COMPLETED when its instructions are genuinely reflected in the
 output AND validation passes. If validation fails, correct the output and
 re-validate before completing. Detection is NEVER completion.`
 
+    // READ-ONLY FILE MODE — injected when the user attached a file and asks to
+    // read/analyze/summarize it. The document skills stay active (their SKILL.md
+    // explains how to read/extract), but generation is explicitly disabled so
+    // the model answers from the file instead of producing a new artifact first.
+    const readOnlyBlock = isReadOnlyIntent
+      ? `
+
+READ-ONLY FILE MODE (the user attached a file and asked to read/analyze/summarize it):
+- Answer from the ATTACHED file's own content. Use the document tool with action
+  "read" when the file content is not already visible.
+- Do NOT create, modify or export a new document unless the user explicitly asks
+  for a new or modified file. No speculative document generation.`
+      : ''
+
     const context = (
       compact
-        ? [minimalHeader, ...skillBlocks, strategyBlock, MINIMAL_SKILL_PROTOCOL]
+        ? [
+            minimalHeader,
+            ...skillBlocks,
+            strategyBlock,
+            readOnlyBlock,
+            MINIMAL_SKILL_PROTOCOL
+          ]
         : mode === 'full'
           ? [
               fullHeader,
@@ -693,6 +701,7 @@ re-validate before completing. Detection is NEVER completion.`
               validationBlock,
               lifecycleBlock,
               continuityBlock,
+              readOnlyBlock,
               ACTIVE_SKILL_EXECUTION_PROTOCOL
             ]
           : [
@@ -704,6 +713,7 @@ re-validate before completing. Detection is NEVER completion.`
               validationBlock,
               lifecycleBlock,
               continuityBlock,
+              readOnlyBlock,
               MINIMAL_SKILL_PROTOCOL
             ]
     )

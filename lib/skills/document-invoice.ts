@@ -113,6 +113,11 @@ export function buildInvoiceModel(spec: Record<string, unknown>): InvoiceModel {
   model.dueDate = take('dueDate', 'due')
   if (typeof src.currency === 'string' && src.currency.trim())
     model.currency = src.currency.trim()
+  // Totals: prefer explicit structured fields when the model provides them.
+  model.subtotal = take('subtotal', 'subTotal', 'totalHT', 'total_ht')
+  model.tax = take('tax', 'vat', 'tva')
+  model.taxLabel = take('taxLabel', 'tax_label', 'rate_label')
+  model.total = take('total', 'totalTTC', 'grandTotal', 'total_ttc')
 
   // 2) Otherwise parse the Markdown body (the common path).
   const md = buildMarkdownSource(spec)
@@ -218,8 +223,47 @@ export function buildInvoiceModel(spec: Record<string, unknown>): InvoiceModel {
   }
   model.seller = model.seller.map(stripEmoji).filter(Boolean)
 
-  // --- Line items: first Markdown table after the items marker ----------
-  const tableIdx = lines.findIndex((l, i) => {
+  // --- Line items: structured objects first, then first Markdown table ----
+  const rawItems: unknown[] = Array.isArray(src.items)
+    ? (src.items as unknown[])
+    : Array.isArray(src.lines)
+      ? (src.lines as unknown[])
+      : []
+  for (const raw of rawItems) {
+    if (typeof raw === 'string') {
+      const d = stripEmoji(raw).trim()
+      if (d) model.items.push({ description: d })
+      continue
+    }
+    if (raw && typeof raw === 'object') {
+      const o = raw as Record<string, unknown>
+      const pickStr = (...keys: string[]): string | undefined => {
+        for (const k of keys) {
+          const v = o[k]
+          if (typeof v === 'string' && v.trim()) return v.trim()
+          if (typeof v === 'number' && Number.isFinite(v)) return String(v)
+        }
+        return undefined
+      }
+      const description = pickStr('description', 'label', 'name', 'item')
+      if (!description) continue
+      model.items.push({
+        description,
+        qty: pickStr('qty', 'quantity', 'quantite', 'quantité'),
+        unitPrice: pickStr(
+          'unitPrice',
+          'unit_price',
+          'price',
+          'prixUnitaire',
+          'prix_unitaire'
+        ),
+        total: pickStr('total', 'amount', 'lineTotal', 'line_total', 'montant')
+      })
+    }
+  }
+  const tableIdx = model.items.length
+    ? -1
+    : lines.findIndex((l, i) => {
     const low = stripEmoji(l).toLowerCase()
     const isItemsMarker =
       /^[📋]/u.test(l) || /^(d[ée]tails|ligne|article|description)\b/i.test(low)
@@ -286,18 +330,18 @@ export function buildInvoiceModel(spec: Record<string, unknown>): InvoiceModel {
     const low = s.toLowerCase()
     const amt = parseAmount(s)
     if (/sous[- ]?total|total\s*ht|subtotal/i.test(low)) {
-      if (amt != null) model.subtotal = formatEUR(amt)
+      if (amt != null && !model.subtotal) model.subtotal = formatEUR(amt)
     } else if (/tva|vat|tax/i.test(low)) {
       const rate = /(\d{1,2})\s*%/.exec(s)
-      if (rate) model.taxLabel = `TVA ${rate[1]} %`
-      if (amt != null) model.tax = formatEUR(amt)
-      else if (rate && computedSubtotal != null) {
+      if (rate && !model.taxLabel) model.taxLabel = `TVA ${rate[1]} %`
+      if (amt != null && !model.tax) model.tax = formatEUR(amt)
+      else if (rate && !model.tax && computedSubtotal != null) {
         model.tax = formatEUR(computedSubtotal * (parseInt(rate[1], 10) / 100))
       }
     } else if (
       /total\s*ttc|grand\s*total|total\s*à\s*payer|net\s*à\s*payer/i.test(low)
     ) {
-      if (amt != null) model.total = formatEUR(amt)
+      if (amt != null && !model.total) model.total = formatEUR(amt)
     }
   }
   // Fallbacks from computed values.
