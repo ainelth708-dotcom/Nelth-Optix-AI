@@ -276,8 +276,8 @@
 /* Collapsed state handled by ImagineSidebarItem switching to SidebarItem */
 
 /* Custom Composer attach button — direct flex child of input-wrapper (matches vendor structure) */
-.openui-integration-shell .openui-agent-thread-composer__attach-button {
-  display: flex;
+.openui-agent-thread-composer__attach-button {
+  display: flex !important;
   align-items: center;
   justify-content: center;
   width: 32px;
@@ -292,32 +292,31 @@
   transition:
     color 90ms cubic-bezier(0.22, 1, 0.36, 1),
     background-color 90ms cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 1;
 }
 
-.openui-integration-shell .openui-agent-thread-composer__attach-button:hover {
+.openui-agent-thread-composer__attach-button:hover {
   color: var(--openui-text-neutral-primary);
   background-color: var(--openui-highlight);
 }
 
-.openui-integration-shell
-  .openui-agent-thread-composer__attach-button:focus-visible {
+.openui-agent-thread-composer__attach-button:focus-visible {
   outline: 2px solid var(--openui-highlight-strong);
   outline-offset: 2px;
 }
 
 /* Ensure textarea remains flex: 1 as direct child (vendor expectation) */
-.openui-integration-shell .openui-agent-thread-composer__input {
+.openui-agent-thread-composer__input {
   flex: 1;
   min-width: 0;
 }
 
 /* Action bar — ensure submit button is perfectly circular, no flex shrink, aligned right */
-.openui-integration-shell .openui-agent-thread-composer__action-bar {
+.openui-agent-thread-composer__action-bar {
   flex-shrink: 0;
 }
 
-.openui-integration-shell
-  .openui-agent-thread-composer__submit-button.openui-icon-button {
+.openui-agent-thread-composer__submit-button.openui-icon-button {
   flex-shrink: 0;
   width: 32px;
   height: 32px;
@@ -326,4 +325,9 @@
   align-items: center;
   justify-content: center;
   margin-left: var(--openui-space-xs);
+}
+
+/* Ensure wrapper doesn't clip the attach button (vendor uses overflow:clip for scroll mask) */
+.openui-agent-thread-composer__input-wrapper {
+  overflow: visible !important;
 }
