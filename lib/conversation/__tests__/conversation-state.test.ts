@@ -305,6 +305,25 @@ describe('conversation state helpers', () => {
     ).toBe('')
   })
 
+  it('demands new phrasing when the user greets again after our greeting', () => {
+    const state = trackConversationState(
+      turns(
+        ['user', 'salut'],
+        [
+          'assistant',
+          'Salut ! 👋 Ravi de vous voir — une question, une recherche, un projet ?'
+        ],
+        ['user', 'salut']
+      )
+    )
+    expect(state.lastUserIntent).toBe('greeting')
+    expect(state.lastAssistantWasGreeting).toBe(true)
+    const layer = buildConversationStateLayer(state)
+    expect(layer).toContain('ALREADY greeted')
+    expect(layer).toContain('Ravi de vous voir')
+    expect(layer).toContain('different opener')
+  })
+
   it('BONJOUR → greeting → OUI never greets again (greeting relapse)', () => {
     const greeting =
       'Bonjour ! 👋 Ravi de vous voir — une question, un projet ou simplement une envie de discuter ? Je vous écoute.'

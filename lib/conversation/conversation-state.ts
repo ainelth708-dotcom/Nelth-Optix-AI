@@ -63,6 +63,8 @@ export interface ConversationState {
   hasAssistantMessage: boolean
   /** True when the last assistant message was itself a greeting/opener. */
   lastAssistantWasGreeting: boolean
+  /** Collapsed text of the last assistant message (quoted by repeat guards). */
+  lastAssistantText: string
 }
 
 const MAX_TOPIC_CHARS = 160
@@ -495,7 +497,8 @@ export function trackConversationState(
     offeredOptions: [],
     awaitingChoice: false,
     hasAssistantMessage: false,
-    lastAssistantWasGreeting: false
+    lastAssistantWasGreeting: false,
+    lastAssistantText: ''
   }
   if (!turns || turns.length === 0) return empty
 
@@ -593,7 +596,8 @@ export function trackConversationState(
     offeredOptions,
     awaitingChoice,
     hasAssistantMessage,
-    lastAssistantWasGreeting
+    lastAssistantWasGreeting,
+    lastAssistantText
   }
 }
 
@@ -643,6 +647,21 @@ Reply with ONE short sentence inviting their actual request (a question, a proje
     return `<conversation_state>
 Ongoing conversation — this is NOT the first exchange. Do NOT open with a greeting ("Bonjour", "Salut", "Hello", "Coucou", 👋) and do NOT re-introduce yourself.
 The user's latest request starts a NEW topic: "${quote(state.activeTopic)}". Answer it directly, in the user's language.${constraintsNote}
+</conversation_state>`
+  }
+
+  // Greeting anti-repeat: the user greets AGAIN after we already greeted.
+  // Weak models regurgitate the same stock opener every time ("Ravi de
+  // vous voir…") — quote our previous greeting verbatim and demand new
+  // phrasing outright.
+  if (
+    state.lastUserIntent === 'greeting' &&
+    state.lastAssistantWasGreeting &&
+    state.lastAssistantText
+  ) {
+    return `<conversation_state>
+The user greets again, but you ALREADY greeted with: "${quote(state.lastAssistantText.slice(0, 160))}".
+This reply MUST use a different opener word and a different closing hook — never reuse any phrase from that previous greeting (notably "Ravi de vous voir", "une question, une recherche, un projet ?", and their English equivalents). Keep it 1–2 short warm sentences in the user's language.
 </conversation_state>`
   }
 
