@@ -274,3 +274,44 @@
 }
 
 /* Collapsed state handled by ImagineSidebarItem switching to SidebarItem */
+
+/* Custom Composer with attach button before textarea */
+.openui-integration-shell .openui-agent-thread-composer__input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--openui-space-xs);
+}
+
+.openui-integration-shell .openui-agent-thread-composer__attach-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--openui-radius-s);
+  background: transparent;
+  color: var(--openui-text-neutral-secondary);
+  cursor: pointer;
+  padding: 0;
+  transition:
+    color 90ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 90ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.openui-integration-shell .openui-agent-thread-composer__attach-button:hover {
+  color: var(--openui-text-neutral-primary);
+  background-color: var(--openui-highlight);
+}
+
+.openui-integration-shell
+  .openui-agent-thread-composer__attach-button:focus-visible {
+  outline: 2px solid var(--openui-highlight-strong);
+  outline-offset: 2px;
+}
+
+.openui-integration-shell .openui-agent-thread-composer__input {
+  flex: 1;
+  min-width: 0;
+}

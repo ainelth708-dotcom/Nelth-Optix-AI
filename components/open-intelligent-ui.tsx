@@ -6,7 +6,8 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useState} from 'react'
+  useState
+} from 'react'
 import { useRouter } from 'next/navigation'
 
 import type { ActionEvent } from '@openuidev/react-lang'
@@ -22,7 +23,8 @@ import {
   useLayoutContext,
   useThemeModePreference,
   useThread,
-  useThreadList} from '@openuidev/react-ui'
+  useThreadList
+} from '@openuidev/react-ui'
 import {
   ArrowUp,
   CalendarDays,
@@ -52,7 +54,6 @@ import { webUrl } from '../open-intelligent-ui-main/open-intelligent-ui-main/src
 import { library } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/library'
 
 import { NelthLogo } from './ui/nelth-logo'
-import { FileUploadButton } from './file-upload-button'
 import { OpenUIAssistantMessage } from './openui-assistant-message'
 
 import '../app/open-intelligent-ui.css'
@@ -327,8 +328,8 @@ function ImagineSidebarItem() {
 }
 
 /**
- * Custom Composer with file upload button inside the action bar.
- * Replicates vendor Composer behavior + adds FileUploadButton.
+ * Custom Composer with file upload button before the textarea.
+ * Replicates vendor Composer behavior + adds file attachment button.
  */
 function OpenUIComposer() {
   const [textContent, setTextContent] = useState('')
@@ -341,6 +342,7 @@ function OpenUIComposer() {
   const isLoadingMessages = useThread(s => s.isLoadingMessages)
   const messages = useThread(s => s.messages)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const selectedThreadId = useThreadList(s => s.selectedThreadId)
   const { layout } = useLayoutContext()
   const isMobile = layout === 'mobile'
@@ -361,6 +363,15 @@ function OpenUIComposer() {
       maxScrollTop > 0 && input.scrollTop < maxScrollTop - 1
     )
   }, [])
+
+  const handleFiles = (files: File[]) => {
+    // TODO: integrate with upload pipeline
+    // For now, just log the files
+    console.log(
+      'Files selected:',
+      files.map(f => f.name)
+    )
+  }
 
   const handleSubmit = useCallback(() => {
     if (!textContent.trim() || isRunning || isLoadingMessages) return
@@ -408,30 +419,47 @@ function OpenUIComposer() {
         data-overflow-top={hasInputOverflowTop || undefined}
         data-overflow-bottom={hasInputOverflowBottom || undefined}
       >
-        <textarea
-          ref={inputRef}
-          value={textContent}
-          autoFocus
-          onChange={e => setTextContent(e.target.value)}
-          onScroll={updateInputOverflow}
-          className="openui-agent-thread-composer__input"
-          placeholder="Ask anything..."
-          rows={1}
-          onKeyDown={e => {
-            if (shouldSubmitOnEnter(e)) {
-              e.preventDefault()
-              handleSubmit()
-            }
-          }}
-        />
-        <div className="openui-agent-thread-composer__action-bar">
-          <FileUploadButton
-            onFileSelect={() => {
-              // FileUploadButton handles upload internally via /api/upload
-              // The uploaded file URL would need to be attached to the message
-              // For now, the file upload is handled by the existing chat infrastructure
+        <div className="openui-agent-thread-composer__input-row">
+          <button
+            type="button"
+            className="openui-agent-thread-composer__attach-button"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach file or image"
+          >
+            <Plus size={18} aria-hidden="true" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ALLOWED_UPLOAD_MIME_TYPES.join(',')}
+            hidden
+            multiple
+            onChange={e => {
+              const files = e.target.files
+              if (files && files.length > 0) {
+                handleFiles(Array.from(files))
+              }
+              if (e.target) e.target.value = ''
             }}
           />
+          <textarea
+            ref={inputRef}
+            value={textContent}
+            autoFocus
+            onChange={e => setTextContent(e.target.value)}
+            onScroll={updateInputOverflow}
+            className="openui-agent-thread-composer__input"
+            placeholder="Ask anything..."
+            rows={1}
+            onKeyDown={e => {
+              if (shouldSubmitOnEnter(e)) {
+                e.preventDefault()
+                handleSubmit()
+              }
+            }}
+          />
+        </div>
+        <div className="openui-agent-thread-composer__action-bar">
           <IconButton
             onClick={isRunning ? cancelMessage : handleSubmit}
             icon={
