@@ -328,6 +328,122 @@ function ImagineSidebarItem() {
 }
 
 /**
+ * Custom Composer for Welcome Screen with file upload button.
+ * Uses vendor welcome screen CSS classes (`.openui-agent-desktop-welcome-composer*`).
+ */
+function OpenUIWelcomeComposer() {
+  const [textContent, setTextContent] = useState('')
+
+  const processMessage = useThread(s => s.processMessage)
+  const cancelMessage = useThread(s => s.cancelMessage)
+  const isRunning = useThread(s => s.isRunning)
+  const isLoadingMessages = useThread(s => s.isLoadingMessages)
+  const messages = useThread(s => s.messages)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const selectedThreadId = useThreadList(s => s.selectedThreadId)
+  const { layout } = useLayoutContext()
+  const isMobile = layout === 'mobile'
+
+  // Auto-focus logic (simplified from vendor's useAutoFocus)
+  useEffect(() => {
+    if (!isMobile && !isLoadingMessages && inputRef.current) {
+      inputRef.current.focus()
+    }
+  }, [selectedThreadId, isMobile, isLoadingMessages])
+
+  const handleFiles = (files: File[]) => {
+    console.log(
+      'Files selected:',
+      files.map(f => f.name)
+    )
+  }
+
+  const handleSubmit = useCallback(() => {
+    if (!textContent.trim() || isRunning || isLoadingMessages) return
+    processMessage({ role: 'user', content: textContent })
+    setTextContent('')
+  }, [
+    textContent,
+    isRunning,
+    isLoadingMessages,
+    processMessage,
+    setTextContent
+  ])
+
+  const shouldSubmitOnEnter = (event: React.KeyboardEvent) => {
+    if (event.key !== 'Enter' || event.shiftKey) return false
+    const IME_KEY_CODE = 229
+    return !event.nativeEvent.isComposing && event.keyCode !== IME_KEY_CODE
+  }
+
+  return (
+    <div
+      className="openui-agent-desktop-welcome-composer"
+      data-drafting={textContent.length > 0 || undefined}
+    >
+      {/* Attach button - first flex child, before textarea */}
+      <button
+        type="button"
+        className="openui-agent-desktop-welcome-composer__attach-button"
+        onClick={() => fileInputRef.current?.click()}
+        aria-label="Attach file or image"
+      >
+        <Plus size={18} aria-hidden="true" />
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ALLOWED_UPLOAD_MIME_TYPES.join(',')}
+        hidden
+        multiple
+        onChange={e => {
+          const files = e.target.files
+          if (files && files.length > 0) {
+            handleFiles(Array.from(files))
+          }
+          if (e.target) e.target.value = ''
+        }}
+      />
+      {/* Textarea - flex: 1, matches vendor desktop welcome composer */}
+      <textarea
+        ref={inputRef}
+        value={textContent}
+        autoFocus
+        onChange={e => setTextContent(e.target.value)}
+        className="openui-agent-desktop-welcome-composer__input"
+        placeholder="Ask anything..."
+        rows={1}
+        onKeyDown={e => {
+          if (shouldSubmitOnEnter(e)) {
+            e.preventDefault()
+            handleSubmit()
+          }
+        }}
+      />
+      {/* Action bar - matches vendor desktop welcome composer */}
+      <div className="openui-agent-desktop-welcome-composer__action-bar">
+        <IconButton
+          onClick={isRunning ? cancelMessage : handleSubmit}
+          icon={
+            isRunning ? (
+              <Square size="1em" fill="currentColor" />
+            ) : (
+              <ArrowUp size="1em" />
+            )
+          }
+          size="small"
+          variant="primary"
+          aria-label={isRunning ? 'Cancel message' : 'Send message'}
+          className="openui-agent-desktop-welcome-composer__submit-button"
+          disabled={!textContent.trim() && !isRunning}
+        />
+      </div>
+    </div>
+  )
+}
+
+/**
  * Custom Composer with file upload button before the textarea.
  * Replicates vendor Composer behavior + adds file attachment button.
  */
@@ -516,7 +632,7 @@ function OpenUIWelcome({ glowAnimation = false }: { glowAnimation?: boolean }) {
         <div className="openui-agent-welcome-screen__composer-starters-container">
           <div className="openui-agent-welcome-screen__desktop-composer">
             <AgentInterface.WelcomeGlow>
-              <OpenUIComposer />
+              <OpenUIWelcomeComposer />
             </AgentInterface.WelcomeGlow>
           </div>
           {effectiveStarters.length > 0 && (
