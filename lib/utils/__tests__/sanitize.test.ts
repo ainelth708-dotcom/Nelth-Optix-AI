@@ -100,7 +100,9 @@ describe('extractFakeSearchQuery', () => {
 
   it('extracts query from <search>...</search> format', () => {
     const text = '<search>qui est le président de Madagascar</search>'
-    expect(extractFakeSearchQuery(text)).toBe('qui est le président de Madagascar')
+    expect(extractFakeSearchQuery(text)).toBe(
+      'qui est le président de Madagascar'
+    )
   })
 
   it('extracts query from <tool_call> format', () => {
@@ -110,8 +112,7 @@ describe('extractFakeSearchQuery', () => {
   })
 
   it('extracts query from JSON-style tool call', () => {
-    const text =
-      '{"name":"search","parameters":{"query":"colonel mickael"}}'
+    const text = '{"name":"search","parameters":{"query":"colonel mickael"}}'
     expect(extractFakeSearchQuery(text)).toBe('colonel mickael')
   })
 
@@ -262,6 +263,71 @@ describe('StreamTextSanitizer fake function_call blocks', () => {
     const sanitizer = new StreamTextSanitizer({ mode: 'openui' })
     expect(sanitizer.process('')).toBe('')
     expect(sanitizer.flush()).toBe('')
+  })
+})
+
+describe('StreamTextSanitizer Dots3 <|tool_calls_section_*> blocks', () => {
+  const DOTS_SECTION =
+    '<|tool_calls_section_begin|> GenerateMediaCard("image", "génère une image d\'Elon Musk") <|tool_calls_section_end|>'
+
+  it('strips the whole closed <|tool_calls_section_*> block', () => {
+    expect(streamChunked(`Avant ${DOTS_SECTION} Après.`, 500, 'openui')).toBe(
+      'Avant  Après.'
+    )
+  })
+
+  it('suppresses the section across every chunk boundary', () => {
+    const text = `Avant. ${DOTS_SECTION} Après.`
+    for (const size of [1, 2, 3, 7, 11, 23, 40]) {
+      const out = streamChunked(text, size, 'openui')
+      expect(out, `chunk size ${size}`).not.toContain('tool_calls_section')
+      expect(out, `chunk size ${size}`).not.toContain('GenerateMediaCard')
+      expect(out, `chunk size ${size}`).toContain('Avant.')
+      expect(out, `chunk size ${size}`).toContain('Après.')
+    }
+  })
+
+  it('suppresses the section split on word chunks', () => {
+    const text =
+      '<|tool_calls_section_begin|> GenerateMediaCard("image", "chat") <|tool_calls_section_end|>Voici ta génération.'
+    const out = streamWords(text)
+    expect(out).not.toContain('tool_calls_section')
+    expect(out).not.toContain('GenerateMediaCard')
+    expect(out).toContain('Voici ta génération.')
+  })
+
+  it('handles the open token split mid-stream', () => {
+    const sanitizer = new StreamTextSanitizer({ mode: 'openui' })
+    let out = ''
+    out += sanitizer.process('<|tool_calls_secti')
+    out += sanitizer.process('on_begin|>')
+    out += sanitizer.process('{"name":"GenerateMediaCard"}')
+    out += sanitizer.process('<|tool_calls_section_end|>')
+    out += sanitizer.process(' Liber.')
+    out += sanitizer.flush()
+    expect(out).toBe(' Liber.')
+  })
+
+  it('holds a partial <| marker instead of leaking it', () => {
+    const sanitizer = new StreamTextSanitizer({ mode: 'openui' })
+    let out = ''
+    out += sanitizer.process('Intro <|tool_cal')
+    expect(out).not.toContain('<|tool_cal')
+    out += sanitizer.process(
+      'ls_section_begin|>payload<|tool_calls_section_end|> Fin'
+    )
+    out += sanitizer.flush()
+    expect(out).toBe('Intro  Fin')
+  })
+
+  it('strips stray <|tool_call_*> markers in final output', () => {
+    const text = '<|tool_calls_section_begin|>x<|tool_calls_section_end|>'
+    const sanitizer = new StreamTextSanitizer({ mode: 'openui' })
+    let out = ''
+    out += sanitizer.process(text)
+    expect(out).toBe('')
+    out += sanitizer.flush()
+    expect(out).not.toContain('tool_call')
   })
 })
 

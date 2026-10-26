@@ -242,6 +242,12 @@ const FAKE_TOOL_PATTERNS = [
   // alone here (closed/attribute-carrying blocks are handled above).
   /<\/?(?:tool_calls?|tool-search)\b[^>]*\/?>/gi,
   /<\/?tool_calls?(?::[a-zA-Z0-9_-]+)?[^>]*>/gi,
+  // Dots3-Note style: <|tool_calls_section_begin|> … <|tool_calls_section_end|>
+  // — chat-template tool-call markers emitted as TEXT when the model wants
+  // native tools but the route runs without any. Strip the whole closed
+  // section (payload included), then stray markers.
+  /<\|(?:tool_calls_section_begin|tool_call_begin)\|>[\s\S]*?(?:<\|(?:tool_calls_section_end|tool_call_end)\|>|$)/gi,
+  /<\|(?:tool_calls?_section_(?:begin|end)|tool_call_(?:begin|end))\|>/gi,
   // JSON-style fake tool calls the Dots model emits as text:
   // {"name":"gmail","parameters":{"operation":"list",...}}
   // Match a JSON object with "name" + ("parameters"|"input"|"args") keys.
@@ -499,9 +505,9 @@ export type StreamSanitizerMode = 'classic' | 'openui'
  * is held until the matching closing tag.
  */
 const FAKE_OPEN_TAG_RE =
-  /<[a-z0-9_-]*function_call[^>]*>|<(?:tool_calls?|tool-search)\b[^>]*>/i
+  /<[a-z0-9_-]*function_call[^>]*>|<(?:tool_calls?|tool-search)\b[^>]*>|<\|(?:tool_calls_section_begin|tool_call_begin)\|>/i
 const FAKE_CLOSE_TAG_RE =
-  /<\/[a-z0-9_-]*function_call[^>]*>|<\/(?:tool_calls?|tool-search)\b[^>]*>/i
+  /<\/[a-z0-9_-]*function_call[^>]*>|<\/(?:tool_calls?|tool-search)\b[^>]*>|<\|(?:tool_calls_section_end|tool_call_end)\|>/i
 
 /**
  * Classic-route extra families: any `<search …>` open tag (including the
@@ -525,7 +531,7 @@ const FAKE_CLASSIC_CLOSE_RE = /<\/(?:invoke|function|search)\s*>/i
  */
 const PARTIAL_FAKE_NAME_RE = /^<\/?[a-z0-9_-]*$/
 const PARTIAL_FAKE_ATTRS_RE =
-  /^<\/?[a-z0-9_-]*function_call[^>\n]*$|^<\/?(?:tool_calls?|tool-search|invoke|function|search)\b[^>\n]*$/i
+  /^<\/?[a-z0-9_-]*function_call[^>\n]*$|^<\/?(?:tool_calls?|tool-search|invoke|function|search)\b[^>\n]*$|^<\|[a-z_|]{0,80}$/i
 
 /**
  * Memory bound for the suppressed-payload buffer. NOT a correctness
@@ -649,8 +655,8 @@ export class StreamTextSanitizer {
     if (this.suppressed) {
       const close =
         this.mode === 'classic'
-          ? FAKE_CLOSE_TAG_RE.exec(this.buffer) ??
-            FAKE_CLASSIC_CLOSE_RE.exec(this.buffer)
+          ? (FAKE_CLOSE_TAG_RE.exec(this.buffer) ??
+            FAKE_CLASSIC_CLOSE_RE.exec(this.buffer))
           : FAKE_CLOSE_TAG_RE.exec(this.buffer)
       if (close && close.index !== undefined) {
         // The fake block closed: drop its whole payload and resume normal
@@ -689,8 +695,8 @@ export class StreamTextSanitizer {
     //    away so the trailing legit text streams in the same round.
     const open =
       this.mode === 'classic'
-        ? FAKE_OPEN_TAG_RE.exec(this.buffer) ??
-          FAKE_CLASSIC_OPEN_RE.exec(this.buffer)
+        ? (FAKE_OPEN_TAG_RE.exec(this.buffer) ??
+          FAKE_CLASSIC_OPEN_RE.exec(this.buffer))
         : FAKE_OPEN_TAG_RE.exec(this.buffer)
     if (open && open.index !== undefined) {
       const before = this.buffer.slice(0, open.index)
