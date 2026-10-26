@@ -378,6 +378,147 @@
 }
 
 /* ---------------------------------------------------------------------------
+ * Attachments (ChatGPT-style) — preview strip inside the composers.
+ * The strip is the first flex child of the rounded composer row: flex-wrap
+ * puts it on its own full-width line above [attach button | textarea | send].
+ * ------------------------------------------------------------------------- */
+.openui-agent-thread-composer__input-wrapper,
+.openui-agent-desktop-welcome-composer {
+  flex-wrap: wrap;
+}
+
+.openui-agent-thread-composer__input-wrapper .openui-attachment-strip,
+.openui-agent-desktop-welcome-composer .openui-attachment-strip {
+  flex: 0 0 100%;
+  align-self: stretch;
+  min-width: 0;
+}
+
+.openui-attachment-list {
+  display: flex;
+  align-items: center;
+  gap: var(--openui-space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.openui-attachment-item {
+  display: flex;
+  align-items: center;
+  gap: var(--openui-space-xs);
+  flex: 0 0 auto;
+  width: 232px;
+  padding: var(--openui-space-2xs) var(--openui-space-s) var(--openui-space-2xs)
+    var(--openui-space-2xs);
+  background-color: var(--openui-sunk-light);
+  border-radius: var(--openui-radius-2xl);
+}
+
+.openui-agent-container--mobile .openui-attachment-item {
+  width: 200px;
+}
+
+.openui-attachment-thumb {
+  display: block;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: var(--openui-radius-xl);
+  background-color: color-mix(
+    in oklch,
+    var(--openui-foreground),
+    var(--openui-text-neutral-primary) 8%,
+    transparent
+  );
+}
+
+.openui-attachment-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--openui-radius-xl);
+  background-color: color-mix(
+    in oklch,
+    var(--openui-foreground),
+    var(--openui-text-neutral-primary) 10%,
+    transparent
+  );
+  color: var(--openui-text-neutral-secondary);
+}
+
+.openui-attachment-icon > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.openui-attachment-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.openui-attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--openui-text-neutral-primary);
+  font: var(--openui-text-body-sm);
+  letter-spacing: var(--openui-text-body-sm-letter-spacing);
+}
+
+.openui-attachment-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--openui-text-neutral-secondary);
+  font: var(--openui-text-label-sm);
+}
+
+.openui-attachment-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--openui-radius-full);
+  background: transparent;
+  color: var(--openui-text-neutral-secondary);
+  cursor: pointer;
+  padding: 0;
+  transition:
+    color 90ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 90ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.openui-attachment-remove:hover {
+  color: var(--openui-text-neutral-primary);
+  background-color: var(--openui-highlight);
+}
+
+.openui-attachment-remove:focus-visible {
+  outline: 2px solid var(--openui-highlight-strong);
+  outline-offset: 2px;
+}
+
+/* Drag-over ring while dropping files onto the composer card */
+.openui-agent-thread-composer__input-wrapper.openui-drop-active,
+.openui-agent-desktop-welcome-composer.openui-drop-active {
+  outline: 2px solid var(--openui-highlight-strong);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
  * Mobile: render the welcome starters.
  * The vendor hides `.openui-agent-welcome-screen__desktop-starters` on mobile
  * by design ("Desktop-only conversation starters") — Nelth-IA keeps the

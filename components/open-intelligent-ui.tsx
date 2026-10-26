@@ -30,12 +30,17 @@ import {
   CalendarDays,
   ChefHat,
   Compass,
+  File as FileIcon,
+  FileSpreadsheet,
+  FileText,
   Image as ImageIcon,
   Lightbulb,
   MapPinned,
   Plus,
+  Presentation,
   Sparkles,
-  Square
+  Square,
+  X
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -327,12 +332,306 @@ function ImagineSidebarItem() {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Attachments — ChatGPT-style previews inside the composers.
+// Files are previewed immediately (object URLs, revoked on remove/unmount);
+// uploading happens at send time through the existing /api/upload pipeline and
+// the returned URLs are embedded in the outgoing message content.
+// ---------------------------------------------------------------------------
+
+interface PendingAttachment {
+  id: string
+  file: File
+  /** Object URL for image thumbnails — revoked when removed or unmounted. */
+  previewUrl?: string
+}
+
+interface UploadedAttachment {
+  name: string
+  url: string
+  mediaType: string
+  size: number
+}
+
+/** Mirrors MAX_FILE_SIZE in app/api/upload/route.ts. */
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+
+function formatAttachmentSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
+  return `${Math.max(1, Math.round(bytes / 1024))} Ko`
+}
+
+function describeAttachment(item: PendingAttachment): string {
+  const extension = item.file.name.split('.').pop()?.toUpperCase()
+  const kind = extension && extension.length <= 5 ? extension : 'FICHIER'
+  return `${kind} · ${formatAttachmentSize(item.file.size)}`
+}
+
+/** Embeds the uploaded files into the message content (classic-style block). */
+function buildMessageWithAttachments(
+  text: string,
+  uploads: UploadedAttachment[]
+): string {
+  if (uploads.length === 0) return text
+  const lines = uploads.map(
+    (file, index) =>
+      `${index + 1}. ${file.name} (${file.mediaType}${
+        file.size > 0 ? `, ${formatAttachmentSize(file.size)}` : ''
+      }) — ${file.url}`
+  )
+  const label = uploads.length === 1 ? 'ATTACHED FILE' : 'ATTACHED FILES'
+  return `${text}${text ? '\n\n' : ''}[${label}]\n${lines.join('\n')}\n[/${label}]`
+}
+
+function AttachmentFileIcon({ item }: { item: PendingAttachment }) {
+  const { type } = item.file
+  if (type.startsWith('image/')) {
+    return <ImageIcon size={16} aria-hidden="true" />
+  }
+  if (type === 'application/pdf') {
+    return <FileText size={16} aria-hidden="true" />
+  }
+  if (type.includes('spreadsheet')) {
+    return <FileSpreadsheet size={16} aria-hidden="true" />
+  }
+  if (type.includes('presentation')) {
+    return <Presentation size={16} aria-hidden="true" />
+  }
+  return <FileIcon size={16} aria-hidden="true" />
+}
+
+function OpenUIAttachmentStrip({
+  attachments,
+  onRemove
+}: {
+  attachments: PendingAttachment[]
+  onRemove: (id: string) => void
+}) {
+  if (attachments.length === 0) return null
+  return (
+    <div className="openui-attachment-strip">
+      <ul className="openui-attachment-list">
+        {attachments.map(item => (
+          <li key={item.id} className="openui-attachment-item">
+            {item.previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- local object URL preview while composing
+              <img
+                src={item.previewUrl}
+                alt=""
+                className="openui-attachment-thumb"
+              />
+            ) : (
+              <span className="openui-attachment-icon">
+                <AttachmentFileIcon item={item} />
+              </span>
+            )}
+            <span className="openui-attachment-meta">
+              <span className="openui-attachment-name" title={item.file.name}>
+                {item.file.name}
+              </span>
+              <span className="openui-attachment-detail">
+                {describeAttachment(item)}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="openui-attachment-remove"
+              onClick={() => onRemove(item.id)}
+              aria-label={`Supprimer la pièce jointe ${item.file.name}`}
+            >
+              <X size={13} aria-hidden="true" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function OpenUIFileInput({
+  inputRef,
+  onFiles
+}: {
+  inputRef: React.RefObject<HTMLInputElement>
+  onFiles: (files: File[]) => void
+}) {
+  return (
+    <input
+      ref={inputRef}
+      type="file"
+      accept={ALLOWED_UPLOAD_MIME_TYPES.join(',')}
+      hidden
+      multiple
+      onChange={e => {
+        const files = e.target.files
+        if (files && files.length > 0) {
+          onFiles(Array.from(files))
+        }
+        if (e.target) e.target.value = ''
+      }}
+    />
+  )
+}
+
+function useOpenUIAttachments() {
+  const [attachments, setAttachmentsState] = useState<PendingAttachment[]>([])
+  const [isDraggingOver, setIsDraggingOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const attachmentsRef = useRef<PendingAttachment[]>([])
+
+  const setAttachments = useCallback((next: PendingAttachment[]) => {
+    attachmentsRef.current = next
+    setAttachmentsState(next)
+  }, [])
+
+  // Revoke any leftover object URLs when the composer unmounts.
+  useEffect(() => {
+    return () => {
+      for (const attachment of attachmentsRef.current) {
+        if (attachment.previewUrl) {
+          URL.revokeObjectURL(attachment.previewUrl)
+        }
+      }
+    }
+  }, [])
+
+  const addFiles = useCallback(
+    (incoming: File[]) => {
+      const next = [...attachmentsRef.current]
+      for (const file of incoming) {
+        if (
+          !(ALLOWED_UPLOAD_MIME_TYPES as readonly string[]).includes(file.type)
+        ) {
+          toast.error(`Format non pris en charge : ${file.name}`)
+          continue
+        }
+        if (file.size > MAX_ATTACHMENT_BYTES) {
+          toast.error(`Fichier trop volumineux (20 Mo max) : ${file.name}`)
+          continue
+        }
+        if (
+          next.some(
+            attachment =>
+              attachment.file.name === file.name &&
+              attachment.file.size === file.size
+          )
+        ) {
+          continue
+        }
+        next.push({
+          id: `${Date.now().toString(36)}-${next.length}-${file.name}`,
+          file,
+          previewUrl: file.type.startsWith('image/')
+            ? URL.createObjectURL(file)
+            : undefined
+        })
+      }
+      setAttachments(next)
+    },
+    [setAttachments]
+  )
+
+  const removeAttachment = useCallback(
+    (id: string) => {
+      const target = attachmentsRef.current.find(
+        attachment => attachment.id === id
+      )
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl)
+      }
+      setAttachments(
+        attachmentsRef.current.filter(attachment => attachment.id !== id)
+      )
+    },
+    [setAttachments]
+  )
+
+  const clearAttachments = useCallback(() => {
+    for (const attachment of attachmentsRef.current) {
+      if (attachment.previewUrl) {
+        URL.revokeObjectURL(attachment.previewUrl)
+      }
+    }
+    setAttachments([])
+  }, [setAttachments])
+
+  // Uploads each pending file through the existing /api/upload pipeline, one
+  // by one; failed uploads are individually notified and simply excluded from
+  // the outgoing message (the send itself is never blocked by one bad file).
+  const uploadAttachments = useCallback(async (chatId: string | null) => {
+    const uploads: UploadedAttachment[] = []
+    for (const attachment of attachmentsRef.current) {
+      try {
+        const formData = new FormData()
+        formData.append('file', attachment.file)
+        if (chatId) formData.append('chatId', chatId)
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        })
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('LOGIN_REQUIRED')
+          }
+          throw new Error(`HTTP ${response.status}`)
+        }
+        const data = (await response.json()) as {
+          file?: {
+            filename?: string
+            url?: string
+            mediaType?: string
+            size?: number
+          }
+        }
+        if (!data.file?.url) {
+          throw new Error('MISSING_URL')
+        }
+        uploads.push({
+          name: data.file.filename ?? attachment.file.name,
+          url: data.file.url,
+          mediaType: data.file.mediaType ?? attachment.file.type,
+          size: data.file.size ?? attachment.file.size
+        })
+      } catch (error) {
+        if (error instanceof Error && error.message === 'LOGIN_REQUIRED') {
+          toast.error('Connectez-vous pour joindre des fichiers.')
+        } else {
+          toast.error(`Envoi impossible : ${attachment.file.name}`)
+        }
+      }
+    }
+    return uploads
+  }, [])
+
+  return {
+    attachments,
+    isDraggingOver,
+    setIsDraggingOver,
+    addFiles,
+    removeAttachment,
+    clearAttachments,
+    uploadAttachments,
+    fileInputRef
+  }
+}
+
 /**
  * Custom Composer for Welcome Screen with file upload button.
  * Uses vendor welcome screen CSS classes (`.openui-agent-desktop-welcome-composer*`).
  */
 function OpenUIWelcomeComposer() {
   const [textContent, setTextContent] = useState('')
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false)
+  const {
+    attachments,
+    isDraggingOver,
+    setIsDraggingOver,
+    addFiles,
+    removeAttachment,
+    clearAttachments,
+    uploadAttachments,
+    fileInputRef
+  } = useOpenUIAttachments()
 
   const processMessage = useThread(s => s.processMessage)
   const cancelMessage = useThread(s => s.cancelMessage)
@@ -340,7 +639,6 @@ function OpenUIWelcomeComposer() {
   const isLoadingMessages = useThread(s => s.isLoadingMessages)
   const messages = useThread(s => s.messages)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const selectedThreadId = useThreadList(s => s.selectedThreadId)
   const { layout } = useLayoutContext()
   const isMobile = layout === 'mobile'
@@ -361,23 +659,36 @@ function OpenUIWelcomeComposer() {
     input.style.height = `${Math.max(input.scrollHeight, 32)}px`
   }, [textContent])
 
-  const handleFiles = (files: File[]) => {
-    console.log(
-      'Files selected:',
-      files.map(f => f.name)
-    )
-  }
-
-  const handleSubmit = useCallback(() => {
-    if (!textContent.trim() || isRunning || isLoadingMessages) return
-    processMessage({ role: 'user', content: textContent })
-    setTextContent('')
+  const handleSubmit = useCallback(async () => {
+    if (isRunning || isLoadingMessages || isUploadingFiles) return
+    const text = textContent.trim()
+    if (!text && attachments.length === 0) return
+    setIsUploadingFiles(true)
+    try {
+      // Upload at send time (preview is always instant); succeeded files are
+      // embedded in the message so the backend pipeline receives their URLs.
+      const uploads = await uploadAttachments(selectedThreadId)
+      if (uploads.length > 0 || text.length > 0) {
+        processMessage({
+          role: 'user',
+          content: buildMessageWithAttachments(text, uploads)
+        })
+      }
+      clearAttachments()
+      setTextContent('')
+    } finally {
+      setIsUploadingFiles(false)
+    }
   }, [
     textContent,
+    attachments,
     isRunning,
     isLoadingMessages,
-    processMessage,
-    setTextContent
+    isUploadingFiles,
+    selectedThreadId,
+    uploadAttachments,
+    clearAttachments,
+    processMessage
   ])
 
   const shouldSubmitOnEnter = (event: React.KeyboardEvent) => {
@@ -388,10 +699,31 @@ function OpenUIWelcomeComposer() {
 
   return (
     <div
-      className="openui-agent-desktop-welcome-composer"
+      className={`openui-agent-desktop-welcome-composer${
+        isDraggingOver ? ' openui-drop-active' : ''
+      }`}
       data-drafting={textContent.length > 0 || undefined}
+      onDragOver={e => {
+        if (!e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        setIsDraggingOver(true)
+      }}
+      onDragLeave={e => {
+        if (e.currentTarget.contains(e.relatedTarget as Node)) return
+        setIsDraggingOver(false)
+      }}
+      onDrop={e => {
+        e.preventDefault()
+        setIsDraggingOver(false)
+        if (e.dataTransfer.files.length > 0) {
+          addFiles(Array.from(e.dataTransfer.files))
+        }
+      }}
     >
-      {/* Attach button - first flex child, before textarea */}
+      <OpenUIAttachmentStrip
+        attachments={attachments}
+        onRemove={removeAttachment}
+      />
       <button
         type="button"
         className="openui-agent-desktop-welcome-composer__attach-button"
@@ -400,20 +732,7 @@ function OpenUIWelcomeComposer() {
       >
         <Plus size={18} aria-hidden="true" />
       </button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept={ALLOWED_UPLOAD_MIME_TYPES.join(',')}
-        hidden
-        multiple
-        onChange={e => {
-          const files = e.target.files
-          if (files && files.length > 0) {
-            handleFiles(Array.from(files))
-          }
-          if (e.target) e.target.value = ''
-        }}
-      />
+      <OpenUIFileInput inputRef={fileInputRef} onFiles={addFiles} />
       {/* Textarea - flex: 1, matches vendor desktop welcome composer */}
       <textarea
         ref={inputRef}
@@ -425,14 +744,14 @@ function OpenUIWelcomeComposer() {
         onKeyDown={e => {
           if (shouldSubmitOnEnter(e)) {
             e.preventDefault()
-            handleSubmit()
+            void handleSubmit()
           }
         }}
       />
       {/* Action bar - matches vendor desktop welcome composer */}
       <div className="openui-agent-desktop-welcome-composer__action-bar">
         <IconButton
-          onClick={isRunning ? cancelMessage : handleSubmit}
+          onClick={isRunning ? cancelMessage : () => void handleSubmit()}
           icon={
             isRunning ? (
               <Square size="1em" fill="currentColor" />
@@ -444,7 +763,10 @@ function OpenUIWelcomeComposer() {
           variant="primary"
           aria-label={isRunning ? 'Cancel message' : 'Send message'}
           className="openui-agent-desktop-welcome-composer__submit-button"
-          disabled={!textContent.trim() && !isRunning}
+          disabled={
+            isUploadingFiles ||
+            (!textContent.trim() && attachments.length === 0 && !isRunning)
+          }
         />
       </div>
     </div>
@@ -459,6 +781,17 @@ function OpenUIComposer() {
   const [textContent, setTextContent] = useState('')
   const [hasInputOverflowTop, setHasInputOverflowTop] = useState(false)
   const [hasInputOverflowBottom, setHasInputOverflowBottom] = useState(false)
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false)
+  const {
+    attachments,
+    isDraggingOver,
+    setIsDraggingOver,
+    addFiles,
+    removeAttachment,
+    clearAttachments,
+    uploadAttachments,
+    fileInputRef
+  } = useOpenUIAttachments()
 
   const processMessage = useThread(s => s.processMessage)
   const cancelMessage = useThread(s => s.cancelMessage)
@@ -466,7 +799,6 @@ function OpenUIComposer() {
   const isLoadingMessages = useThread(s => s.isLoadingMessages)
   const messages = useThread(s => s.messages)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const selectedThreadId = useThreadList(s => s.selectedThreadId)
   const { layout } = useLayoutContext()
   const isMobile = layout === 'mobile'
@@ -488,25 +820,36 @@ function OpenUIComposer() {
     )
   }, [])
 
-  const handleFiles = (files: File[]) => {
-    // TODO: integrate with upload pipeline
-    // For now, just log the files
-    console.log(
-      'Files selected:',
-      files.map(f => f.name)
-    )
-  }
-
-  const handleSubmit = useCallback(() => {
-    if (!textContent.trim() || isRunning || isLoadingMessages) return
-    processMessage({ role: 'user', content: textContent })
-    setTextContent('')
+  const handleSubmit = useCallback(async () => {
+    if (isRunning || isLoadingMessages || isUploadingFiles) return
+    const text = textContent.trim()
+    if (!text && attachments.length === 0) return
+    setIsUploadingFiles(true)
+    try {
+      // Upload at send time (preview is always instant); succeeded files are
+      // embedded in the message so the backend pipeline receives their URLs.
+      const uploads = await uploadAttachments(selectedThreadId)
+      if (uploads.length > 0 || text.length > 0) {
+        processMessage({
+          role: 'user',
+          content: buildMessageWithAttachments(text, uploads)
+        })
+      }
+      clearAttachments()
+      setTextContent('')
+    } finally {
+      setIsUploadingFiles(false)
+    }
   }, [
     textContent,
+    attachments,
     isRunning,
     isLoadingMessages,
-    processMessage,
-    setTextContent
+    isUploadingFiles,
+    selectedThreadId,
+    uploadAttachments,
+    clearAttachments,
+    processMessage
   ])
 
   useLayoutEffect(() => {
@@ -514,7 +857,7 @@ function OpenUIComposer() {
     if (!input) return
     input.style.height = '0px'
     input.style.height = `${Math.max(input.scrollHeight, 32)}px`
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     updateInputOverflow()
   }, [textContent, updateInputOverflow])
 
@@ -539,10 +882,32 @@ function OpenUIComposer() {
       }}
     >
       <div
-        className="openui-agent-thread-composer__input-wrapper"
+        className={`openui-agent-thread-composer__input-wrapper${
+          isDraggingOver ? ' openui-drop-active' : ''
+        }`}
         data-overflow-top={hasInputOverflowTop || undefined}
         data-overflow-bottom={hasInputOverflowBottom || undefined}
+        onDragOver={e => {
+          if (!e.dataTransfer.types.includes('Files')) return
+          e.preventDefault()
+          setIsDraggingOver(true)
+        }}
+        onDragLeave={e => {
+          if (e.currentTarget.contains(e.relatedTarget as Node)) return
+          setIsDraggingOver(false)
+        }}
+        onDrop={e => {
+          e.preventDefault()
+          setIsDraggingOver(false)
+          if (e.dataTransfer.files.length > 0) {
+            addFiles(Array.from(e.dataTransfer.files))
+          }
+        }}
       >
+        <OpenUIAttachmentStrip
+          attachments={attachments}
+          onRemove={removeAttachment}
+        />
         {/* Attach button - first flex child, before textarea */}
         <button
           type="button"
@@ -552,20 +917,7 @@ function OpenUIComposer() {
         >
           <Plus size={18} aria-hidden="true" />
         </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={ALLOWED_UPLOAD_MIME_TYPES.join(',')}
-          hidden
-          multiple
-          onChange={e => {
-            const files = e.target.files
-            if (files && files.length > 0) {
-              handleFiles(Array.from(files))
-            }
-            if (e.target) e.target.value = ''
-          }}
-        />
+        <OpenUIFileInput inputRef={fileInputRef} onFiles={addFiles} />
         {/* Textarea - direct child of input-wrapper with flex: 1 (vendor expectation) */}
         <textarea
           ref={inputRef}
@@ -579,14 +931,14 @@ function OpenUIComposer() {
           onKeyDown={e => {
             if (shouldSubmitOnEnter(e)) {
               e.preventDefault()
-              handleSubmit()
+              void handleSubmit()
             }
           }}
         />
         {/* Action bar - direct child of input-wrapper, flex-shrink: 0 (vendor expectation) */}
         <div className="openui-agent-thread-composer__action-bar">
           <IconButton
-            onClick={isRunning ? cancelMessage : handleSubmit}
+            onClick={isRunning ? cancelMessage : () => void handleSubmit()}
             icon={
               isRunning ? (
                 <Square size="1em" fill="currentColor" />
@@ -598,6 +950,10 @@ function OpenUIComposer() {
             variant="primary"
             aria-label={isRunning ? 'Cancel message' : 'Send message'}
             className="openui-agent-thread-composer__submit-button"
+            disabled={
+              isUploadingFiles ||
+              (!textContent.trim() && attachments.length === 0 && !isRunning)
+            }
           />
         </div>
       </div>
