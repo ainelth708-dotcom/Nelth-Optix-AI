@@ -275,13 +275,7 @@
 
 /* Collapsed state handled by ImagineSidebarItem switching to SidebarItem */
 
-/* Custom Composer with attach button before textarea */
-.openui-integration-shell .openui-agent-thread-composer__input-row {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--openui-space-xs);
-}
-
+/* Custom Composer attach button — direct flex child of input-wrapper (matches vendor structure) */
 .openui-integration-shell .openui-agent-thread-composer__attach-button {
   display: flex;
   align-items: center;
@@ -290,7 +284,7 @@
   height: 32px;
   flex-shrink: 0;
   border: none;
-  border-radius: var(--openui-radius-s);
+  border-radius: var(--openui-radius-full);
   background: transparent;
   color: var(--openui-text-neutral-secondary);
   cursor: pointer;
@@ -311,7 +305,25 @@
   outline-offset: 2px;
 }
 
+/* Ensure textarea remains flex: 1 as direct child (vendor expectation) */
 .openui-integration-shell .openui-agent-thread-composer__input {
   flex: 1;
   min-width: 0;
+}
+
+/* Action bar — ensure submit button is perfectly circular, no flex shrink, aligned right */
+.openui-integration-shell .openui-agent-thread-composer__action-bar {
+  flex-shrink: 0;
+}
+
+.openui-integration-shell
+  .openui-agent-thread-composer__submit-button.openui-icon-button {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--openui-radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: var(--openui-space-xs);
 }

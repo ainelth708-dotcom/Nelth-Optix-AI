@@ -419,46 +419,47 @@ function OpenUIComposer() {
         data-overflow-top={hasInputOverflowTop || undefined}
         data-overflow-bottom={hasInputOverflowBottom || undefined}
       >
-        <div className="openui-agent-thread-composer__input-row">
-          <button
-            type="button"
-            className="openui-agent-thread-composer__attach-button"
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Attach file or image"
-          >
-            <Plus size={18} aria-hidden="true" />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ALLOWED_UPLOAD_MIME_TYPES.join(',')}
-            hidden
-            multiple
-            onChange={e => {
-              const files = e.target.files
-              if (files && files.length > 0) {
-                handleFiles(Array.from(files))
-              }
-              if (e.target) e.target.value = ''
-            }}
-          />
-          <textarea
-            ref={inputRef}
-            value={textContent}
-            autoFocus
-            onChange={e => setTextContent(e.target.value)}
-            onScroll={updateInputOverflow}
-            className="openui-agent-thread-composer__input"
-            placeholder="Ask anything..."
-            rows={1}
-            onKeyDown={e => {
-              if (shouldSubmitOnEnter(e)) {
-                e.preventDefault()
-                handleSubmit()
-              }
-            }}
-          />
-        </div>
+        {/* Attach button - first flex child, before textarea */}
+        <button
+          type="button"
+          className="openui-agent-thread-composer__attach-button"
+          onClick={() => fileInputRef.current?.click()}
+          aria-label="Attach file or image"
+        >
+          <Plus size={18} aria-hidden="true" />
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ALLOWED_UPLOAD_MIME_TYPES.join(',')}
+          hidden
+          multiple
+          onChange={e => {
+            const files = e.target.files
+            if (files && files.length > 0) {
+              handleFiles(Array.from(files))
+            }
+            if (e.target) e.target.value = ''
+          }}
+        />
+        {/* Textarea - direct child of input-wrapper with flex: 1 (vendor expectation) */}
+        <textarea
+          ref={inputRef}
+          value={textContent}
+          autoFocus
+          onChange={e => setTextContent(e.target.value)}
+          onScroll={updateInputOverflow}
+          className="openui-agent-thread-composer__input"
+          placeholder="Ask anything..."
+          rows={1}
+          onKeyDown={e => {
+            if (shouldSubmitOnEnter(e)) {
+              e.preventDefault()
+              handleSubmit()
+            }
+          }}
+        />
+        {/* Action bar - direct child of input-wrapper, flex-shrink: 0 (vendor expectation) */}
         <div className="openui-agent-thread-composer__action-bar">
           <IconButton
             onClick={isRunning ? cancelMessage : handleSubmit}
