@@ -345,12 +345,21 @@ function OpenUIWelcomeComposer() {
   const { layout } = useLayoutContext()
   const isMobile = layout === 'mobile'
 
-  // Auto-focus logic (simplified from vendor's useAutoFocus)
+  // Auto-focus logic (simplified from vendor's useAutoFocus — no mobile focus)
   useEffect(() => {
     if (!isMobile && !isLoadingMessages && inputRef.current) {
       inputRef.current.focus()
     }
   }, [selectedThreadId, isMobile, isLoadingMessages])
+
+  // Auto-grow textarea (vendor DesktopWelcomeComposer behavior)
+  useLayoutEffect(() => {
+    const input = inputRef.current
+    if (!input) return
+    // Reset to 0 (not "auto") so scrollHeight reflects content, not container
+    input.style.height = '0px'
+    input.style.height = `${Math.max(input.scrollHeight, 32)}px`
+  }, [textContent])
 
   const handleFiles = (files: File[]) => {
     console.log(
@@ -409,7 +418,6 @@ function OpenUIWelcomeComposer() {
       <textarea
         ref={inputRef}
         value={textContent}
-        autoFocus
         onChange={e => setTextContent(e.target.value)}
         className="openui-agent-desktop-welcome-composer__input"
         placeholder="Ask anything..."
@@ -598,76 +606,42 @@ function OpenUIComposer() {
 }
 
 /**
- * Custom Welcome Screen using OpenUIComposer (+ button) + vendor starters/layout.
- * Replaces vendor WelcomeScreen entirely to have consistent composer with attach button.
+ * Custom Welcome Screen content for the `AgentInterface.Welcome` slot
+ * (children mode). The vendor wrapper supplies the `openui-agent-welcome-screen`
+ * root, the `--with-composer` modifier (passed via className), the glow
+ * provider and the chat-empty gate — this renders only the vendor DOM shape:
+ * header + composer (with + attach button) + card starters via the vendor
+ * `ConversationStarter` (variant "card", same as the app config).
  */
-function OpenUIWelcome({ glowAnimation = false }: { glowAnimation?: boolean }) {
-  const processMessage = useThread(s => s.processMessage)
-  const isRunning = useThread(s => s.isRunning)
-  const isLoadingMessages = useThread(s => s.isLoadingMessages)
-  const messages = useThread(s => s.messages)
-
-  // Simple chat empty check (replicates vendor isChatEmpty)
-  const isEmpty = messages.length === 0 && !isLoadingMessages
-  if (!isEmpty) return null
-
-  // Use local starters defined in this file
-  const effectiveStarters = starters
-
+function OpenUIWelcome() {
   return (
-    <WelcomeGlowProvider enabled={glowAnimation}>
-      <div
-        className={`openui-agent-welcome-screen openui-agent-welcome-screen--with-composer ${glowAnimation ? 'openui-agent-welcome-screen--animated' : ''}`}
-      >
-        <div className="openui-agent-welcome-screen__header">
-          <div className="openui-agent-welcome-screen__image-container">
-            {welcomeImage}
-          </div>
-          <div className="openui-agent-welcome-screen__content">
-            <h2 className="openui-agent-welcome-screen__title">
-              Que puis-je faire pour vous ?
-            </h2>
-          </div>
+    <>
+      <div className="openui-agent-welcome-screen__header">
+        <div className="openui-agent-welcome-screen__image-container">
+          {welcomeImage}
         </div>
-        <div className="openui-agent-welcome-screen__composer-starters-container">
-          <div className="openui-agent-welcome-screen__desktop-composer">
-            <AgentInterface.WelcomeGlow>
-              <OpenUIWelcomeComposer />
-            </AgentInterface.WelcomeGlow>
-          </div>
-          {effectiveStarters.length > 0 && (
-            <div className="openui-agent-welcome-screen__desktop-starters">
-              {effectiveStarters.map((starter, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  className="openui-agent-conversation-starter-item-card"
-                  onClick={() => {
-                    if (isRunning) return
-                    processMessage({ role: 'user', content: starter.prompt })
-                  }}
-                  disabled={isRunning}
-                >
-                  {starter.icon && (
-                    <span className="openui-agent-conversation-starter-item-card__icon">
-                      {starter.icon}
-                    </span>
-                  )}
-                  <span className="openui-agent-conversation-starter-item-card__text">
-                    {starter.displayText}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="openui-agent-welcome-screen__content">
+          <h2 className="openui-agent-welcome-screen__title">
+            Que puis-je faire pour vous ?
+          </h2>
         </div>
       </div>
-    </WelcomeGlowProvider>
+      <div className="openui-agent-welcome-screen__composer-starters-container">
+        <div className="openui-agent-welcome-screen__desktop-composer">
+          <AgentInterface.WelcomeGlow>
+            <OpenUIWelcomeComposer />
+          </AgentInterface.WelcomeGlow>
+        </div>
+        <div className="openui-agent-welcome-screen__desktop-starters">
+          <ConversationStarter starters={starters} variant="card" />
+        </div>
+      </div>
+    </>
   )
 }
 
-// Import vendor hooks/components from dist paths
-import { WelcomeGlowProvider } from '@openuidev/react-ui/dist/components/AgentInterface/WelcomeGlow'
+// Import vendor components from dist paths
+import { ConversationStarter } from '@openuidev/react-ui/dist/components/AgentInterface/ConversationStarter'
 
 const welcomeImage = (
   <NelthLogo variant="periodic" className="welcome-mascot" aria-hidden="true" />
@@ -742,8 +716,11 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
           </AgentInterface.SidebarFooter>
         </AgentInterface.Sidebar>
         <AgentInterface.ThreadHeader showChatTitle={false} />
-        <AgentInterface.Welcome>
-          <OpenUIWelcome glowAnimation />
+        <AgentInterface.Welcome
+          glowAnimation
+          className="openui-agent-welcome-screen--with-composer"
+        >
+          <OpenUIWelcome />
         </AgentInterface.Welcome>
         {isGuest ? <SaveMessages /> : <SaveDatabaseMessages />}
         <FollowStreamTail />

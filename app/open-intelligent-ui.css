@@ -376,3 +376,35 @@
   align-items: center;
   justify-content: center;
 }
+
+/* ---------------------------------------------------------------------------
+ * Mobile: render the welcome starters.
+ * The vendor hides `.openui-agent-welcome-screen__desktop-starters` on mobile
+ * by design ("Desktop-only conversation starters") — Nelth-IA shows the card
+ * starters as a horizontal scroll below the header.
+ * ------------------------------------------------------------------------- */
+.openui-agent-container--mobile .openui-agent-welcome-screen__desktop-starters {
+  display: block !important;
+}
+
+.openui-agent-container--mobile
+  .openui-agent-welcome-screen__desktop-starters
+  .openui-agent-conversation-starter--card {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.openui-agent-container--mobile
+  .openui-agent-welcome-screen__desktop-starters
+  .openui-agent-conversation-starter--card::-webkit-scrollbar {
+  display: none;
+}
+
+/* Card items: fixed width so they scroll instead of being squeezed */
+.openui-agent-container--mobile
+  .openui-agent-welcome-screen__desktop-starters
+  .openui-agent-conversation-starter-item-card {
+  flex: 0 0 232px;
+  min-width: 232px;
+}
