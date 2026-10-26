@@ -380,31 +380,43 @@
 /* ---------------------------------------------------------------------------
  * Mobile: render the welcome starters.
  * The vendor hides `.openui-agent-welcome-screen__desktop-starters` on mobile
- * by design ("Desktop-only conversation starters") — Nelth-IA shows the card
- * starters as a horizontal scroll below the header.
+ * by design ("Desktop-only conversation starters") — Nelth-IA keeps the
+ * original card look on mobile: an edge-to-edge horizontal carousel right
+ * under the welcome header, like ChatGPT mobile.
  * ------------------------------------------------------------------------- */
 .openui-agent-container--mobile .openui-agent-welcome-screen__desktop-starters {
   display: block !important;
+  width: 100%;
 }
 
 .openui-agent-container--mobile
   .openui-agent-welcome-screen__desktop-starters
-  .openui-agent-conversation-starter--card {
+  .openui-agent-conversation-starter {
+  max-width: 100%;
+  max-height: none;
+  /* Bleed past the welcome screen's mobile padding so the carousel runs
+     edge-to-edge; the gutter is restored through the inner padding below. */
+  margin: 0 calc(-1 * var(--openui-space-l));
+  padding: var(--openui-space-2xs) var(--openui-space-l);
   overflow-x: auto;
   overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: var(--openui-space-l);
   scrollbar-width: none;
 }
 
 .openui-agent-container--mobile
   .openui-agent-welcome-screen__desktop-starters
-  .openui-agent-conversation-starter--card::-webkit-scrollbar {
+  .openui-agent-conversation-starter::-webkit-scrollbar {
   display: none;
 }
 
-/* Card items: fixed width so they scroll instead of being squeezed */
 .openui-agent-container--mobile
   .openui-agent-welcome-screen__desktop-starters
   .openui-agent-conversation-starter-item-card {
-  flex: 0 0 232px;
-  min-width: 232px;
+  /* Wide enough to read, narrow enough to hint at the next card. */
+  flex: 0 0 min(244px, 78vw);
+  min-width: min(244px, 78vw);
+  max-width: 78vw;
+  scroll-snap-align: start;
 }
