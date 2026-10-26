@@ -26,7 +26,7 @@ export default function AppShellContent({
   modelSelectorData: ModelSelectorData
   isCloudDeployment: boolean
 }) {
-  const isOpenUI = usePathname() === '/'
+  const isOpenUI = usePathname() === '/agent'
 
   return (
     <>
