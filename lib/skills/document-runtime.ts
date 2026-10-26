@@ -17,6 +17,7 @@
  *   - fflate      -> inflate FlateDecode PDF streams (transitive dep)
  */
 
+import { verifyDocumentSignature } from './document-signature'
 import { TEMPLATES } from './document-templates'
 
 export type DocumentFormat =
@@ -108,6 +109,8 @@ export interface DocumentReadResult {
   /** Set when extraction was best-effort / partial (caller must not invent). */
   partial?: boolean
   error?: string
+  /** Set when the magic-bytes gate rejected the payload (possible rename). */
+  signatureBlocked?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +121,18 @@ export async function readDocument(
   format: DocumentFormat,
   buffer: Buffer
 ): Promise<DocumentReadResult> {
+  // SECURITY: verify the real file signature before any parser touches the
+  // bytes. A text payload renamed to .docx/.pdf must never reach the parsing
+  // libraries — this is the "file-signature validation" defense layer.
+  const sig = verifyDocumentSignature(format, buffer)
+  if (!sig.ok) {
+    return {
+      format,
+      text: '',
+      error: sig.reason,
+      signatureBlocked: true
+    }
+  }
   switch (format) {
     case 'xlsx':
       return readXlsx(buffer)
@@ -1399,6 +1414,12 @@ export async function modifyDocument(
   buffer: Buffer,
   modifications: unknown
 ): Promise<Buffer> {
+  // SECURITY: same signature gate as readDocument — an untrusted buffer is
+  // verified against its real magic bytes before any library opens it.
+  const sig = verifyDocumentSignature(format, buffer)
+  if (!sig.ok) {
+    throw new Error(`Document rejected: ${sig.reason}`)
+  }
   if (format !== 'xlsx') {
     throw new Error(`Modification not supported for ${format} in this build`)
   }
