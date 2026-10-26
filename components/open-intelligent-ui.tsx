@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 
 import type { ActionEvent } from '@openuidev/react-lang'
@@ -27,7 +27,6 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { ALLOWED_UPLOAD_MIME_TYPES } from '@/lib/constants'
 import {
   createSearchStatusWatcher,
   WEB_SEARCH_STATUS_ATTRIBUTE
@@ -42,7 +41,6 @@ import { webUrl } from '../open-intelligent-ui-main/open-intelligent-ui-main/src
 import { library } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/library'
 
 import { NelthLogo } from './ui/nelth-logo'
-import { FileUploadButton } from './file-upload-button'
 import { OpenUIAssistantMessage } from './openui-assistant-message'
 
 import '../app/open-intelligent-ui.css'
@@ -296,72 +294,6 @@ function onAction(event: ActionEvent) {
 }
 
 /**
- * Custom Composer for OpenUI with file upload support.
- * Wraps the vendor's ComposerInput and adds a file upload button to the action bar.
- */
-function OpenUIComposer() {
-  const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
-
-  const handleFileSelect = (files: File[]) => {
-    setUploadedFiles(prev => [...prev, ...files])
-  }
-
-  return (
-    <AgentInterface.Composer placeholder="Ask anything...">
-      <>
-        {uploadedFiles.length > 0 && (
-          <div
-            className="openui-agent-composer__attachments-preview"
-            style={{
-              display: 'flex',
-              gap: '4px',
-              marginBottom: '4px',
-              flexWrap: 'wrap'
-            }}
-          >
-            {uploadedFiles.map((file, index) => (
-              <span
-                key={index}
-                className="openui-agent-composer__attachment-chip"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  padding: '2px 8px',
-                  borderRadius: '12px',
-                  background: 'var(--openui-highlight)',
-                  fontSize: '12px'
-                }}
-              >
-                <span>{file.name}</span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setUploadedFiles(prev =>
-                      prev.filter((_, i) => i !== index)
-                    )
-                  }
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 0,
-                    lineHeight: 1
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-        <FileUploadButton onFileSelect={handleFileSelect} />
-      </>
-    </AgentInterface.Composer>
-  )
-}
-
-/**
  * Imagine studio entry for the OpenUI agent sidebar.
  * Uses the vendor's `SidebarItem` but with a custom class that makes its
  * expanded-mode style match `NewChatButton` exactly (same height, padding,
@@ -424,9 +356,6 @@ export function OpenIntelligentUI({ isGuest }: { isGuest: boolean }) {
         theme={{ mode }}
         starters={starters}
       >
-        <AgentInterface.Composer>
-          <OpenUIComposer />
-        </AgentInterface.Composer>
         {/* Sidebar composed manually (vendor "Mode C") to keep the default
             arrangement and add the Imagine item below the thread list — the
             vendor component is never modified. */}
