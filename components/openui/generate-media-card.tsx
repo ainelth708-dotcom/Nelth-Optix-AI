@@ -63,11 +63,7 @@ function strArray(value: unknown): string[] {
 }
 
 async function postJson(url: string, body: Json): Promise<Json> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  })
+  const response = await imagineFetch(url, JSON.stringify(body))
   const data = (await response.json().catch(() => null)) as Json | null
   if (!response.ok || !data) {
     throw new Error(str(data?.error) || 'La requête a échoué, réessaie.')
@@ -75,6 +71,42 @@ async function postJson(url: string, body: Json): Promise<Json> {
   const error = str(data.error)
   if (error) throw new Error(error)
   return data
+}
+
+/**
+ * Same POST helper as the /imagine studio: single automatic retry on
+ * NETWORK failures only (never on HTTP errors), and only when the failure
+ * happens fast (<20s — the server can't have finished, so no duplicate
+ * generation risk). Mobile networks drop mid-request often.
+ */
+async function imagineFetch(path: string, body: string): Promise<Response> {
+  let lastError: unknown = null
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const started = Date.now()
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 70000)
+    try {
+      const response = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: controller.signal
+      })
+      clearTimeout(timeout)
+      return response
+    } catch (error) {
+      clearTimeout(timeout)
+      lastError = error
+      const transient =
+        error instanceof DOMException
+          ? error.name === 'AbortError'
+          : error instanceof TypeError
+      const fast = Date.now() - started < 20000
+      if (!transient || !fast || attempt >= 1) throw error
+      await sleep(2000)
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Échec réseau.')
 }
 
 type Progress = (label: string) => void
@@ -283,41 +315,69 @@ async function runGeneration(
 
   if (kind === 'video') {
     onProgress('Démarrage de la vidéo…')
-    const data = await postJson('/api/imagine/videos', {
-      prompt,
-      aspectRatio: aspectRatio || '16:9',
-      resolution: '480p',
-      variations: 1
+    const batchId = await startVideoJob(async () => {
+      const data = await postJson('/api/imagine/videos', {
+        prompt,
+        // /imagine parity: the studio's "auto" maps to 1:1 for videos.
+        aspectRatio: aspectRatio || '1:1',
+        resolution: '480p',
+        variations: 1
+      })
+      const id = str(data.batchId)
+      if (!id) throw new Error('La génération a échoué, réessaie.')
+      return id
     })
-    const batchId = str(data.batchId)
-    if (!batchId) throw new Error('La génération a échoué, réessaie.')
     onProgress('Génération vidéo…')
-    const videoUrl = await pollVideoBatch(batchId)
-    const bytes = await fetch(videoUrl)
-      .then(response => (response.ok ? response.blob() : null))
-      .catch(() => null)
-    const durable = bytes
-      ? await persistMedia(bytes, 'nelth-ai-video.mp4')
-      : null
-    return { url: durable ?? videoUrl, isVideo: true }
+    return {
+      url: await finishVideoJob(await pollVideoBatch(batchId)),
+      isVideo: true
+    }
   }
 
   // image_to_video
   const source = await ensureVibesSource(sourceImageUrl)
   onProgress('Animation de l’image…')
-  const data = await postJson('/api/imagine/videos/animate', {
-    source,
-    motion: prompt || undefined
+  const batchId = await startVideoJob(async () => {
+    const data = await postJson('/api/imagine/videos/animate', {
+      source,
+      motion: prompt || undefined
+    })
+    const id = str(data.batchId)
+    if (!id) throw new Error('L’animation a échoué, réessaie.')
+    return id
   })
-  const batchId = str(data.batchId)
-  if (!batchId) throw new Error('L’animation a échoué, réessaie.')
   onProgress('Génération vidéo…')
-  const videoUrl = await pollVideoBatch(batchId)
+  return {
+    url: await finishVideoJob(await pollVideoBatch(batchId)),
+    isVideo: true
+  }
+}
+
+/**
+ * /imagine parity: the backend fails fast on some video starts, so a fast
+ * failure (<20s → no server-side job could exist) is retried once.
+ */
+async function startVideoJob(start: () => Promise<string>): Promise<string> {
+  let lastMessage = ''
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const started = Date.now()
+    try {
+      return await start()
+    } catch (error) {
+      lastMessage = error instanceof Error && error.message ? error.message : ''
+      if (attempt >= 1 || Date.now() - started >= 20000) break
+    }
+  }
+  throw new Error(lastMessage || 'La génération a échoué, réessaie.')
+}
+
+/** Poll result: try durable persistence, fall back to the raw URL. */
+async function finishVideoJob(videoUrl: string): Promise<string> {
   const bytes = await fetch(videoUrl)
     .then(response => (response.ok ? response.blob() : null))
     .catch(() => null)
   const durable = bytes ? await persistMedia(bytes, 'nelth-ai-video.mp4') : null
-  return { url: durable ?? videoUrl, isVideo: true }
+  return durable ?? videoUrl
 }
 
 /**
@@ -433,9 +493,9 @@ function MediaCardBody({
     }
   }, [kind, prompt, sourceImageUrl, aspectRatio, isStreaming, missingSource])
 
-  const ratio =
-    RATIO_CSS[aspectRatio] ??
-    (kind === 'image' || kind === 'image_edit' ? '1 / 1' : '16 / 9')
+  // /imagine result cards render at a fixed 2:3 box (object-cover); an
+  // explicit aspectRatio prop wins over that default.
+  const ratio = RATIO_CSS[aspectRatio] ?? '2 / 3'
 
   if (missingSource) {
     return (
@@ -569,7 +629,7 @@ export const GenerateMediaCard = defineComponent({
     aspectRatio: z.enum(['1:1', '16:9', '9:16']).optional()
   }),
   description:
-    'Live AI media the app generates while the card animates (same pipelines as Nelth-imagine). kind "image": text-to-image from prompt (a vivid 1-3 sentence scene with subject, style, light, mood). kind "image_edit": edit/transform the image at sourceImageUrl following prompt. kind "video": a short text-to-video clip from prompt. kind "image_to_video": animate the image at sourceImageUrl, prompt describes the motion. ALWAYS set sourceImageUrl when the user attached or generated an image and asks to modify it or put it in motion — never merely describe such an image. aspectRatio "1:1", "16:9" or "9:16". Introduce it with at most one short sentence; never add Image/SearchImage placeholders for it and never describe its result yourself.',
+    'Live AI media the app generates while the card animates (the original Nelth-imagine pipelines, the prompt is sent as-is). kind "image": text-to-image; prompt = the user\'s request VERBATIM, never rewritten, expanded or styled by you. kind "image_edit": edit/transform the image at sourceImageUrl, prompt = the user\'s edit request verbatim. kind "video": short text-to-video clip; prompt verbatim. kind "image_to_video": animate the image at sourceImageUrl; prompt = the motion the user described, verbatim. ALWAYS set sourceImageUrl when the user attached or generated an image and asks to modify or animate it — never merely describe such an image. aspectRatio "1:1", "16:9" or "9:16". Introduce it with at most one short sentence; never add Image/SearchImage placeholders for it and never describe its result yourself.',
   component: ({ props }) => (
     <GenerateMediaCardView
       kind={props.kind}
