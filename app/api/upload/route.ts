@@ -16,7 +16,11 @@ import {
 } from '@/lib/storage/r2-client'
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
-const ALLOWED_TYPES: string[] = [...ALLOWED_UPLOAD_MIME_TYPES]
+const ALLOWED_TYPES: string[] = [
+  ...ALLOWED_UPLOAD_MIME_TYPES,
+  // Generated media persistence (chat image/video cards).
+  'video/mp4'
+]
 
 export async function POST(req: NextRequest) {
   try {

@@ -45,6 +45,9 @@ import {
 import { toast } from 'sonner'
 
 import { ALLOWED_UPLOAD_MIME_TYPES } from '@/lib/constants'
+// The extended Nelth library (vendored base + GenerateMediaCard); the spec the
+// server prompt is generated from is built from the same composed library.
+import { library } from '@/lib/openui/library'
 import {
   createSearchStatusWatcher,
   WEB_SEARCH_STATUS_ATTRIBUTE
@@ -56,7 +59,6 @@ import {
   SaveMessages
 } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/chat-storage'
 import { webUrl } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/components/style'
-import { library } from '../open-intelligent-ui-main/open-intelligent-ui-main/src/lib/library'
 
 import { NelthLogo } from './ui/nelth-logo'
 import { OpenUIAssistantMessage } from './openui-assistant-message'
@@ -857,7 +859,7 @@ function OpenUIComposer() {
     if (!input) return
     input.style.height = '0px'
     input.style.height = `${Math.max(input.scrollHeight, 32)}px`
-     
+
     updateInputOverflow()
   }, [textContent, updateInputOverflow])
 
