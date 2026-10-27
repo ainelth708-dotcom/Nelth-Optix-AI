@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   identityFallbackAnswer,
+  isGreetingLike,
   isIdentityQuery,
   StreamTextSanitizer,
   stripLeadingIntroReset
@@ -138,6 +139,34 @@ describe('identityFallbackAnswer', () => {
     expect(identityFallbackAnswer('en')).toContain("I'm Nelth-IA")
     expect(identityFallbackAnswer('mg')).toContain('Izaho dia Nelth-IA')
     expect(identityFallbackAnswer()).toContain('Nelth-IA')
+  })
+})
+
+describe('isGreetingLike', () => {
+  it.each([
+    'bonjour',
+    'bonjoujr',
+    'bonjor !',
+    'mersi',
+    'slt',
+    'bjr ?',
+    'bsoir',
+    'sellut',
+    'hello !!',
+    'salut là',
+    'merci beaucoup bcq'
+  ])('detects %s as greeting-like (typo tolerant)', q => {
+    expect(isGreetingLike(q)).toBe(true)
+  })
+
+  it.each([
+    'prix du bitcoin',
+    'qui est Elon Musk',
+    'cherche bonjour sur le web',
+    'DeepSeek R1',
+    'colonel mickael'
+  ])('does not flag %s as greeting-like', q => {
+    expect(isGreetingLike(q)).toBe(false)
   })
 })
 

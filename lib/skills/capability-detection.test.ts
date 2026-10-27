@@ -222,7 +222,11 @@ describe('detectRequestCapabilities — all languages', () => {
       'wer bist du',
       'chi sei',
       'iza ianao',
-      "qui t'a créé ?"
+      "qui t'a créé ?",
+      'bonjoujr',
+      'bonjor',
+      'slt',
+      'bjr'
     ]) {
       const caps = await detectRequestCapabilities(q)
       expect(caps.needsSearch, `query: ${q}`).toBe(false)

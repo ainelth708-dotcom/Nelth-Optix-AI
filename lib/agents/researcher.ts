@@ -32,7 +32,7 @@ import { normalizeToolCall } from '../tools/runtime/normalize-tool-call'
 import { createSearchTool } from '../tools/search'
 import { createTodoTools } from '../tools/todo'
 import { SearchMode } from '../types/search'
-import { isIdentityQuery, isPureGreeting } from '../utils/message-utils'
+import { isGreetingLike, isIdentityQuery } from '../utils/message-utils'
 import { getModel, isNonThinkingModelId } from '../utils/registry'
 import { isTracingEnabled } from '../utils/telemetry'
 
@@ -775,11 +775,12 @@ export async function createResearcher({
     // cannot actually run (the search tool is disarmed by the gate further
     // below), which the orchestrator's fallback must then repair.
     const identityTurn = isIdentityQuery(userQuery ?? '')
-    // Pure greetings/chit-chat ("bonjour", "salut", "merci", "ça va ?"...) are
-    // the other turn class that never needs the web — reasoning models
+    // Pure greetings/chit-chat ("bonjour", "salut", "merci", "ça va ?"...)
+    // INCLUDING TYPOS ("bonjoujr", "bonjor" — isGreetingLike's fuzzy match)
+    // are the other turn class that never needs the web — reasoning models
     // otherwise occasionally fire a search on them, and weak models narrate
     // fake searches the orchestrator must not repair either.
-    const chitchatTurn = isPureGreeting(userQuery ?? '')
+    const chitchatTurn = isGreetingLike(userQuery ?? '')
 
     // Configure based on search mode
     switch (searchMode) {

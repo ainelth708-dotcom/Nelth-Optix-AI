@@ -3,8 +3,8 @@ import type { UIMessage } from 'ai'
 import { isAffirmativeContinuation } from '@/lib/conversation/conversation-state'
 import {
   getTextFromParts,
-  isIdentityQuery,
-  isPureGreeting
+  isGreetingLike,
+  isIdentityQuery
 } from '@/lib/utils/message-utils'
 
 import { getSkillRegistry } from './registry'
@@ -120,8 +120,10 @@ export function isStandaloneEntityLookup(
   const words = qf.split(/\s+/)
   if (words.length > 5) return false
 
-  // Exclude greetings, conversational phrases, math, code, linguistic, identity
-  if (isPureGreeting(trimmed) || CONVERSATIONAL_CHITCHAT_RE.test(qf)) {
+  // Exclude greetings, conversational phrases, math, code, linguistic, identity.
+  // isGreetingLike EXTENDS isPureGreeting with typo/fuzzy tolerance: a mistyped
+  // greeting ("bonjoujr", "bonjor") must not pass as a searchable entity.
+  if (isGreetingLike(trimmed) || CONVERSATIONAL_CHITCHAT_RE.test(qf)) {
     return false
   }
   if (MATH_OR_CODE_RE.test(qf)) return false
@@ -319,12 +321,18 @@ export async function detectRequestCapabilities(
   // context via buildAffirmativeHint. Without this gate the weak model
   // receives a redundant preloaded search and echoes the query as text.
   const isAffirmative = isAffirmativeContinuation(query ?? '')
+  // Greeting-like turns WITH TYPOS ("bonjoujr", "bonjor", "mersi"): the weak
+  // signal every other gate misses — without this belt, the mistyped greeting
+  // is preloaded+presented as a search card the model then ignores (it just
+  // greets back). Explicit search verbs stay excluded from this gate.
+  const isGreetingish = isGreetingLike(query ?? '')
 
   const needsSearch = query
     ? (isExplicitSearch ||
         (!isMathOrCode &&
           !isLinguisticOrCreative &&
           !isAffirmative &&
+          !isGreetingish &&
           (CURRENT_INFO_RE.test(qf) ||
             isEntityLookup ||
             webImageSearch ||

@@ -937,6 +937,81 @@ export function isPureGreeting(query: string): boolean {
 }
 
 /**
+ * Lexicon of greeting/chit-chat words used for FUZZY matching — short
+ * words that are a small typo away from a greeting must not be treated as
+ * entity lookups ("bonjoujr", "bonjor", "mersi"... are greetings, not
+ * things to search the web for).
+ */
+const GREETING_LEXICON = [
+  'bonjour',
+  'bonsoir',
+  'salut',
+  'coucou',
+  'salama',
+  'hello',
+  'hey',
+  'merci',
+  'thanks',
+  'bye',
+  'bjr',
+  'slt',
+  'bsoir',
+  'yo'
+]
+
+/**
+ * Bounded Levenshtein distance — true when the edit distance between the
+ * two words is at most `max`. Early-exits on length gaps and on rows whose
+ * minimum already exceeds `max` (words are tiny here, so this stays cheap).
+ */
+function editDistanceAtMost(a: string, b: string, max: number): boolean {
+  if (Math.abs(a.length - b.length) > max) return false
+  const m = b.length
+  let prev: number[] = Array.from({ length: m + 1 }, (_, j) => j)
+  for (let i = 1; i <= a.length; i++) {
+    const curr: number[] = [i]
+    let rowMin = i
+    for (let j = 1; j <= m; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+      if (curr[j] < rowMin) rowMin = curr[j]
+    }
+    if (rowMin > max) return false
+    prev = curr
+  }
+  return prev[m] <= max
+}
+
+/**
+ * TRUE when the turn is a greeting or chit-chat EVEN WITH TYPOS. Extends
+ * isPureGreeting (which stays exact/anchored for sanitizer semantics) with:
+ *  - common greetings/abbreviations ("bjr", "slt", "bsoir"),
+ *  - a fuzzy edit-distance match against the greeting lexicon (tolerance 2
+ *    for words >= 5 chars, 1 for shorter ones) so "bonjoujr", "bonjor",
+ *    "mersi", "sellut"... never look like a searchable entity.
+ * Used to gate the automatic web search: a greeting-like turn must never
+ * fire the standalone-entity-lookup preload or the search card UI.
+ */
+export function isGreetingLike(query: string): boolean {
+  if (!query) return false
+  const qf = foldText(query)
+  const trimmed = qf.trim()
+  if (!trimmed) return false
+  const tokens = trimmed.split(/\s+/)
+  // Only short conversational turns can be greeting-like: anything longer
+  // than 4 words carries a real request ("bonjour et les prix du bitcoin
+  // en 2026 ?" must keep searching). A greeting token inside a longer
+  // sentence does not demote the sentence.
+  if (tokens.length > 4) return false
+  if (PURE_GREETING_RE.test(trimmed)) return true
+  return tokens.some(w => {
+    if (w.length < 2) return false
+    const max = w.length >= 5 ? 2 : 1
+    return GREETING_LEXICON.some(g => editDistanceAtMost(w, g, max))
+  })
+}
+
+/**
  * Expands short follow-up search queries (e.g. "recherche leur image", "combien ça coûte ?")
  * with the subject/entities from previous conversation turns.
  */
