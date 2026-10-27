@@ -2,6 +2,7 @@ import { ModelMessage, UIMessage } from 'ai'
 
 import { type Message as DBMessage } from '@/lib/db/schema'
 import { describeOpenUIContext } from '@/lib/openui/context'
+import { foldText } from '@/lib/skills/text-fold'
 
 // Interface matching the expected DB message input format
 interface DatabaseMessageInput {
@@ -418,12 +419,46 @@ const SELF_INTRO_PARAGRAPH_RE =
  * True when the user's message asks about the assistant's identity
  * ("qui es-tu ?", "who are you", "présente-toi"...). Kept narrow on purpose:
  * "c'est qui X ?" (about someone else) must NOT count as identity.
+ *
+ * Tested on FOLDED text (lowercase, no diacritics) so every language matches
+ * with or without accents: "quién eres" == "quien eres", "êtes" == "etes".
+ * Covers French, English, Malagasy (the app's core locales) plus Spanish,
+ * Portuguese, German and Italian identity phrasings — an identity question
+ * must NEVER pay a web-search cost in any language.
  */
 export function isIdentityQuery(query: string): boolean {
   if (!query) return false
-  return /\b(qui\s+(es|est|êtes)[- ]?tu|tu\s+(es|est)\s+qui|t['’]es\s+qui|qui\s+t['’]es|qui\s+êtes[- ]?vous|vous\s+êtes\s+qui|who\s+are\s+you|what\s+are\s+you|who\s+made\s+you|who\s+created\s+you|what\s+is\s+your\s+name|whats\s+your\s+name|ton\s+nom|votre\s+nom|comment\s+tu\s+t['’]appelles|comment\s+vous\s+vous\s+appelez|qui\s+t['’]a\s+(créé|cree|conçu|concu|développé|developpe|fait)|qui\s+est\s+ton\s+créateur|qui\s+est\s+ton\s+createur|présente[- ]?toi|presente[- ]?toi|présentez[- ]?vous|presentez[- ]?vous|dis[- ]?moi\s+qui\s+tu\s+(es|est)|parle[- ]?moi\s+de\s+toi|c['’]est\s+quoi\s+nelth|qui\s+est\s+nelth|c['’]est\s+quoi\s+optix|qui\s+est\s+optix|iza\s+ianao|ianao\s+iza|inona\s+ianao|iza\s+no\s+namorona\s+anao|ahoana\s+ny\s+anaranao|inona\s+ny\s+anaranao)\b/i.test(
-    query
+  const qf = foldText(query)
+  return /\b(qui\s+(es|est|etes)[-\s]?tu|tu\s+(es|est)\s+qui|t['’]es\s+qui|qui\s+t['’]es|qui\s+etes[-\s]?vous|vous\s+etes\s+qui|dis[-\s]?moi\s+qui\s+tu\s+(es|est)|parle[-\s]?moi\s+de\s+toi|tu\s+te\s+nommes\s+comment|tu\s+t['’]appelles|tu\s+t['’]appelles\s+comment|comment\s+tu\s+t['’]appelles|vous\s+vous\s+appelez|tu\s+(es|est)\s+faits?\s+avec\s+quoi|tu\s+(es|est)\s+quoi|tu\s+sers\s+a\s+quoi|qui\s+t['’]a\s+(cree|concu|developpe|fait|programme)|qui\s+t['’]as\s+(cree|concu|developpe|fait|programme)|qui\s+vous\s+a\s+(cree|concu|developpe|fait)|qui\s+est\s+ton\s+(createur|concepteur|developpeur|programmeur|fabricant)|presente[-\s]?toi|presentez[-\s]?vous|ton\s+nom|votre\s+nom|c['’]est\s+quoi\s+nelth|qui\s+est\s+nelth|c['’]est\s+quoi\s+optix|qui\s+est\s+optix|who\s+are\s+you|who\s+r\s+u|who\s+ru|what\s+are\s+u|what\s+r\s+u|what\s+are\s+you|who\s+made\s+you|who\s+created\s+you|who\s+built\s+you|who\s+developed\s+you|what\s+is\s+your\s+name|whats\s+your\s+name|your\s+name\s+\?|tell\s+me\s+about\s+yourself|introduce\s+yourself|quien\s+eres|quien\s+eres\s+tu|quien\s+eres\s+tu\?|eres\s+quien|como\s+te\s+llamas|cual\s+es\s+tu\s+nombre|quien\s+te\s+(creo|hizo|desarrollo|programo)|presentate|quem\s+(e|es|sao)\s+voce|voce\s+e\s+quem|como\s+se\s+chama|qual\s+e\s+o\s+seu\s+nome|quem\s+te\s+criou|quem\s+fez\s+voce|wer\s+bist\s+du|du\s+bist\s+wer|wie\s+heisst\s+du|wer\s+sind\s+sie|wie\s+heissen\s+sie|wer\s+dich\s+(erstellt|gemacht|entwickelt)\s+hat|chi\s+sei|chi\s+sei\s+tu|come\s+ti\s+chiami|come\s+ti\s+chiami\s+\?|iza\s+ianao|ianao\s+iza|inona\s+ianao|iza\s+no\s+namorona\s+anao|iza\s+no\s+(anaranao|namanao)|ahoana\s+ny\s+anaranao|inona\s+ny\s+anaranao|inona\s+no\s+anaranao)\b/i.test(
+    qf
   )
+}
+
+/**
+ * Deterministic last-resort identity answer for the streaming fallback path:
+ * when the model produced ONLY a search announcement / fake search call on an
+ * identity question, the orchestrator injects this direct answer instead of
+ * running a live web search (an identity question never needs the web).
+ * Short, honest and stable — it states only what the app itself guarantees
+ * (Nelth-IA by Optix AI) and invites the user to ask for more detail.
+ */
+export function identityFallbackAnswer(lang?: string): string {
+  switch (lang) {
+    case 'en':
+      return "I'm Nelth-IA, Optix AI's intelligent assistant. I can search the web, write and debug code, analyze documents (PDF, Word, Excel, PowerPoint), generate images and much more — just ask."
+    case 'mg':
+      return "Izaho dia Nelth-IA, ny mpanampy marani-tsaina avy amin'ny Optix AI. Afaka mitady vaovao, manoratra sy manamafa code, mandinika antontan-taratasy (PDF, Word, Excel, PowerPoint), mamorona sary ary maro hafa — anontanio fotsiny."
+    case 'es':
+      return 'Soy Nelth-IA, el asistente inteligente de Optix AI. Puedo buscar en la web, escribir y depurar código, analizar documentos (PDF, Word, Excel, PowerPoint), generar imágenes y mucho más — solo pregunta.'
+    case 'de':
+      return 'Ich bin Nelth-IA, der intelligente Assistent von Optix AI. Ich kann im Web suchen, Code schreiben und debuggen, Dokumente analysieren (PDF, Word, Excel, PowerPoint), Bilder erstellen und vieles mehr — frag einfach.'
+    case 'it':
+      return "Sono Nelth-IA, l'assistente intelligente di Optix AI. Posso cercare sul web, scrivere e correggere codice, analizzare documenti (PDF, Word, Excel, PowerPoint), generare immagini e altro ancora — chiedi pure."
+    case 'pt':
+      return 'Sou o Nelth-IA, o assistente inteligente da Optix AI. Posso pesquisar na web, escrever e depurar código, analisar documentos (PDF, Word, Excel, PowerPoint), gerar imagens e muito mais — é só pedir.'
+    default:
+      return 'Je suis Nelth-IA, l’assistant intelligent d’Optix AI. Je peux chercher sur le web, écrire et corriger du code, analyser des documents (PDF, Word, Excel, PowerPoint), générer des images et bien plus — posez-moi votre question.'
+  }
 }
 
 /**

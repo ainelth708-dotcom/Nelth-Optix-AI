@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  identityFallbackAnswer,
   isIdentityQuery,
   StreamTextSanitizer,
   stripLeadingIntroReset
@@ -99,10 +100,22 @@ describe('isIdentityQuery', () => {
   it.each([
     'qui es-tu ?',
     'Qui es tu',
+    'qui est tu ?',
+    'qui est-tu ?',
     'who are you?',
+    'what are u',
+    'who r u',
     'présente-toi',
     'ton nom ?',
-    't\u2019es qui ?'
+    't\u2019es qui ?',
+    'tu t\u2019appelles comment ?',
+    'quién eres tu',
+    '¿Cómo te llamas?',
+    'wer bist du',
+    'chi sei?',
+    'quem é você',
+    'iza ianao',
+    'ahoana ny anaranao ?'
   ])('detects %s as identity', q => {
     expect(isIdentityQuery(q)).toBe(true)
   })
@@ -111,9 +124,20 @@ describe('isIdentityQuery', () => {
     'recherche moi Elon Musk',
     "c'est qui Elon Musk ?",
     'parle-moi de Tesla',
-    'bonjour'
+    'bonjour',
+    'qui est le président de Madagascar ?',
+    'ton noms de chien préféré ?'
   ])('does not flag %s as identity', q => {
     expect(isIdentityQuery(q)).toBe(false)
+  })
+})
+
+describe('identityFallbackAnswer', () => {
+  it('answers directly in each supported language (never a refusal)', () => {
+    expect(identityFallbackAnswer('fr')).toContain('Nelth-IA')
+    expect(identityFallbackAnswer('en')).toContain("I'm Nelth-IA")
+    expect(identityFallbackAnswer('mg')).toContain('Izaho dia Nelth-IA')
+    expect(identityFallbackAnswer()).toContain('Nelth-IA')
   })
 })
 

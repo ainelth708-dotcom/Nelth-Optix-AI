@@ -549,7 +549,9 @@ function detectQuickIntent(
   code: boolean
   document: boolean
 } {
-  if (INTERNAL_KNOWLEDGE_SUBJECT_RE.test(text)) {
+  // Internal founders/brand or a question about the assistant itself:
+  // everything is internal knowledge — answer directly, never search.
+  if (INTERNAL_KNOWLEDGE_SUBJECT_RE.test(text) || isIdentityQuery(text)) {
     return { search: false, image: false, code: false, document: false }
   }
 
@@ -766,6 +768,14 @@ export async function createResearcher({
     const generativeUI =
       classifyVisualIntent(userQuery ?? '').intent !== 'not_needed'
 
+    // Identity turns ("qui es-tu ?", "who are you", "présente-toi"...) are
+    // answered entirely from internal knowledge: they never need ANY tool.
+    // The dedicated system layer below makes the direct answer explicit for
+    // both model classes — weak models otherwise narrate a web search they
+    // cannot actually run (the search tool is disarmed by the gate further
+    // below), which the orchestrator's fallback must then repair.
+    const identityTurn = isIdentityQuery(userQuery ?? '')
+
     // Configure based on search mode
     switch (searchMode) {
       case 'quick':
@@ -890,7 +900,7 @@ export async function createResearcher({
     // Do NOT run web search and do NOT invoke generateImage.
     if (
       capabilities?.founderPhoto ||
-      isIdentityQuery(userQuery ?? '') ||
+      identityTurn ||
       INTERNAL_KNOWLEDGE_SUBJECT_RE.test(userQuery ?? '')
     ) {
       activeToolsList = []
@@ -1077,6 +1087,13 @@ export async function createResearcher({
 - Do NOT emit any <tool_call>, <tool_calls>, <function>, <invoke>, or XML markup.
 - Output your conversational answer directly.`
         : `${TOOL_CALL_PROTOCOL}${connectorProtocol}`
+    const identityLayer = identityTurn
+      ? `\n\nIDENTITY ANSWER PROTOCOL — NON-NEGOTIABLE:
+- The user is asking about YOU ("who are you", "qui es-tu ?", "qui est-tu", "présente-toi", "qui t'a créé", "ton nom"...). An identity question NEVER requires a web search, external data, documents or image generation: everything about yourself is internal knowledge.
+- Answer directly, briefly and warmly, in the user's language: you are Nelth-IA, the intelligent assistant built by Optix AI. Naturally present what you can help with (web research, coding, document analysis, image generation, connected apps).
+- Never name any underlying model, provider, or base model. No tool calls, no citation markers: the answer is self-contained.`
+      : ''
+
     const affirmativeLayer = affirmativeHint
       ? `\n\nAFFIRMATIVE CONTINUATION — NON-NEGOTIABLE:\n${affirmativeHint}\nDo NOT greet again. Continue the exact previous topic immediately.`
       : ''
@@ -1099,7 +1116,7 @@ export async function createResearcher({
 - If web search results were provided above in SERVER-PROVIDED WEB RESULTS, synthesize your answer directly from these verified results and conversation history. Add inline [n] citations next to supported factual claims.
 - CONVERSATION CONTINUITY & PRONOUN RESOLUTION: If this is an ongoing discussion (not the first turn), NEVER restart or repeat greetings ("Bonjour ! Je suis Nelth-IA..."). Seamlessly continue the discussion, answer the user's latest query directly, and resolve pronouns ("il", "elle", "son", "sa", "ses", "celui-ci", "ça", "le deuxième", etc.) using the entities discussed in preceding messages.`
       : ''
-    let instructions = `${CORE_DIRECTIVE}${affirmativeLayer}\n\n${continuityLayer}${nonThinkingReinforcementLayer}\n\n${buildLanguageLayer(conversationLanguage ?? null)}${toolCallProtocol}\n\n${ARTIFACT_OUTPUT_RULE}\n\n${skillLayer ? skillLayer + '\n\n' : ''}${connectorLayer ? connectorLayer + '\n\n' : ''}${systemPrompt}${preloadedSearchLayer}\n\n${INTERNAL_SYSTEMS_DIRECTIVE}\nCurrent date and time: ${currentDate}${continuityTrailer}`
+    let instructions = `${CORE_DIRECTIVE}${identityLayer}${affirmativeLayer}\n\n${continuityLayer}${nonThinkingReinforcementLayer}\n\n${buildLanguageLayer(conversationLanguage ?? null)}${toolCallProtocol}\n\n${ARTIFACT_OUTPUT_RULE}\n\n${skillLayer ? skillLayer + '\n\n' : ''}${connectorLayer ? connectorLayer + '\n\n' : ''}${systemPrompt}${preloadedSearchLayer}\n\n${INTERNAL_SYSTEMS_DIRECTIVE}\nCurrent date and time: ${currentDate}${continuityTrailer}`
 
     // Trailing override for code/artifact requests. The QUICK/ADAPTIVE prompts
     // contain a generic "OUTPUT FORMAT (MANDATORY)" + "Emoji usage" section that

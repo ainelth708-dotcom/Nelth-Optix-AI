@@ -1,7 +1,12 @@
 import type { UIMessage } from 'ai'
 
 import { isAffirmativeContinuation } from '@/lib/conversation/conversation-state'
-import { getTextFromParts, isPureGreeting } from '@/lib/utils/message-utils'
+import {
+  getTextFromParts,
+  isIdentityQuery,
+  isPureGreeting
+} from '@/lib/utils/message-utils'
+
 import { getSkillRegistry } from './registry'
 import { routeSkills } from './router'
 import { foldText, intentRe } from './text-fold'
@@ -64,14 +69,16 @@ const CURRENT_INFO_RE = intentRe(
     '|president|presidents?|pr[eé]sident[es]?|premier\\s+ministre|prime\\s+minister|gouvernement|government|ministre|ministres|minister|ministers|election|elections?|[eé]lection[s]?|dirigeant|dirigeants|leader|leaders|chef\\s+d.etat|head\\s+of\\s+state|qui\\s+gouverne|qui\\s+dirige|qui\\s+commande|qui\\s+a\\s+gagn[eé]|est-ce\\s+que|est-ce\\s+vrai|is\\s+it\\s+true|fact\\s*check|vrai\\s+ou\\s+faux|vrai\\s+que|verifie|verifies|verifier|check|actuel|actuelle|actuellement|currently|present|incumbent|pouvoir|madagascar' +
     // Military, official and leadership titles
     '|colonel|g[eé]n[eé]ral|commandant|capitaine|lieutenant|amiral|officier|pr[eé]fet|gouverneur|maire|depute|d[eé]put[eé]|senateur|s[eé]nateur|ambassadeur|chancelier' +
-    // Person lookup questions (not greeting/identity questions)
-    '|qui\\s+est(?!\\s+tu\\b)|who\\s+is(?!\\s+you\\b)|c[\'’]est\\s+qui|qui\\s+sont|who\\s+are' +
+    // Person lookup questions (not greeting/identity questions — the identity
+    // shield is isIdentityQuery, checked in detectRequestCapabilities before
+    // any of these branches are consulted for search).
+    "|qui\\s+est(?!\\s*[-\\s]?tu\\b)|who\\s+is(?!\\s+you\\b)|c['’]est\\s+qui|qui\\s+sont|who\\s+are" +
     // Pricing and costs (not general math/explanations)
     '|combien\\s+coute|combien\\s+vaut|how\\s+much|how\\s+many' +
     // Releases, dates, technology, companies, models
     '|date\\s+de\\s+sortie|release\\s+date|sortie|sorti|sortira|disponible|disponibilite|version|modele|startup|intelligence\\s+artificielle|deepseek|chatgpt|openai|grok|claude|mistral|gemini|apple|google|microsoft|tesla|nvidia|starlink|spacex' +
     // Current affairs, economics, markets, prices, gold/currencies
-    '|cours\\s+(de|du|des|d[\'’])|championnat|ligue|tournoi|guerre|crise|politique|bourse|action|actions|crypto|bitcoin|inflation|taux|monnaie|superficie|capitale|maire|habitant|habitants' +
+    "|cours\\s+(de|du|des|d['’])|championnat|ligue|tournoi|guerre|crise|politique|bourse|action|actions|crypto|bitcoin|inflation|taux|monnaie|superficie|capitale|maire|habitant|habitants" +
     // Weather asked the French way: "quel temps fait-il ?", "temps à Paris".
     // Bare "temps" alone is NOT matched (duration/cooking-time false
     // positives like "combien de temps", "temps de cuisson").
@@ -103,7 +110,9 @@ const EXPLANATION_OR_CONCEPT_RE = intentRe(
  * Following Gemini's Grounding model, non-conversational short entity inputs
  * are prime candidates for web search grounding.
  */
-export function isStandaloneEntityLookup(q: string | undefined | null): boolean {
+export function isStandaloneEntityLookup(
+  q: string | undefined | null
+): boolean {
   if (!q) return false
   const trimmed = q.trim()
   if (!trimmed) return false
@@ -117,7 +126,7 @@ export function isStandaloneEntityLookup(q: string | undefined | null): boolean 
   }
   if (MATH_OR_CODE_RE.test(qf)) return false
   if (LINGUISTIC_OR_CREATIVE_RE.test(qf)) return false
-  if (IDENTITY_QUERY_RE.test(qf)) return false
+  if (isIdentityQuery(trimmed)) return false
   if (EXPLANATION_OR_CONCEPT_RE.test(qf)) return false
 
   // Exclude conversational sentence starters
@@ -132,14 +141,10 @@ export function isStandaloneEntityLookup(q: string | undefined | null): boolean 
 
 const DOC_FORMATS = new Set(['pdf', 'docx', 'xlsx', 'pptx', 'doc', 'ppt'])
 
-const IDENTITY_QUERY_RE = intentRe(
-  'qui\\s+(es|est|etes)[-\\s]?tu|tu\\s+(es|est)\\s+qui|t.es\\s+qui|qui\\s+t.es|qui\\s+etes[-\\s]?vous|vous\\s+etes\\s+qui' +
-    '|who\\s+are\\s+you|what\\s+are\\s+you|who\\s+made\\s+you|who\\s+created\\s+you|what\\s+is\\s+your\\s+name|whats\\s+your\\s+name' +
-    '|qui\\s+t.a\\s+(cree|concu|developpe|fait)|qui\\s+est\\s+ton\\s+createur|qui\\s+vous\\s+a\\s+cree' +
-    '|presente[-\\s]?toi|presentez[-\\s]?vous|ton\\s+nom|votre\\s+nom|comment\\s+tu\\s+t.appelles|comment\\s+vous\\s+vous\\s+appelez' +
-    '|c.est\\s+quoi\\s+nelth|qui\\s+est\\s+nelth|c.est\\s+quoi\\s+optix|qui\\s+est\\s+optix' +
-    '|iza\\s+ianao|ianao\\s+iza|inona\\s+ianao|iza\\s+no\\s+namorona\\s+anao|ahoana\\s+ny\\s+anaranao|inona\\s+ny\\s+anaranao'
-)
+// Identity detection no longer lives here: `isIdentityQuery` (lib/utils/
+// message-utils.ts) is the single source of truth, shared with the
+// orchestrators and the researcher so a query recognized as an identity
+// question in one layer is recognized identically in every layer.
 
 // Internal knowledge subjects (Nelcia, Yannick, Optix AI, Nelth AI, founders).
 // These are part of core identity and must NEVER trigger external web search or generateImage.
@@ -249,7 +254,7 @@ export async function detectRequestCapabilities(
   // diacritics) so all languages match identically.
   const qf = foldText(query ?? '')
 
-  const isIdentity = IDENTITY_QUERY_RE.test(qf)
+  const isIdentity = isIdentityQuery(query ?? '')
   const isBareFounderRole = BARE_FOUNDER_ROLE_RE.test(qf)
   // Anaphoric follow-up inside an internal thread ("et l'autre ?" after
   // founder talk): inherit internal status so a decontextualized web

@@ -56,6 +56,7 @@ import {
   extractFakeSearchQuery,
   getImageAttachmentUrl,
   getTextFromParts,
+  identityFallbackAnswer,
   isIdentityQuery,
   isPureGreeting,
   resolveContextualSearchQuery,
@@ -336,17 +337,22 @@ export async function createChatStreamResponse(
       // earlier thread answer — even when the generic capability detector
       // sees no search intent (e.g. "et les prix ?" after an unsearched
       // answer). Forces the search path below for both model classes.
+      // Identity turns ("qui est tu ?", "qui es-tu ?", "who are you",
+      // "présente-toi"...) are answered from internal knowledge in one pass:
+      // never fact-checked, never preloaded, the researcher disarms every
+      // tool, and the fallback below NEVER runs a live search for them.
+      const isIdentityTurn = isIdentityQuery(userQuery ?? '')
       const factVerification =
         !connectorDataIntent &&
         !caps.founderPhoto &&
-        !isIdentityQuery(userQuery ?? '') &&
+        !isIdentityTurn &&
         needsFactVerification(userQuery ?? '')
       const needsSearchEff = caps.needsSearch || factVerification
 
       const shouldPreloadSearch =
         !connectorDataIntent &&
         !caps.founderPhoto &&
-        !isIdentityQuery(userQuery ?? '') &&
+        !isIdentityTurn &&
         Boolean(needsSearchEff)
 
       const trivial =
@@ -378,11 +384,18 @@ export async function createChatStreamResponse(
               caps.webImageSearch ? ['image', 'web'] : ['web']
             ),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('Preloaded search timeout')), 6000)
+              setTimeout(
+                () => reject(new Error('Preloaded search timeout')),
+                6000
+              )
             )
           ])
 
-          if (searchResult && searchResult.results && searchResult.results.length > 0) {
+          if (
+            searchResult &&
+            searchResult.results &&
+            searchResult.results.length > 0
+          ) {
             preloadedSearchContext = searchResult.results
               .map(
                 (result, i) =>
@@ -391,7 +404,11 @@ export async function createChatStreamResponse(
               .join('\n\n')
           }
 
-          if (searchResult && searchResult.images && searchResult.images.length > 0) {
+          if (
+            searchResult &&
+            searchResult.images &&
+            searchResult.images.length > 0
+          ) {
             const imageLines = searchResult.images
               .map((image, i) => {
                 const imageUrl = typeof image === 'string' ? image : image.url
@@ -409,12 +426,16 @@ export async function createChatStreamResponse(
                 return `(IMG-${i + 1}) ${JSON.stringify(imageData)}`
               })
               .join('\n')
-            preloadedSearchContext = (preloadedSearchContext ? preloadedSearchContext + '\n\n' : '') +
+            preloadedSearchContext =
+              (preloadedSearchContext ? preloadedSearchContext + '\n\n' : '') +
               `IMAGES DISPONIBLES (numérotées IMG-1, IMG-2, ... — espace SÉPARÉ des citations [n]):\n${imageLines}\nDIRECTIVE POUR LES RECHERCHES D'IMAGES: affiche au maximum 3 images pertinentes directement avec la syntaxe Markdown ![légende](url) — UNE IMAGE PAR LIGNE, rien d'autre sur la ligne — puis une section « 📋 Sources » façon ChatGPT : liste numérotée de liens cliquables au format EXACT \`1. [Titre court — Nom du site](URL exacte)\` — JAMAIS d'URL brute affichée en texte. RÈGLES STRICTES: (1) Présente les images choisies DANS L'ORDRE CROISSANT des numéros IMG, sans réordonner ni mélanger. (2) Chaque légende reprend EXACTEMENT le titre/description fourni — n'invente aucune légende. (3) Copie chaque URL EXACTEMENT sans la modifier. (4) N'ajoute AUCUN marqueur de citation [n] dans la phrase d'intro, les légendes ou la section « 📋 Sources » des images — les liens sources suffisent. (5) Ne montre JAMAIS les 20 images, n'utilise aucun bloc spec ni grille. (6) N'écris JAMAIS "Image not available" ni aucun texte de remplacement : si une image ne convient pas, ignore-la silencieusement. Ne dis pas que les images sont indisponibles. (7) Les marqueurs [n] sont INTERDITS sauf s'ils correspondent à un résultat web numéroté réellement fourni ci-dessus — ne JAMAIS inventer de numéros de citation ; sans résultats web, aucun [n].`
           }
           searchResultsForCitation = searchResult
         } catch (searchErr) {
-          console.warn('[Stream] Preloaded search failed or timed out:', searchErr)
+          console.warn(
+            '[Stream] Preloaded search failed or timed out:',
+            searchErr
+          )
         }
       }
 
@@ -1057,6 +1078,19 @@ export async function createChatStreamResponse(
               )
               let fallbackDelta: string | null = null
 
+              // 0) IDENTITY: the turn is an identity question — NEVER run a
+              // web search for it, even when the model only narrated a search
+              // ("Recherche web en cours...") or emitted a stripped fake-XML
+              // search call. Every tool is already disarmed by the researcher
+              // gate; this branch yields the direct identity answer instead,
+              // which also skips the live-search blocks below via the shared
+              // `if (!fallbackDelta)` guards.
+              if (!fallbackDelta && isIdentityTurn) {
+                fallbackDelta = identityFallbackAnswer(
+                  conversationLanguage?.lang
+                )
+              }
+
               // 0a) Web search results from preload: provide factual summary directly
               if (
                 !fallbackDelta &&
@@ -1269,8 +1303,7 @@ export async function createChatStreamResponse(
                 fallbackDelta = `J'ai consulté vos données ${services} mais n'ai pas pu générer le résumé. Pourriez-vous reformuler votre demande ?`
               }
 
-              const deltaPrefix =
-                wroteContent && fallbackDelta ? '\n\n' : ''
+              const deltaPrefix = wroteContent && fallbackDelta ? '\n\n' : ''
               writer.write({
                 type: 'text-delta',
                 id: `txt-${writtenPartCount}`,
@@ -1332,136 +1365,136 @@ export async function createChatStreamResponse(
           }
           return serializePublicError(error)
         },
-          onFinish: async ({ responseMessage, isAborted }) => {
-            // Also persist the synthetic tool-search part so the Sources panel and
-            // inline citation map survive a reload. Same condition as the live
-            // emit above: results, images OR videos (image-only searches must
-            // survive too).
-            if (
-              !isAborted &&
-              responseMessage &&
-              searchResultsForCitation &&
-              (searchResultsForCitation.results.length > 0 ||
-                searchResultsForCitation.images.length > 0 ||
-                (searchResultsForCitation.videos?.length ?? 0) > 0)
-            ) {
-              const hasSearch = responseMessage.parts?.some(
-                (p: any) => p.type === 'tool-search'
+        onFinish: async ({ responseMessage, isAborted }) => {
+          // Also persist the synthetic tool-search part so the Sources panel and
+          // inline citation map survive a reload. Same condition as the live
+          // emit above: results, images OR videos (image-only searches must
+          // survive too).
+          if (
+            !isAborted &&
+            responseMessage &&
+            searchResultsForCitation &&
+            (searchResultsForCitation.results.length > 0 ||
+              searchResultsForCitation.images.length > 0 ||
+              (searchResultsForCitation.videos?.length ?? 0) > 0)
+          ) {
+            const hasSearch = responseMessage.parts?.some(
+              (p: any) => p.type === 'tool-search'
+            )
+            if (!hasSearch) {
+              responseMessage.parts = [
+                ...(responseMessage.parts ?? []),
+                {
+                  type: 'tool-search',
+                  toolCallId: 'preloaded-search',
+                  state: 'output-available',
+                  // Same input as the live synthetic emit above (image
+                  // searches must keep their images after reload).
+                  input: {
+                    query: userQuery,
+                    type: 'optimized',
+                    content_types: caps.webImageSearch
+                      ? ['image', 'web']
+                      : ['web'],
+                    max_results: 10,
+                    search_depth: 'basic'
+                  },
+                  output: { ...searchResultsForCitation, state: 'complete' }
+                } as unknown as (typeof responseMessage.parts)[number]
+              ]
+            }
+          }
+          // Also persist the synthetic connector parts so the connector
+          // sections survive a reload. Same condition as the live emit above.
+          if (
+            !isAborted &&
+            responseMessage &&
+            connectorPreloadCalls.length > 0
+          ) {
+            for (const call of connectorPreloadCalls) {
+              const partType = `tool-${call.service}`
+              const hasPart = responseMessage.parts?.some(
+                (p: any) => p.type === partType
               )
-              if (!hasSearch) {
+              if (!hasPart) {
                 responseMessage.parts = [
                   ...(responseMessage.parts ?? []),
                   {
-                    type: 'tool-search',
-                    toolCallId: 'preloaded-search',
+                    type: partType,
+                    toolCallId: `preloaded-${call.service}`,
                     state: 'output-available',
-                    // Same input as the live synthetic emit above (image
-                    // searches must keep their images after reload).
-                    input: {
-                      query: userQuery,
-                      type: 'optimized',
-                      content_types: caps.webImageSearch
-                        ? ['image', 'web']
-                        : ['web'],
-                      max_results: 10,
-                      search_depth: 'basic'
-                    },
-                    output: { ...searchResultsForCitation, state: 'complete' }
+                    input: call.input,
+                    output: call.output
                   } as unknown as (typeof responseMessage.parts)[number]
                 ]
               }
             }
-            // Also persist the synthetic connector parts so the connector
-            // sections survive a reload. Same condition as the live emit above.
-            if (
-              !isAborted &&
-              responseMessage &&
-              connectorPreloadCalls.length > 0
-            ) {
-              for (const call of connectorPreloadCalls) {
-                const partType = `tool-${call.service}`
-                const hasPart = responseMessage.parts?.some(
-                  (p: any) => p.type === partType
-                )
-                if (!hasPart) {
-                  responseMessage.parts = [
-                    ...(responseMessage.parts ?? []),
-                    {
-                      type: partType,
-                      toolCallId: `preloaded-${call.service}`,
-                      state: 'output-available',
-                      input: call.input,
-                      output: call.output
-                    } as unknown as (typeof responseMessage.parts)[number]
-                  ]
-                }
-              }
-            }
-            // Post-processing: skill enforcement refines the answer in place.
-            // Message persistence & title update MUST BE AWAITED before the stream
-            // closes so serverless functions don't terminate prematurely.
-            try {
-              perfTime('researchAgent.stream completed', llmStart)
-              if (isAborted || !responseMessage) return
-
-              // ENFORCEMENT: validate the generated answer against active skills.
-              if (skillCtx && skillCtx.activated.length > 0) {
-                try {
-                  await enforceSkillOutput({
-                    responseMessage,
-                    userQuery,
-                    skillCtx,
-                    model: context.modelId,
-                    modelConfig: model,
-                    searchMode,
-                    modelMessages
-                  })
-                } catch (enfErr) {
-                  console.error(
-                    'Skill enforcement error (kept original):',
-                    enfErr
-                  )
-                }
-              }
-
-              // Guarantee NO emoji leaks into any generated code/artifact
-              stripEmojiFromCodeInMessage(responseMessage)
-
-              // Strip fake tool XML blocks
-              stripFakeToolCallXmlFromMessage(responseMessage)
-
-              // Awaited: guarantee the message is persisted to DB before stream closes
-              await persistStreamMessages(
-                responseMessage,
-                chatId,
-                userId,
-                parentTraceId,
-                searchMode,
-                context.modelId,
-                context.pendingInitialSave,
-                context.pendingInitialUserMessage,
-                context.userMessageId
-              )
-
-              // Awaited with timeout: guarantee chat title is updated in DB
-              if (titlePromise) {
-                try {
-                  await Promise.race([
-                    persistChatTitle(chatId, userId, titlePromise),
-                    new Promise(r => setTimeout(r, 4000))
-                  ])
-                } catch (titleErr) {
-                  console.error('onFinish title error:', titleErr)
-                }
-              }
-            } catch (err) {
-              console.error('onFinish post-processing error:', err)
-            } finally {
-              void endTracing().catch((err: unknown) =>
-                console.error('onFinish tracing error:', err)
-              )
-            }
           }
+          // Post-processing: skill enforcement refines the answer in place.
+          // Message persistence & title update MUST BE AWAITED before the stream
+          // closes so serverless functions don't terminate prematurely.
+          try {
+            perfTime('researchAgent.stream completed', llmStart)
+            if (isAborted || !responseMessage) return
+
+            // ENFORCEMENT: validate the generated answer against active skills.
+            if (skillCtx && skillCtx.activated.length > 0) {
+              try {
+                await enforceSkillOutput({
+                  responseMessage,
+                  userQuery,
+                  skillCtx,
+                  model: context.modelId,
+                  modelConfig: model,
+                  searchMode,
+                  modelMessages
+                })
+              } catch (enfErr) {
+                console.error(
+                  'Skill enforcement error (kept original):',
+                  enfErr
+                )
+              }
+            }
+
+            // Guarantee NO emoji leaks into any generated code/artifact
+            stripEmojiFromCodeInMessage(responseMessage)
+
+            // Strip fake tool XML blocks
+            stripFakeToolCallXmlFromMessage(responseMessage)
+
+            // Awaited: guarantee the message is persisted to DB before stream closes
+            await persistStreamMessages(
+              responseMessage,
+              chatId,
+              userId,
+              parentTraceId,
+              searchMode,
+              context.modelId,
+              context.pendingInitialSave,
+              context.pendingInitialUserMessage,
+              context.userMessageId
+            )
+
+            // Awaited with timeout: guarantee chat title is updated in DB
+            if (titlePromise) {
+              try {
+                await Promise.race([
+                  persistChatTitle(chatId, userId, titlePromise),
+                  new Promise(r => setTimeout(r, 4000))
+                ])
+              } catch (titleErr) {
+                console.error('onFinish title error:', titleErr)
+              }
+            }
+          } catch (err) {
+            console.error('onFinish post-processing error:', err)
+          } finally {
+            void endTracing().catch((err: unknown) =>
+              console.error('onFinish tracing error:', err)
+            )
+          }
+        }
       })
 
       return createUIMessageStreamResponse({

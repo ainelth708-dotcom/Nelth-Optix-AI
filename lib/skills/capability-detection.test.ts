@@ -166,15 +166,16 @@ describe('detectRequestCapabilities — all languages', () => {
       {
         id: '1',
         role: 'user' as const,
-        parts: [
-          { type: 'text' as const, text: 'Qui sont les cofondateurs ?' }
-        ]
+        parts: [{ type: 'text' as const, text: 'Qui sont les cofondateurs ?' }]
       },
       {
         id: '2',
         role: 'assistant' as const,
         parts: [
-          { type: 'text' as const, text: 'Les cofondateurs sont Yannick et Nelcia.' }
+          {
+            type: 'text' as const,
+            text: 'Les cofondateurs sont Yannick et Nelcia.'
+          }
         ]
       }
     ]
@@ -210,10 +211,17 @@ describe('detectRequestCapabilities — all languages', () => {
     for (const q of [
       'qui est tu',
       'qui es-tu ?',
+      'qui est-tu ?',
       'tu es qui ?',
       'présente-toi',
       "c'est quoi ton nom ?",
       'who are you',
+      'what are u',
+      'who r u',
+      'quién eres',
+      'wer bist du',
+      'chi sei',
+      'iza ianao',
       "qui t'a créé ?"
     ]) {
       const caps = await detectRequestCapabilities(q)
@@ -286,4 +294,3 @@ describe('detectRequestCapabilities — all languages', () => {
     }
   })
 })
-
