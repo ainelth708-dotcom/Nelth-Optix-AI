@@ -32,7 +32,7 @@ import { normalizeToolCall } from '../tools/runtime/normalize-tool-call'
 import { createSearchTool } from '../tools/search'
 import { createTodoTools } from '../tools/todo'
 import { SearchMode } from '../types/search'
-import { isIdentityQuery } from '../utils/message-utils'
+import { isIdentityQuery, isPureGreeting } from '../utils/message-utils'
 import { getModel, isNonThinkingModelId } from '../utils/registry'
 import { isTracingEnabled } from '../utils/telemetry'
 
@@ -775,6 +775,11 @@ export async function createResearcher({
     // cannot actually run (the search tool is disarmed by the gate further
     // below), which the orchestrator's fallback must then repair.
     const identityTurn = isIdentityQuery(userQuery ?? '')
+    // Pure greetings/chit-chat ("bonjour", "salut", "merci", "ça va ?"...) are
+    // the other turn class that never needs the web — reasoning models
+    // otherwise occasionally fire a search on them, and weak models narrate
+    // fake searches the orchestrator must not repair either.
+    const chitchatTurn = isPureGreeting(userQuery ?? '')
 
     // Configure based on search mode
     switch (searchMode) {
@@ -906,15 +911,36 @@ export async function createResearcher({
       activeToolsList = []
     }
 
+    // PURE GREETINGS / CHIT-CHAT: a greeting never needs the web. Drop the
+    // web tools for ALL model classes — reasoning models otherwise keep
+    // every tool armed (their dynamic decision must not extend to search on
+    // "bonjour"), and weak models emit fake-XML searches that the
+    // orchestrator's fallback would otherwise repair with a real query.
+    // Compound turns ("salut et cherche X") keep their tools: isPureGreeting
+    // is anchored end-to-end, so only pure greeting text matches.
+    if (chitchatTurn && !capabilities?.needsSearch) {
+      activeToolsList = activeToolsList.filter(
+        t => t !== 'search' && t !== 'fetch'
+      )
+    }
+
     const isNonThinking =
       isNonThinkingModelId(modelConfig?.id) || isNonThinkingModelId(model)
 
     // LAZY TOOL ARMING: for non-thinking models, a trivial request arms no tools.
-    // For thinking models (reasoning models), NEVER wipe out tools because the
-    // thinking model dynamically decides in its chain-of-thought whether to call
-    // tools (search, fetch, etc.). Wiping out tools causes the thinking model
-    // to fail to call the tool it decided to use.
-    if (capabilities?.trivial && isNonThinking) {
+    // Broader: ANY non-search, non-generative turn disarms everything for them.
+    // These models cannot emit valid native tool calls, so every armed-but-
+    // unneeded tool only raises the fake-XML search rate (announced searches
+    // the fallback would then repair with a real query). Image/document tasks
+    // and search-worthy turns keep their tools. Thinking models keep tools
+    // unless the dedicated gates above removed them (identity, chit-chat...).
+    if (
+      isNonThinking &&
+      !capabilities?.needsSearch &&
+      !capabilities?.needsImage &&
+      !capabilities?.needsDocument &&
+      !capabilities?.founderPhoto
+    ) {
       activeToolsList = []
     }
 

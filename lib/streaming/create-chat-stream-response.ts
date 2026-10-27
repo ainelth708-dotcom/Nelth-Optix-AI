@@ -355,6 +355,14 @@ export async function createChatStreamResponse(
         !isIdentityTurn &&
         Boolean(needsSearchEff)
 
+      // LIVE SEARCH REPAIR GATE: the fallback's live web search must respect
+      // this turn's own no-search decision. Greetings, chit-chat, math,
+      // translations, creative writing, affirmative continuations and
+      // identity questions must NEVER be rescued by a real web search just
+      // because the weak model narrated one — that is the "il fait du
+      // recherche web" bug the user reports for turns needing no search.
+      const searchRepairWorthy = needsSearchEff && !isIdentityTurn
+
       const trivial =
         !caps.needsSearch &&
         !shouldPreloadSearch &&
@@ -1062,8 +1070,10 @@ export async function createChatStreamResponse(
                 wroteToolPart,
                 aborted: abortSignal?.aborted === true
               }) ||
-              (isEchoOrTitle && Boolean(fakeSearchQuery)) ||
-              isSearchAnnouncement
+              (isEchoOrTitle &&
+                Boolean(fakeSearchQuery) &&
+                (isIdentityTurn || searchRepairWorthy)) ||
+              (isSearchAnnouncement && (isIdentityTurn || searchRepairWorthy))
             ) {
               console.error(
                 '[Stream] silent-empty response or title-echo/announcement fake search — injecting fallback text',
@@ -1104,13 +1114,16 @@ export async function createChatStreamResponse(
                 fallbackDelta = `${summaries}`
               }
 
-              // 0b) Model attempted a fake search XML call (e.g. <search"> query) that got stripped
+              // 0b) Model attempted a fake search XML call (e.g. <search"> query) that got stripped.
+              // The live repair only runs when THIS turn actually warrants a
+              // web search (needsSearchEff) — greetings, chit-chat, math,
+              // translations and identity turns never fall back to a search.
               if (!fallbackDelta) {
                 const targetFakeQuery =
                   fakeSearchQuery ||
                   extractFakeSearchQuery(accumulatedRawModelText) ||
                   (isSearchAnnouncement ? userQuery : null)
-                if (targetFakeQuery) {
+                if (targetFakeQuery && searchRepairWorthy) {
                   try {
                     const liveSearchResult = await runWebSearch(
                       targetFakeQuery,
