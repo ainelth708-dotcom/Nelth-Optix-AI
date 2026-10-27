@@ -167,19 +167,80 @@ export function isGreetingLike(text: string): boolean {
 }
 
 /**
- * Detects a short affirmative continuation ("oui", "ok", "d'accord"…) that
- * confirms the immediately preceding assistant offer/question. Moved here from
- * lib/agents/researcher.ts (re-exported there) so the streaming orchestrators
- * and this tracker share one definition without an import cycle.
- * Intentionally narrow: ≤3 words, affirmative opener, not a greeting.
+ * Bounded Levenshtein distance — true when the edit distance between the
+ * two words is at most `max`. Early-exits on length gaps and row minima.
+ * (Local copy to avoid import cycle with message-utils.)
+ */
+function editDistanceAtMost(a: string, b: string, max: number): boolean {
+  if (Math.abs(a.length - b.length) > max) return false
+  const m = b.length
+  let prev: number[] = Array.from({ length: m + 1 }, (_, j) => j)
+  for (let i = 1; i <= a.length; i++) {
+    const curr: number[] = [i]
+    let rowMin = i
+    for (let j = 1; j <= m; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+      if (curr[j] < rowMin) rowMin = curr[j]
+    }
+    if (rowMin > max) return false
+    prev = curr
+  }
+  return prev[m] <= max
+}
+
+/**
+ * Lexicon of affirmative words for fuzzy single-token matching.
+ * Only used when the WHOLE query is a single short token (≤ 8 chars).
+ * "continue" removed: it's a command verb, not a short affirmation.
+ */
+const AFFIRMATIVE_LEXICON = [
+  'oui',
+  'ouais',
+  'yes',
+  'yeah',
+  'yep',
+  'ok',
+  'okay',
+  'sure',
+  'daccord',
+  'bien',
+  'parfait',
+  'vasy',
+  'allez'
+]
+
+/**
+ * Detects a short affirmative continuation ("oui", "ok", "d'accord"…)
+ * INCLUDING common single-token typos ("ouui", "okk", "ouai", "oke").
+ * Strict regex first (cleaned: removed "non"/"no" which are rejections);
+ * if the whole query is a single short token (≤ 8 chars, ≤ 3 words),
+ * a bounded Levenshtein check against the affirmative lexicon runs
+ * (tolerance 2 for tokens >= 5 chars, 1 for 3-4 chars, 0 for shorter).
+ * This prevents the weak model from narrating a fake search on a typo'd "oui".
  */
 export function isAffirmativeContinuation(query: string): boolean {
   const q = (query ?? '').trim().toLowerCase()
   if (!q) return false
-  if (q.split(/\s+/).filter(Boolean).length > 3) return false
-  return /^(oui|non|ok|d'accord|daccord|bien s[uû]r|bien sur|parfait|merci|yes|no|yeah|okay|sure|bien sûr)\b/.test(
-    q
-  )
+  const tokens = q.split(/\s+/).filter(Boolean)
+  if (tokens.length > 3) return false
+  // Strict regex (cleaned: removed "non"/"no" — they are rejections)
+  if (
+    /^(oui|ok|d'accord|daccord|bien s[uû]r|bien sur|parfait|merci|yes|yeah|okay|sure|bien sûr)\b/.test(
+      q
+    )
+  ) {
+    return true
+  }
+  // Fuzzy single-token fallback for typo'd short affirmatives
+  if (tokens.length === 1 && tokens[0].length <= 8) {
+    const token = tokens[0]
+    const max = token.length >= 5 ? 2 : token.length >= 3 ? 1 : 0
+    if (max > 0) {
+      return AFFIRMATIVE_LEXICON.some(a => editDistanceAtMost(token, a, max))
+    }
+  }
+  return false
 }
 
 /**

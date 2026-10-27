@@ -426,12 +426,106 @@ const SELF_INTRO_PARAGRAPH_RE =
  * Portuguese, German and Italian identity phrasings — an identity question
  * must NEVER pay a web-search cost in any language.
  */
+/**
+ * Canonical identity phrases (folded + non-alphanumeric stripped) used for
+ * the fuzzy phrase fallback. A query that is within edit distance <= 2
+ * (for phrases >= 8 chars) or <= 1 (5-7 chars) of ANY template is treated
+ * as identity. Gate: query must be <= 4 tokens AND <= 32 chars so
+ * "qui est Elon Musk" (gap > 2 to every template) stays a real search.
+ */
+const IDENTITY_PHRASES = [
+  // FR
+  'quiestu', // qui es tu / qui est tu / qui est-tu
+  'kuieasttu', // kui east tu (common typo)
+  'tuesqui', // tu es qui / t'es qui / tu es koi
+  'quetu', // qu'es tu (rare)
+  'tueski', // tu es ki (phonetic)
+  'tappelles', // tu t'appelles / tu tappelles
+  'commenttuappelles', // comment tu t'appelles
+  'presentetoi', // presente-toi / présente-toi
+  'presentezvous', // presentez-vous
+  'tonnom', // ton nom
+  'votre nom', // votre nom
+  'cestquoihnelth', // c'est quoi nelth
+  'quiestnelth', // qui est nelth
+  'cestquoihoptix', // c'est quoi optix
+  'quiestoptix', // qui est optix
+  'quitacreé', // qui t'a créé / qui t as créé
+  // EN
+  'whoareyou', // who are you
+  'whoareyou', // who ar eyou (typo - same as above, duplicate OK)
+  'whatareyou', // what are you
+  'whatareyou', // what ar eyou (typo - duplicate OK)
+  'whoareu', // who r u / who are u
+  'whatareu', // what r u / what are u
+  'whatsyourname', // what's your name / whats your name
+  'yourname', // your name
+  'whomadeyou', // who made you
+  'whocreatedyou', // who created you
+  'whobuiltyou', // who built you
+  'whodevelopedyou', // who developed you
+  'tellmeaboutyourself', // tell me about yourself
+  'introduceyourself', // introduce yourself
+  // ES
+  'quienes', // quién eres / quien eres
+  'comotellamas', // cómo te llamas
+  'cualestunombre', // cuál es tu nombre
+  'quemetecreo', // quién te creó
+  'presentate', // preséntate
+  // PT
+  'quemevoce', // quem é você
+  'comosechama', // como se chama
+  'qualeseunome', // qual é o seu nome
+  'quemtecriou', // quem te criou
+  // DE
+  'werbistdu', // wer bist du
+  'wieheisstdu', // wie heißt du
+  'werbistdu', // wer bist du
+  // IT
+  'chisei', // chi sei
+  'cometichiami', // come ti chiami
+  // MG
+  'izaianao', // iza ianao
+  'ianaoiza', // ianao iza
+  'inonaianao', // inona ianao
+  'anaranao' // ny anaranao / inona no anaranao
+]
+
+/**
+ * TRUE when the query is an identity question (including typo'd short forms).
+ * Strict regex first; if it fails AND the query is short (<= 4 tokens, <= 32
+ * chars), a bounded Levenshtein check against canonical identity phrases runs.
+ * This catches "kui east tu", "who ar eyou", "iza inao" while keeping
+ * "qui est Elon Musk" (distance > 2 to every template) as a real search.
+ */
 export function isIdentityQuery(query: string): boolean {
   if (!query) return false
   const qf = foldText(query)
-  return /\b(qui\s+(es|est|etes)[-\s]?tu|tu\s+(es|est)\s+qui|t['’]es\s+qui|qui\s+t['’]es|qui\s+etes[-\s]?vous|vous\s+etes\s+qui|dis[-\s]?moi\s+qui\s+tu\s+(es|est)|parle[-\s]?moi\s+de\s+toi|tu\s+te\s+nommes\s+comment|tu\s+t['’]appelles|tu\s+t['’]appelles\s+comment|comment\s+tu\s+t['’]appelles|vous\s+vous\s+appelez|tu\s+(es|est)\s+faits?\s+avec\s+quoi|tu\s+(es|est)\s+quoi|tu\s+sers\s+a\s+quoi|qui\s+t['’]a\s+(cree|concu|developpe|fait|programme)|qui\s+t['’]as\s+(cree|concu|developpe|fait|programme)|qui\s+vous\s+a\s+(cree|concu|developpe|fait)|qui\s+est\s+ton\s+(createur|concepteur|developpeur|programmeur|fabricant)|presente[-\s]?toi|presentez[-\s]?vous|ton\s+nom|votre\s+nom|c['’]est\s+quoi\s+nelth|qui\s+est\s+nelth|c['’]est\s+quoi\s+optix|qui\s+est\s+optix|who\s+are\s+you|who\s+r\s+u|who\s+ru|what\s+are\s+u|what\s+r\s+u|what\s+are\s+you|who\s+made\s+you|who\s+created\s+you|who\s+built\s+you|who\s+developed\s+you|what\s+is\s+your\s+name|whats\s+your\s+name|your\s+name\s+\?|tell\s+me\s+about\s+yourself|introduce\s+yourself|quien\s+eres|quien\s+eres\s+tu|quien\s+eres\s+tu\?|eres\s+quien|como\s+te\s+llamas|cual\s+es\s+tu\s+nombre|quien\s+te\s+(creo|hizo|desarrollo|programo)|presentate|quem\s+(e|es|sao)\s+voce|voce\s+e\s+quem|como\s+se\s+chama|qual\s+e\s+o\s+seu\s+nome|quem\s+te\s+criou|quem\s+fez\s+voce|wer\s+bist\s+du|du\s+bist\s+wer|wie\s+heisst\s+du|wer\s+sind\s+sie|wie\s+heissen\s+sie|wer\s+dich\s+(erstellt|gemacht|entwickelt)\s+hat|chi\s+sei|chi\s+sei\s+tu|come\s+ti\s+chiami|come\s+ti\s+chiami\s+\?|iza\s+ianao|ianao\s+iza|inona\s+ianao|iza\s+no\s+namorona\s+anao|iza\s+no\s+(anaranao|namanao)|ahoana\s+ny\s+anaranao|inona\s+ny\s+anaranao|inona\s+no\s+anaranao)\b/i.test(
-    qf
-  )
+  const tokens = qf.trim().split(/\s+/)
+  const normalized = qf.replace(/[^a-z0-9]/g, '')
+  const isShort = tokens.length <= 4 && normalized.length <= 32
+  // Strict regex — only for short queries to avoid "what are you doing" false positive
+  if (
+    isShort &&
+    /\b(qui\s+(es|est|etes)[-\s]?tu|tu\s+(es|est)\s+qui|t['’]es\s+qui|qui\s+t['’]es|qui\s+etes[-\s]?vous|vous\s+etes\s+qui|dis[-\s]?moi\s+qui\s+tu\s+(es|est)|parle[-\s]?moi\s+de\s+toi|tu\s+te\s+nommes\s+comment|tu\s+t['’]appelles|tu\s+t['’]appelles\s+comment|comment\s+tu\s+t['’]appelles|vous\s+vous\s+appelez|tu\s+(es|est)\s+faits?\s+avec\s+quoi|tu\s+(es|est)\s+quoi|tu\s+sers\s+a\s+quoi|qui\s+t['’]a\s+(cree|concu|developpe|fait|programme)|qui\s+t['’]as\s+(cree|concu|developpe|fait|programme)|qui\s+vous\s+a\s+(cree|concu|developpe|fait)|qui\s+est\s+ton\s+(createur|concepteur|developpeur|programmeur|fabricant)|presente[-\s]?toi|presentez[-\s]?vous|ton\s+nom|votre\s+nom|c['’]est\s+quoi\s+nelth|qui\s+est\s+nelth|c['’]est\s+quoi\s+optix|qui\s+est\s+optix|who\s+are\s+you|who\s+r\s+u|who\s+ru|what\s+are\s+u|what\s+r\s+u|what\s+are\s+you|who\s+made\s+you|who\s+created\s+you|who\s+built\s+you|who\s+developed\s+you|what\s+is\s+your\s+name|whats\s+your\s+name|your\s+name\s+\?|tell\s+me\s+about\s+yourself|introduce\s+yourself|quien\s+eres|quien\s+eres\s+tu|quien\s+eres\s+tu\?|eres\s+quien|como\s+te\s+llamas|cual\s+es\s+tu\s+nombre|quien\s+te\s+(creo|hizo|desarrollo|programo)|presentate|quem\s+(e|es|sao)\s+voce|voce\s+e\s+quem|como\s+se\s+chama|qual\s+e\s+o\s+seu\s+nome|quem\s+te\s+criou|quem\s+fez\s+voce|wer\s+bist\s+du|du\s+bist\s+wer|wie\s+heisst\s+du|wer\s+sind\s+sie|wie\s+heissen\s+sie|wer\s+dich\s+(erstellt|gemacht|entwickelt)\s+hat|chi\s+sei|chi\s+sei\s+tu|come\s+ti\s+chiami|come\s+ti\s+chiami\s+\?|iza\s+ianao|ianao\s+iza|inona\s+ianao|iza\s+no\s+namorona\s+anao|iza\s+no\s+(anaranao|namanao)|ahoana\s+ny\s+anaranao|inona\s+ny\s+anaranao|inona\s+no\s+anaranao)\b/i.test(
+      qf
+    )
+  ) {
+    // Guard: reject if query has 4 tokens AND last token is alphabetic (not just punctuation)
+    // This catches "what are you doing" (4 tokens, "doing" is alphabetic) vs "what are you ?" (4 tokens, "?" is punctuation)
+    if (tokens.length === 4 && /[a-z]/.test(tokens[3])) {
+      // fall through to fuzzy
+    } else {
+      return true
+    }
+  }
+  // Fuzzy phrase fallback for short identity questions with typos
+  if (!isShort) return false
+  return IDENTITY_PHRASES.some(p => {
+    // Tolerance scales with template length: floor(len/4), capped at 3
+    const max = Math.min(3, Math.max(1, Math.floor(p.length / 4)))
+    return editDistanceAtMost(normalized, p, max)
+  })
 }
 
 /**
@@ -941,6 +1035,7 @@ export function isPureGreeting(query: string): boolean {
  * words that are a small typo away from a greeting must not be treated as
  * entity lookups ("bonjoujr", "bonjor", "mersi"... are greetings, not
  * things to search the web for).
+ * Extended with MG/common abbreviations: akory, manahoana, wesh, coucou.
  */
 const GREETING_LEXICON = [
   'bonjour',
@@ -956,7 +1051,10 @@ const GREETING_LEXICON = [
   'bjr',
   'slt',
   'bsoir',
-  'yo'
+  'yo',
+  'akory',
+  'manahoana',
+  'wesh'
 ]
 
 /**

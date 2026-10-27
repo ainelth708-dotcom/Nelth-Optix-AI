@@ -226,7 +226,12 @@ describe('detectRequestCapabilities — all languages', () => {
       'bonjoujr',
       'bonjor',
       'slt',
-      'bjr'
+      'bjr',
+      // Fuzzy identity (typo-tolerant phrase-level)
+      'kui east tu',
+      'who ar eyou',
+      'iza inao',
+      'tueski'
     ]) {
       const caps = await detectRequestCapabilities(q)
       expect(caps.needsSearch, `query: ${q}`).toBe(false)

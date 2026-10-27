@@ -116,7 +116,15 @@ describe('isIdentityQuery', () => {
     'chi sei?',
     'quem é você',
     'iza ianao',
-    'ahoana ny anaranao ?'
+    'ahoana ny anaranao ?',
+    // Fuzzy typo-tolerant (phrase-level bounded edit distance)
+    'kui east tu',
+    'qui esst tu',
+    'who ar eyou',
+    'wha tare you',
+    'iza inao',
+    'ianao iz',
+    'tueski'
   ])('detects %s as identity', q => {
     expect(isIdentityQuery(q)).toBe(true)
   })
@@ -127,7 +135,11 @@ describe('isIdentityQuery', () => {
     'parle-moi de Tesla',
     'bonjour',
     'qui est le président de Madagascar ?',
-    'ton noms de chien préféré ?'
+    'ton noms de chien préféré ?',
+    // Negative: third-person questions must NOT be identity
+    'why are you sad',
+    'qui est elon musk',
+    'what are you doing'
   ])('does not flag %s as identity', q => {
     expect(isIdentityQuery(q)).toBe(false)
   })
@@ -154,7 +166,12 @@ describe('isGreetingLike', () => {
     'sellut',
     'hello !!',
     'salut là',
-    'merci beaucoup bcq'
+    'merci beaucoup bcq',
+    // Extended lexicon (MG / slang)
+    'akory',
+    'manahoana',
+    'wesh',
+    'coucou'
   ])('detects %s as greeting-like (typo tolerant)', q => {
     expect(isGreetingLike(q)).toBe(true)
   })

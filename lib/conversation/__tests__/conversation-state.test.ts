@@ -10,6 +10,7 @@ import {
   extractOfferedOptions,
   extractPendingOffer,
   extractTrailingQuestion,
+  isAffirmativeContinuation,
   isFollowUpReference,
   isGreetingLike,
   isGreetingOpener,
@@ -780,5 +781,36 @@ describe('continuity reminder (bookend + re-injection)', () => {
     expect(
       appendContinuityReminder([{ role: 'assistant', content: 'yo' }], 'x')
     ).toEqual([{ role: 'assistant', content: 'yo' }])
+  })
+})
+
+describe('isAffirmativeContinuation fuzzy', () => {
+  it.each([
+    'oui',
+    'ok',
+    'yes',
+    'yeah',
+    'daccord',
+    'vasy',
+    // Fuzzy single-token typos (tolerance 1 for len 3-4, 2 for len >=5)
+    'ouui',
+    'okk',
+    'ouai',
+    'oke',
+    'dakord'
+  ])('detects %s as affirmative continuation', q => {
+    expect(isAffirmativeContinuation(q)).toBe(true)
+  })
+
+  it.each([
+    'non', // rejection, not affirmation
+    'no', // rejection, not affirmation
+    'peut-etre',
+    'maybe',
+    'recherche l\u2019open free',
+    'oui donne-moi les prix', // >1 token = not a short continuation
+    'ouuuui' // distance 3 from 'oui' (len 4 -> max 1)
+  ])('does not flag %s as affirmative continuation', q => {
+    expect(isAffirmativeContinuation(q)).toBe(false)
   })
 })
