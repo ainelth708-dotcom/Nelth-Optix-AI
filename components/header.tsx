@@ -52,7 +52,15 @@ export const Header: React.FC<HeaderProps> = ({ user }) => {
           'absolute top-0 right-0 p-2 md:p-3 flex justify-between items-center z-10 backdrop-blur-sm lg:backdrop-blur-none bg-background/80 lg:bg-transparent transition-[width] duration-200 ease-linear',
           isImagineTransparent &&
             'pointer-events-none bg-transparent backdrop-blur-none',
-          open ? 'md:w-[calc(100%-var(--sidebar-width))]' : 'md:w-full',
+          // Reserve the real sidebar footprint: expanded subtracts the sidebar
+          // width; the collapsed state still shows the 60px icon rail, so only
+          // --sidebar-width-icon is subtracted. Guests render no sidebar at
+          // all and keep the full-width bar.
+          user
+            ? open
+              ? 'md:w-[calc(100%-var(--sidebar-width))]'
+              : 'md:w-[calc(100%-var(--sidebar-width-icon))]'
+            : 'md:w-full',
           'w-full'
         )}
       >
@@ -98,38 +106,8 @@ export const Header: React.FC<HeaderProps> = ({ user }) => {
           </Link>
         )}
 
-        {/* Desktop only: when the sidebar is collapsed, show the small trigger
-            (SidebarIcon) with the New chat button stacked below it, pushed
-            just under the top bar on the left. */}
-        {!isMobile && !open && user && (
-          <div className="pointer-events-auto absolute left-3 top-12 flex flex-col items-center gap-1">
-            <div className="w-px h-5 bg-border" aria-hidden />
-            <SidebarTrigger className="size-5 transition-transform duration-200 ease-[cubic-bezier(.22,1,.36,1)] hover:rotate-90 active:scale-90" />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 transition-transform duration-200 ease-[cubic-bezier(.22,1,.36,1)] hover:scale-110 hover:-rotate-6 active:scale-95"
-              aria-label="New chat"
-              title="New chat"
-              onClick={handleNewChat}
-            >
-              <SquarePen size={16} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                'size-8 transition-transform duration-200 ease-[cubic-bezier(.22,1,.36,1)] hover:scale-110 active:scale-95',
-                isImagine && 'text-primary'
-              )}
-              aria-label="Imagine studio"
-              title="Imagine studio"
-              onClick={handleImagine}
-            >
-              <ImageIcon size={16} />
-            </Button>
-          </div>
-        )}
+        {/* No desktop collapsed-sidebar stack here: the 60px icon rail now
+            carries the toggle, New chat and Imagine icons redundantly. */}
 
         <div className="flex items-center gap-2">
           {/* Account avatar moved to the bottom-left of the sidebar (AppSidebar). */}

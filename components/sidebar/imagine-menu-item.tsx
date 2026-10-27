@@ -27,19 +27,17 @@ export function ImagineMenuItem() {
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={isActive}>
+      <SidebarMenuButton
+        asChild
+        isActive={isActive}
+        tooltip={t('common.imagineStudio')}
+      >
         <Link
           href="/imagine"
           className="flex items-center gap-2"
           onClick={handleImagine}
         >
-          <ImageIcon
-            className={`
-              size-4 transition-transform duration-200
-              ease-[cubic-bezier(.22,1,.36,1)]
-              hover:scale-110 hover:rotate-3 active:scale-95
-            `}
-          />
+          <ImageIcon className="transition-transform duration-200 ease-[cubic-bezier(.22,1,.36,1)] hover:scale-110 hover:rotate-3 active:scale-95" />
           <span>{t('common.imagineStudio')}</span>
         </Link>
       </SidebarMenuButton>

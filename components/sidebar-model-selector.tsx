@@ -93,7 +93,9 @@ export default function SidebarModelSelector({
       ? 'right-3'
       : state === 'expanded'
         ? 'left-[calc(var(--sidebar-width)+8px)]'
-        : 'left-10'
+        : // Collapsed keeps the 60px icon rail visible — clear it instead of
+          // floating over it.
+          'left-[calc(var(--sidebar-width-icon)+8px)]'
 
   return (
     <div className={`fixed top-3 z-50 ${position}`}>

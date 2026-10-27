@@ -126,7 +126,7 @@ export default async function RootLayout({
             >
               <PostHogProvider userId={user?.id ?? null}>
                 <UserProvider hasUser={!!userId}>
-                  <SidebarProvider defaultOpen={false}>
+                  <SidebarProvider defaultOpen={!!userId}>
                     <LibraryProvider>
                       <AppShellContent
                         user={user}

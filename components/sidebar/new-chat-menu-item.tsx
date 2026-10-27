@@ -27,13 +27,13 @@ export function NewChatMenuItem() {
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild>
+      <SidebarMenuButton asChild tooltip={t('common.newChat')}>
         <Link
           href="/"
           className="flex items-center gap-2"
           onClick={handleNewChat}
         >
-          <Plus className="size-4 transition-transform duration-200 ease-[cubic-bezier(.22,1,.36,1)] hover:scale-110 hover:rotate-90 active:scale-95" />
+          <Plus className="transition-transform duration-200 ease-[cubic-bezier(.22,1,.36,1)] hover:scale-110 hover:rotate-90 active:scale-95" />
           <span>{t('common.newChat')}</span>
         </Link>
       </SidebarMenuButton>

@@ -12,7 +12,7 @@ export default function FloatingAccountMenu({
 }: {
   user: AppUser | null
 }) {
-  const { state, isMobile } = useSidebar()
+  const { isMobile } = useSidebar()
 
   // On mobile the account menu lives in the sidebar drawer footer, so the
   // floating bottom-left avatar is hidden entirely to avoid a duplicate.
@@ -20,7 +20,10 @@ export default function FloatingAccountMenu({
     return null
   }
 
-  if (state === 'expanded') {
+  // Signed-in users: the avatar always lives in the sidebar itself (expanded
+  // footer or collapsed icon-rail footer), so a floating copy would duplicate
+  // it. Guests render no sidebar at all and still need the floating entry.
+  if (user) {
     return null
   }
 
