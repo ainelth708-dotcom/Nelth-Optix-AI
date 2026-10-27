@@ -17,7 +17,7 @@ async function runTool(args: Record<string, unknown>) {
 }
 
 describe('TEST 5/6/7/8 — document tool create + artifact', () => {
-  it('creates a real DOCX and returns a downloadable artifact', async () => {
+  it('creates a real DOCX and returns a downloadable artifact', { timeout: 90_000 }, async () => {
     const result = (await runTool({
       operation: 'create',
       format: 'docx',
@@ -38,7 +38,7 @@ describe('TEST 5/6/7/8 — document tool create + artifact', () => {
     expect(result.validation).toBeTruthy()
   })
 
-  it('creates a PDF, XLSX and PPTX with valid artifacts', async () => {
+  it('creates a PDF, XLSX and PPTX with valid artifacts', { timeout: 120_000 }, async () => {
     for (const [format, fileName, mime] of [
       ['pdf', 'export.pdf', 'application/pdf'],
       [

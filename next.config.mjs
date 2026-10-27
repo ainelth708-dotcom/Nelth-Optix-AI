@@ -21,7 +21,17 @@ const nextConfig = {
   // Keep Node-only server SDKs out of the bundle (they use crypto/network
   // modules that don't survive Next.js bundling). `imagekit` authenticates
   // server-side with the private key and must run in the Node runtime.
-  serverExternalPackages: ['imagekit'],
+  serverExternalPackages: [
+    'imagekit',
+    // Server-side Chromium: @sparticuz/chromium resolves its .br binary payloads
+    // (chromium.br, fonts.tar.br…) via __dirname and must remain real files on
+    // disk — webpack bundling of this module breaks the Vercel lambda at
+    // runtime (that failure silently forces the pdf-lib fallback on every
+    // premium PDF). playwright ships native bits too and stays external.
+    '@sparticuz/chromium',
+    'playwright',
+    'playwright-core'
+  ],
   // Use a local/fast disk for build output. The project lives on a slow
   // (network/detected) drive E:, which makes Turbopack compilation extremely
   // slow and causes API routes to time out with 404s. We redirect .next to a

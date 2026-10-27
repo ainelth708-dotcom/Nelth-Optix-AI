@@ -106,6 +106,16 @@ async function launchChromium(): Promise<import('playwright').Browser> {
   return chromium.launch(await resolveChromiumLaunchOptions())
 }
 
+/**
+ * Launch budget for the real browser. Serverless cold starts must first
+ * decompress the ~65MB brotli Chromium binary of @sparticuz/chromium into
+ * /tmp before `executablePath()` resolves, which can take 15–30s on a fresh
+ * Vercel/Lambda instance — far beyond a desktop budget. A too-short timeout
+ * here would kill the first premium render and permanently flip the fallback
+ * flag even though the browser works.
+ */
+const LAUNCH_TIMEOUT_MS = isServerless() ? 60_000 : 20_000
+
 /** Synchronous read of the cached self-check result (`null` = not yet probed). */
 export function chromiumPremiumAvailable(): boolean | null {
   return _premiumAvailable
@@ -219,7 +229,7 @@ export async function createPremiumPdf(
   // instead of hanging the whole document request forever.
   let browser
   try {
-    browser = await withTimeout(launchChromium(), 20000, 'Chromium launch')
+    browser = await withTimeout(launchChromium(), LAUNCH_TIMEOUT_MS, 'Chromium launch')
   } catch (e) {
     // Remember that Chromium is unusable so later premium requests skip
     // straight to the fallback instead of re-attempting the doomed launch.
@@ -272,7 +282,7 @@ export async function htmlToPdf(
 
   let browser
   try {
-    browser = await withTimeout(launchChromium(), 20000, 'Chromium launch')
+    browser = await withTimeout(launchChromium(), LAUNCH_TIMEOUT_MS, 'Chromium launch')
   } catch (e) {
     _premiumAvailable = false
     _premiumCheck = null

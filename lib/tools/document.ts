@@ -142,6 +142,16 @@ export const documentTool = tool({
             error: `Generated file failed validation: ${validation.error}`
           }
         }
+        // Honest engine marker: for PDFs, inspect the real producer metadata so
+        // a deployed instance can be verified — `chromium` means the genuine
+        // premium browser render, `pdf-lib` means the lightweight fallback ran.
+        let renderEngine: 'chromium' | 'pdf-lib' | 'unknown' | undefined
+        if (fmt === 'pdf') {
+          const { detectRenderEngine } = await import(
+            '@/lib/skills/document-render-engine'
+          )
+          renderEngine = await detectRenderEngine(buffer)
+        }
         const name = fileName || defaultName(fmt)
         const stored = await storeDocument(buffer, name, mimeForFormat(fmt))
         // Permanent cloud URL when available (survives serverless instances);
@@ -150,6 +160,7 @@ export const documentTool = tool({
         return {
           success: true,
           format: fmt,
+          renderEngine,
           artifact: {
             id: stored.id,
             fileName: stored.fileName,

@@ -15,6 +15,8 @@ type DocOutput = {
   success?: boolean
   text?: string
   pages?: number
+  /** Real producer-derived engine for PDFs: 'chromium' = premium browser render. */
+  renderEngine?: string
 }
 
 function deriveFormat(input?: DocInput): string {
@@ -63,15 +65,22 @@ export function DocumentToolContent({ part }: { part: ToolPart<'document'> }) {
         {isError ? (
           <span className="text-destructive">Failed to generate document</span>
         ) : isDone && artifact?.downloadUrl ? (
-          <a
-            href={artifact.downloadUrl}
-            download={artifact.fileName}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 font-medium text-primary underline-offset-4 hover:underline"
-          >
-            {format} ready — download
-          </a>
+          <span className="inline-flex items-center gap-2">
+            <a
+              href={artifact.downloadUrl}
+              download={artifact.fileName}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 font-medium text-primary underline-offset-4 hover:underline"
+            >
+              {format} ready — download
+            </a>
+            {output?.renderEngine ? (
+              <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                {output.renderEngine}
+              </span>
+            ) : null}
+          </span>
         ) : isDone ? (
           <span className="text-muted-foreground">{format} ready</span>
         ) : isReadDone ? (

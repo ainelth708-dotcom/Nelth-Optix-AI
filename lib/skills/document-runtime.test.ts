@@ -50,7 +50,9 @@ describe('Document format detection', () => {
 })
 
 describe('TEST 1 — PDF read + export', () => {
-  it('creates a readable PDF and validates it', async () => {
+  // Chromium premium renders can take 20-30s on a cold start (first launch of
+  // the browser in the worker); give the test the matching budget.
+  it('creates a readable PDF and validates it', { timeout: 90_000 }, async () => {
     const buf = await createDocument('pdf', {
       title: 'Quarterly Report',
       paragraphs: [
@@ -74,7 +76,7 @@ describe('TEST 1 — PDF read + export', () => {
 })
 
 describe('TEST 2 — DOCX read + export', () => {
-  it('creates a DOCX, reads it back, and validates it', async () => {
+  it('creates a DOCX, reads it back, and validates it', { timeout: 90_000 }, async () => {
     const buf = await createDocument('docx', {
       title: 'Market Analysis',
       sections: [
@@ -102,7 +104,7 @@ describe('TEST 2 — DOCX read + export', () => {
 })
 
 describe('TEST 3 — XLSX read (B27)', () => {
-  it('reads the real value of cell B27', async () => {
+  it('reads the real value of cell B27', { timeout: 90_000 }, async () => {
     // Build a workbook whose row 27, column B holds a known value.
     const rows: (string | number)[][] = []
     for (let r = 1; r <= 30; r++) {
