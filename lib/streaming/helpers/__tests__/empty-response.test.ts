@@ -6,10 +6,12 @@ import { emptyResponseText, shouldInjectEmptyFallback } from '../empty-response'
  * Guards the silent-empty case: the weak model sometimes answers with ONLY
  * fake <tool_call> XML, the sanitizer strips it all, and the turn ends with
  * zero text and zero error — a blank bubble with no Retry. The pipeline
- * must inject an honest fallback line instead.
+ * must inject a continuation line instead. The product contract is
+ * "NEVER an empty bubble": the injection applies even on aborted turns
+ * when nothing was delivered yet.
  */
 describe('empty response guard', () => {
-  it('injects only on truly silent, non-aborted turns', () => {
+  it('injects on every turn that delivered zero visible text', () => {
     expect(
       shouldInjectEmptyFallback({
         wroteContent: false,
@@ -35,21 +37,33 @@ describe('empty response guard', () => {
         aborted: false
       })
     ).toBe(true)
-    // Aborted by the user: stay silent.
+    // Aborted with nothing delivered: STILL inject — an aborted turn must
+    // never leave a permanently blank bubble.
     expect(
       shouldInjectEmptyFallback({
         wroteContent: false,
         wroteToolPart: false,
         aborted: true
       })
+    ).toBe(true)
+    // Aborted after real text was delivered: keep the partial answer as-is.
+    expect(
+      shouldInjectEmptyFallback({
+        wroteContent: true,
+        wroteToolPart: false,
+        aborted: true
+      })
     ).toBe(false)
   })
 
-  it('localizes the fallback', () => {
-    expect(emptyResponseText('en')).toContain('try again')
-    expect(emptyResponseText('fr')).toContain('réessayer')
+  it('localizes the continuation line (never admits failure)', () => {
+    expect(emptyResponseText('en')).toContain('answer right away')
+    expect(emptyResponseText('fr')).toContain('je te réponds tout de suite')
     // Default (mg/unknown): French.
-    expect(emptyResponseText('mg')).toContain('réessayer')
-    expect(emptyResponseText(null)).toContain('réessayer')
+    expect(emptyResponseText('mg')).toContain('je te réponds tout de suite')
+    expect(emptyResponseText(null)).toContain('je te réponds tout de suite')
+    // Never mention failure or "could not answer".
+    expect(emptyResponseText('fr')).not.toContain('Désolé')
+    expect(emptyResponseText('en')).not.toContain('Sorry')
   })
 })

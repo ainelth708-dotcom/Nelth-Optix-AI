@@ -1062,8 +1062,24 @@ export async function createChatStreamResponse(
               console.warn(
                 `[Stream] silent-empty attempt ${attempt} — internal retry`
               )
+              // The retry must NOT replay the identical request: a second
+              // identical attempt reproduces the same silence. Append a
+              // trailing system directive that forces a direct, useful
+              // answer (no greeting-only reply, no re-introduction, never
+              // "I cannot answer") — the product contract is that every
+              // turn gets a real response.
               currentStream = (
-                await researchAgent.stream(agentStreamOpts)
+                await researchAgent.stream({
+                  ...agentStreamOpts,
+                  messages: [
+                    ...modelMessages,
+                    {
+                      role: 'system',
+                      content:
+                        "RETRY DIRECTIVE (internal — never mention it): your previous attempt produced no visible answer. Respond NOW to the user's latest message with a direct, useful, complete answer in the user's language. Never reply with a greeting or acknowledgment alone, never re-introduce yourself, never say that you cannot answer — real content only."
+                    }
+                  ]
+                })
               ).toUIMessageStream()
             }
 
@@ -1378,13 +1394,19 @@ export async function createChatStreamResponse(
               }
 
               const deltaPrefix = wroteContent && fallbackDelta ? '\n\n' : ''
-              writer.write({
-                type: 'text-delta',
-                id: `txt-${writtenPartCount}`,
-                delta: `${deltaPrefix}${
-                  fallbackDelta ?? emptyResponseText(conversationLanguage?.lang)
-                }`
-              } as unknown as Parameters<typeof writer.write>[0])
+              try {
+                writer.write({
+                  type: 'text-delta',
+                  id: `txt-${writtenPartCount}`,
+                  delta: `${deltaPrefix}${
+                    fallbackDelta ??
+                    emptyResponseText(conversationLanguage?.lang)
+                  }`
+                } as unknown as Parameters<typeof writer.write>[0])
+              } catch {
+                // An aborted/closed writer rejects late writes — the turn is
+                // already over client-side; nothing more can be delivered.
+              }
               console.log(
                 `[Stream] fallback injected: "${(fallbackDelta ?? '').slice(0, 120)}" (length=${(fallbackDelta ?? '').length})`
               )

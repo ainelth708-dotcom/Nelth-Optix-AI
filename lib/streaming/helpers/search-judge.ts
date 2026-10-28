@@ -1,5 +1,4 @@
 import {
-  WEB_SEARCH_DECISION_TIMEOUT_MS,
   decideWebSearch,
   type WebSearchDecisionTurn
 } from '@/lib/search/web-search-decision'
@@ -39,6 +38,13 @@ export interface SearchJudgeOutcome {
   query?: string
 }
 
+// Hard wall-clock budget for the judge call. The judge must NEVER hold the
+// stream hostage: a queued/slow model call is cut at 6 s and the turn is
+// answered from knowledge (the old 8 s module timeout + 4 s race buffer
+// left up to 12 s of total silence, long enough for clients to give up on
+// the turn).
+const JUDGE_HARD_BUDGET_MS = 6_000
+
 /**
  * One LLM search-judge call with a hard wall-clock guard. Throws only when
  * the caller should answer from knowledge — the orchestrators catch and
@@ -60,17 +66,24 @@ export async function runSearchJudge(params: {
     logPrefix = '[Stream]'
   } = params
   const startedAt = Date.now()
+  // Real cancellation: the AI SDK `timeout` option alone may be ignored by
+  // the gateway, so the combined signal physically cuts the HTTP call at
+  // the budget — either the request signal fires or the 6 s timer does.
+  const judgeSignal = abortSignal
+    ? AbortSignal.any([abortSignal, AbortSignal.timeout(JUDGE_HARD_BUDGET_MS)])
+    : AbortSignal.timeout(JUDGE_HARD_BUDGET_MS)
   const decision = await Promise.race([
     decideWebSearch({
       model: getModel(modelId),
       latestUserMessage,
       recentTurns: buildJudgeTurns(history),
-      signal: abortSignal
+      timeoutMs: JUDGE_HARD_BUDGET_MS,
+      signal: judgeSignal
     }),
     // Belt-and-suspenders: even if the model call itself hangs past its
     // internal timeout, the stream must keep moving.
     new Promise<null>(resolve =>
-      setTimeout(() => resolve(null), WEB_SEARCH_DECISION_TIMEOUT_MS + 4000)
+      setTimeout(() => resolve(null), JUDGE_HARD_BUDGET_MS + 1000)
     )
   ])
   if (!decision) {

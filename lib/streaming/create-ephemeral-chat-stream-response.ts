@@ -650,13 +650,17 @@ export async function createEphemeralChatStreamResponse(
 
             // Silent-empty guard (parity with the main chat path): when
             // everything was stripped (fake XML, greeting reset…), never
-            // leave a blank bubble — inject an honest localized fallback.
+            // leave a blank bubble — inject the continuation fallback.
             if (!streamErrorSuppression.wroteContent) {
-              writer.write({
-                type: 'text-delta',
-                id: 'txt-0',
-                delta: emptyResponseText(conversationLanguage?.lang)
-              } as unknown as Parameters<typeof writer.write>[0])
+              try {
+                writer.write({
+                  type: 'text-delta',
+                  id: 'txt-0',
+                  delta: emptyResponseText(conversationLanguage?.lang)
+                } as unknown as Parameters<typeof writer.write>[0])
+              } catch {
+                // Aborted/closed writer — the turn is already over client-side.
+              }
               streamErrorSuppression.wroteContent = true
             }
           } catch (streamErr) {

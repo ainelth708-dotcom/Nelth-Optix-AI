@@ -7,13 +7,19 @@
  * (ChatError only shows when an error object exists). This helper decides
  * when to inject an honest, localized fallback line instead, so "no answer"
  * is always explainable and retryable. Exported for unit testing.
+ *
+ * The user's contract is "NEVER an empty bubble": the injection therefore
+ * applies even when the request was aborted — if NOTHING was written before
+ * the abort, the bubble would otherwise stay permanently blank (the abort
+ * case itself delivers no partial text). Turns that already streamed real
+ * text keep it untouched.
  */
 export function shouldInjectEmptyFallback(args: {
   wroteContent: boolean
   wroteToolPart: boolean
   aborted: boolean
 }): boolean {
-  return !args.aborted && !args.wroteContent
+  return !args.wroteContent
 }
 
 /**
@@ -35,8 +41,14 @@ export function shouldRetryEmptyAttempt(args: {
   return args.attempt < args.maxAttempts
 }
 
+/**
+ * Last-resort continuation line — used ONLY when even the internal retry
+ * produced nothing. Per the product contract it must NEVER admit failure
+ * ("désolé, je n'ai pas pu répondre") nor stay blank: it keeps the
+ * conversation moving with a direct invitation to continue.
+ */
 export function emptyResponseText(lang: string | null | undefined): string {
   return lang === 'en'
-    ? 'Sorry, I could not generate a response. Please try again.'
-    : 'Désolé, je n’ai pas pu générer de réponse. Veuillez réessayer.'
+    ? 'Sure! Tell me a bit more about what you would like to know or do, and I will answer right away.'
+    : 'Très bien ! Dis-moi juste ce que tu aimerais savoir ou faire, et je te réponds tout de suite.'
 }
