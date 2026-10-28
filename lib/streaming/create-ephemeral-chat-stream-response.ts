@@ -27,7 +27,10 @@ import {
   buildSkillContext,
   getPreviousDesignContext
 } from '@/lib/skills/build-skill-context'
-import { detectRequestCapabilities } from '@/lib/skills/capability-detection'
+import {
+  detectRequestCapabilities,
+  hasExplicitFreshSignal
+} from '@/lib/skills/capability-detection'
 import {
   type AttachmentLike,
   extractAttachmentFormats
@@ -238,11 +241,20 @@ export async function createEphemeralChatStreamResponse(
       // Effective search decision: structural gates, the adaptive
       // deep-research mode, or the LLM judge — the regex keyword detector no
       // longer triggers searches on its own.
+      //
+      // Freshness net (parity with the main chat path): the judge owns the
+      // semantic decision, but an EXPLICITLY now-anchored ask must always be
+      // grounded even when the judge answers NO. The net only applies when
+      // the judge actually ran and said NO, and never on fast-path turns it
+      // does not own (identity, greetings, founder photos, connectors).
       const needsSearchEff =
         factVerification ||
         caps.webImageSearch ||
         adaptiveSearch ||
-        judgeNeedsSearch
+        judgeNeedsSearch ||
+        (judgeEligible &&
+          !judgeNeedsSearch &&
+          hasExplicitFreshSignal(userQuery ?? ''))
 
       const shouldPreloadSearch =
         !caps.founderPhoto && !isIdentityTurn && Boolean(needsSearchEff)
@@ -655,7 +667,10 @@ export async function createEphemeralChatStreamResponse(
               try {
                 writer.write({
                   type: 'text-delta',
-                  id: 'txt-0',
+                  // Collision-proof id: agent text parts are `txt-0`, `txt-1`,
+                  // … — a shared id merges into an already-closed part and
+                  // never renders.
+                  id: 'txt-fb-0',
                   delta: emptyResponseText(conversationLanguage?.lang)
                 } as unknown as Parameters<typeof writer.write>[0])
               } catch {
@@ -671,8 +686,25 @@ export async function createEphemeralChatStreamResponse(
               streamErr
             )
             if (!streamErrorSuppression.wroteContent) {
-              throw streamErr
+              // Never surface an error part on a zero-content turn: deliver
+              // the continuation line as real text and swallow the error
+              // (parity with the main chat path — "never an empty bubble").
+              try {
+                writer.write({
+                  type: 'text-delta',
+                  id: 'txt-fb-0',
+                  delta: emptyResponseText(conversationLanguage?.lang)
+                } as unknown as Parameters<typeof writer.write>[0])
+                streamErrorSuppression.wroteContent = true
+              } catch {
+                // Writer closed — swallow; onError will not fire.
+              }
+              console.error(
+                '[Ephemeral] zero-content failure — fallback text delivered instead of an error surface'
+              )
+              return
             }
+            throw streamErr
           }
         },
         onError: (error: unknown) => {

@@ -239,6 +239,15 @@ export function Chat({
   // action handlers can reliably reject overlapping sends.
   const safeSendMessage = useCallback<typeof sendMessage>(
     (...args) => {
+      // Reject sends while a response is in flight. Firing a second
+      // sendMessage mid-stream corrupts useChat's internal state and leaves
+      // the new message with an EMPTY bubble (same documented failure as the
+      // related-question handlers in spec-block). Read via the ref, not a
+      // state closure, so the latest value is always seen.
+      if (isStreamingRef.current) {
+        toast.info('Please wait for the current response to finish.')
+        return Promise.resolve()
+      }
       if (isCurrentAdaptiveModeAuthBlocked()) {
         showAdaptiveModeAuthModal()
         return Promise.resolve()

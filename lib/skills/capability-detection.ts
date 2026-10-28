@@ -104,6 +104,47 @@ const EXPLANATION_OR_CONCEPT_RE = intentRe(
 )
 
 /**
+ * Explicit freshness markers: the user's ask is anchored to NOW. These are
+ * structural signals (dates, "latest/dernier", live states, weather, scores,
+ * dated years) — never entity keywords. Used as a symmetric safety net to the
+ * LLM search judge: the judge owns the semantic decision, but an explicitly
+ * now-anchored ask must ALWAYS be grounded even when the judge answers NO —
+ * "quel temps fait-il à Tana aujourd'hui ?" or "dernière version de Python"
+ * must never be answered from possibly-stale memory.
+ */
+export const EXPLICIT_FRESH_SIGNAL_RE = new RegExp(
+  [
+    // Now / today / yesterday (FR folded "aujourd'hui" → contains "aujourd").
+    'aujourd|hier\\b|yesterday|today\\b|maintenant|right\\s+now|en\\s+ce\\s+moment|this\\s+week|cette\\s+semaine|this\\s+month|ce\\s+mois|this\\s+year|cette\\s+annee|currently|current|actuel',
+    // News / recency qualifiers.
+    'news\\b|actualite|latest|derni|recen|nouveaute|just\\s+released|vient\\s+de\\s+sortir|est-ce\\s+que\\s+c.est\\s+sorti',
+    // Live states / weather / scores / results.
+    'meteo|weather|temps\\s+qu|en\\s+direct|live\\b|score|resultat|classement|standings|fixtures|palmares',
+    // Volatile numbers.
+    'cours\\s+du|prix\\s+du|taux\\s+de\\s+change|exchange\\s+rate|stock\\s+price|bourse',
+    // Dated years 2018-2099 ("2024", "2026"…) — any dated ask wants grounding.
+    '20(?:1[89]|2[0-9])',
+    // Malagasy colloquial "now".
+    'androany|izao\\s+izao'
+  ].join('|'),
+  'i'
+)
+
+/**
+ * TRUE when the query carries an EXPLICIT freshness marker (see
+ * EXPLICIT_FRESH_SIGNAL_RE). Folds the query first so diacritics, case and
+ * punctuation variants ("Aujourd'hui", "AUJOURD'HUI") match identically.
+ */
+export function hasExplicitFreshSignal(
+  query: string | undefined | null
+): boolean {
+  if (!query) return false
+  const trimmed = query.trim()
+  if (!trimmed) return false
+  return EXPLICIT_FRESH_SIGNAL_RE.test(foldText(trimmed))
+}
+
+/**
  * Detects if a query is a short standalone entity/topic lookup (1 to 5 words)
  * like "Colonel Mickael", "Mickaël Pouvin", "DeepSeek R1", "Air Madagascar",
  * "RTX 5090", "Tournoi des 6 nations", etc.

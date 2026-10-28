@@ -32,6 +32,7 @@ SEARCH (needsSearch: true) when the correct answer DEPENDS on data that changed,
 4. Recency-critical facts: the latest version of a software, app or model, releases, launches, "est-ce que c'est sorti", "le plus récent", the current holder of a role or title (CEO, champion, president), today's population or company figures, current line-ups and rosters.
 5. Verification and sources: "est-ce vrai", "verify", "fact-check", rumors, surprising claims the user heard, requests for links or references.
 6. Current state of a company, person, model or product the assistant could only half-know: current employer or role, recent signings, today's catalog or offer.
+7. IMPRECISE or VAGUE asks about entities of the world (companies, people, products, places, events, technologies) that do not carry an explicit timeless-explanation verb: "parle-moi de X", "tell me about X", "c'est quoi X" about a company/product/person, "que sais-tu sur X", "des infos sur X" → SEARCH. The user expects current, confirmed facts — not the assistant's possibly outdated memory. (Compare: "explique comment fonctionne X", "qu'est-ce que la photosynthèse" are TIMELESS → NO.)
 
 NO SEARCH (needsSearch: false) when the assistant already answers well without it:
 1. Explanations, definitions, concepts, mechanisms, how things work, established science, history that is well settled, literature, language help.
@@ -48,8 +49,23 @@ TIE-BREAKERS
 - The same entity asked as a CURRENT STATE ("How many users does Airbnb have today?", "valeur nette Elon Musk", "où en est Elon Musk") → SEARCH.
 - BARE ENTITY NAME with no verb ("Elon Musk", "Tesla", "Bitcoin", "Macron") → SEARCH. The user likely wants current status, net worth, latest news, or current role — not a static biography. Only treat as NO SEARCH if the conversation context clearly asks for a timeless explanation.
 - Anything the user dates explicitly ("aujourd'hui", "cette année", "en ce moment", "as of now") → SEARCH.
+- UNCERTAINTY BIAS: whenever you are NOT fully certain that the answer from memory is still correct today, and the fact is verifiable online (roles, versions, numbers, events, availability, existence of something new) → SEARCH. Answering from memory with a wrong or outdated fact is the worst outcome; a search is cheap.
 - If the answer would still hold years from now unchanged → NO; if it could already be wrong since last month → SEARCH.
 - When a balanced ask needs both knowledge and fresh data → SEARCH: the runner grounds the current part, and freshness must not break it.
+
+EXAMPLES (follow these judgments)
+- "quel temps fait-il à Antananarivo ?" → {"needsSearch": true, "query": "météo Antananarivo aujourd'hui"}
+- "c'est quoi la photosynthèse ?" → {"needsSearch": false, "query": ""}
+- "explique-moi comment fonctionne le wifi" → {"needsSearch": false, "query": ""}
+- "qui es-tu / quel model es-tu ?" → {"needsSearch": false, "query": ""}
+- "raconte-moi l'histoire de Madagascar" → {"needsSearch": false, "query": ""}
+- "comment faire du pain ?" → {"needsSearch": false, "query": ""}
+- "qui est le président de Madagascar ?" → {"needsSearch": true, "query": "président de Madagascar actuel"}
+- "quel est le prix du riz à Madagascar ?" → {"needsSearch": true, "query": "prix du riz Madagascar"}
+- "parle-moi d'OpenAI" → {"needsSearch": true, "query": "OpenAI actualités récentes"}
+- "what's the latest version of Python?" → {"needsSearch": true, "query": "latest Python version"}
+- "est-ce que ChatGPT est toujours gratuit ?" → {"needsSearch": true, "query": "ChatGPT gratuit abonnement"}
+- "bonjour" → {"needsSearch": false, "query": ""}
 
 OUTPUT — STRICT
 Reply with ONE JSON object and nothing else — no prose, no code fence:

@@ -31,7 +31,10 @@ import {
   buildSkillContext,
   getPreviousDesignContext
 } from '@/lib/skills/build-skill-context'
-import { detectRequestCapabilities } from '@/lib/skills/capability-detection'
+import {
+  detectRequestCapabilities,
+  hasExplicitFreshSignal
+} from '@/lib/skills/capability-detection'
 import {
   type AttachmentLike,
   extractAttachmentFormats
@@ -399,11 +402,22 @@ export async function createChatStreamResponse(
       // The regex keyword detector no longer triggers searches on its own —
       // keyword heuristics remain only inside caps.needsSearch consumers
       // that are NOT search triggers.
+      //
+      // Freshness net: the judge owns the semantic decision, but an
+      // EXPLICITLY now-anchored ask ("aujourd'hui", "dernière version",
+      // météo, scores, un prix du marché, une année datée) must always be
+      // grounded even when the judge answers NO — answering from possibly
+      // stale memory is the worst outcome. The net only applies when the
+      // judge actually ran and said NO, and never on the fast-path turns it
+      // does not own (identity, greetings, founder photos, connectors).
       const needsSearchEff =
         factVerification ||
         caps.webImageSearch ||
         adaptiveSearch ||
-        judgeNeedsSearch
+        judgeNeedsSearch ||
+        (judgeEligible &&
+          !judgeNeedsSearch &&
+          hasExplicitFreshSignal(userQuery ?? ''))
 
       const shouldPreloadSearch =
         !connectorDataIntent &&
@@ -1397,7 +1411,13 @@ export async function createChatStreamResponse(
               try {
                 writer.write({
                   type: 'text-delta',
-                  id: `txt-${writtenPartCount}`,
+                  // Collision-proof id: the agent stream names its own text
+                  // parts `txt-0`, `txt-1`, … — a fallback delta sharing one of
+                  // those ids merges into an ALREADY-CLOSED part client-side
+                  // and silently never renders (a logged "fallback injected"
+                  // with a blank bubble). The `txt-fb-` family can never be
+                  // produced by the agent stream.
+                  id: `txt-fb-${writtenPartCount}`,
                   delta: `${deltaPrefix}${
                     fallbackDelta ??
                     emptyResponseText(conversationLanguage?.lang)
@@ -1419,8 +1439,44 @@ export async function createChatStreamResponse(
               streamErr
             )
             if (!wroteContent) {
-              throw streamErr
+              // Never surface an error part on a turn that delivered ZERO
+              // text: the client renders unknown error types as a toast while
+              // the message bubble stays permanently blank — the exact
+              // "empty response" the product forbids. Deliver the fallback
+              // line as real text instead and swallow the error.
+              if (abortSignal?.aborted) {
+                // User-initiated abort: never paint an error on top of a
+                // deliberate stop; attempt the line only if the writer still
+                // accepts writes.
+                try {
+                  writer.write({
+                    type: 'text-delta',
+                    id: `txt-fb-${writtenPartCount}`,
+                    delta: emptyResponseText(conversationLanguage?.lang)
+                  } as unknown as Parameters<typeof writer.write>[0])
+                  wroteContent = true
+                } catch {
+                  // Writer closed with the abort — nothing deliverable.
+                }
+                return
+              }
+              try {
+                writer.write({
+                  type: 'text-delta',
+                  id: `txt-fb-${writtenPartCount}`,
+                  delta: emptyResponseText(conversationLanguage?.lang)
+                } as unknown as Parameters<typeof writer.write>[0])
+                wroteContent = true
+              } catch {
+                // Writer already closed — swallow; onError will not fire
+                // because we do not rethrow below.
+              }
+              console.error(
+                '[Stream] zero-content failure — fallback text delivered instead of an error surface'
+              )
+              return
             }
+            throw streamErr
           }
         },
         onError: (error: unknown) => {
