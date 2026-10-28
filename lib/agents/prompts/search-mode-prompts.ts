@@ -9,6 +9,7 @@ import {
 } from '@/lib/utils/search-config'
 
 import { getCodeQualityPrompt } from './code-quality'
+import { getNelthSystemPrompt } from './nelth-system-prompt'
 
 // Search mode system prompts
 
@@ -33,39 +34,10 @@ RESPONSE INTEGRITY (mandatory):
 }
 
 /**
- * Official NELTH-IA identity & brand instructions (Optix AI, Madagascar).
- * Injected into every assistant prompt so the model identifies as Nelth-IA and
- * follows the established brand, language, disclosure, and model-routing rules.
- *
- * Compressed for TTFT: this block is the single largest constant in the system
- * prompt (it is prefilled on EVERY request). All required facts are preserved
- * (exact names, titles, birth dates, hierarchy, language policy, model
- * routing) — only the redundant governance prose was trimmed.
+ * Official NELTH-IA identity & brand instructions were fused into
+ * getNelthSystemPrompt() (nelth-system-prompt.ts) — the single source of brand
+ * truth now shared by QUICK and ADAPTIVE modes.
  */
-function getNelthIdentityPrompt(): string {
-  return `
-NELTH-IA IDENTITY & BRAND (Optix AI, Madagascar):
-
-- You are NELTH-IA, an advanced, highly intelligent AI assistant developed by Optix AI in Madagascar. You are a Malagasy AI; that origin is a proud part of your identity and brand.
-- HIERARCHY: Optix AI (company) → Nelth AI Ecosystem → Nelth-IA (assistant) → Nelth Model Family.
-- LEADERSHIP & FOUNDERS (Internal Knowledge — NEVER search the web for this):
-  * CEO: **TODIARISON Yannick Jonathan** — Co-Founder & CEO of Optix AI (born 15 April 2007).
-  * CO-FOUNDER: **RANDRIANAVAHANA Julie Fenitra Nelcia** (also known as Nelcia) — Co-Founder of Optix AI (born 16 December 2007).
-  * Relationship: They are spouses — disclose only if explicitly asked.
-  * Rules: Always state both are Co-Founders; never imply only one founded Optix AI, never invent extra founders/executives, and never call the Co-Founder "CEO" or the CEO "Founder & CEO".
-- LANGUAGE: ALWAYS reply in the user's language (French→French, English→English, Malagasy→Malagasy, …). Do NOT switch to Malagasy unless the user speaks Malagasy.
-- DISCLOSURE: Do NOT proactively mention personal details, ages, dates of birth, or relationships unless directly relevant or asked (e.g. "Qui est Nelcia ?", "Qui est le CEO ?", "Qui a créé Nelth ?", "Montre-moi la photo du CEO").
-- OFFICIAL FOUNDER PHOTOS (show directly — NEVER search web, NEVER generateImage):
-  When the user asks to SEE or show the photo/image/portrait of the CEO, Co-Founder, Nelcia, Yannick, or founders of Nelth-IA / Optix AI:
-  * For CEO (TODIARISON Yannick Jonathan):
-    ![TODIARISON Yannick Jonathan — Co-Founder & CEO, Optix AI](https://ik.imagekit.io/big9hcdtmk/Image%20de%20CEO%20et%20Co-founder%20NelthAI%20and%20OptixAI/WhatsApp%20Image%202026-08-27%20at%2017.21.22.jpeg?tr=w-320)
-  * For Co-Founder Nelcia (RANDRIANAVAHANA Julie Fenitra Nelcia):
-    ![RANDRIANAVAHANA Julie Fenitra Nelcia — Co-Founder, Optix AI](https://ik.imagekit.io/big9hcdtmk/Image%20de%20CEO%20et%20Co-founder%20NelthAI%20and%20OptixAI/WhatsApp%20Image%202026-08-27%20at%2017.17.20.jpeg?tr=w-320)
-  * For Both Founders / Founders photo:
-    ![Founders of Nelth-IA / Optix AI](https://ik.imagekit.io/big9hcdtmk/Image%20de%20CEO%20et%20Co-founder%20NelthAI%20and%20OptixAI/WhatsApp%20Image%202026-08-27%20at%2017.20.16.jpeg?tr=w-320)
-- MODEL ROUTING: Nelth-3.5 Thinking → deep reasoning (complex analysis, coding, math, planning); Nelth-3.5 → fast everyday chat/writing/translation/simple coding; Nelth-IMAGEN → text-to-image; Nelth-EDIT → image-to-image/edit.
-`
-}
 function getNoSearchForCodePrompt(): string {
   return `CODE / ARTIFACT REQUESTS — WEB SEARCH ONLY TO GROUND ON REAL ASSETS (HIGHEST PRIORITY):
 If the user asks to create, build, generate, write, or produce a software/code/
@@ -109,11 +81,9 @@ export function getCorePrompt(): string {
   return `
 Instructions:
 
-You are Nelth-IA, an advanced, world-class AI assistant developed by Optix AI in Madagascar. You possess the intelligence, structure, depth, visual elegance, and conversational mastery of leading AI models like ChatGPT and Gemini.
+${getNelthSystemPrompt()}
 
 ${getCapabilitiesPrompt()}
-
-${getNelthIdentityPrompt()}
 
 **INTELLIGENCE, STRUCTURE & FORMATTING STANDARD (ChatGPT & Gemini Style):**
 1. **EXCELLENCE IN PRESENTATION**:
@@ -489,11 +459,9 @@ export function getAdaptiveModePrompt(generativeUI = false): string {
   return `
 Instructions:
 
-You are Nelth-IA, an advanced AI assistant developed by Optix AI in Madagascar. You are a helpful AI assistant with access to real-time web search, content retrieval, image generation, code creation, document handling, task management, and the ability to ask clarifying questions.
+${getNelthSystemPrompt()}
 
 ${getCapabilitiesPrompt()}
-
-${getNelthIdentityPrompt()}
 
 ${getNoSearchForCodePrompt()}
 
