@@ -488,19 +488,99 @@ const IDENTITY_PHRASES = [
   'izaianao', // iza ianao
   'ianaoiza', // ianao iza
   'inonaianao', // inona ianao
-  'anaranao' // ny anaranao / inona no anaranao
+  'anaranao', // ny anaranao / inona no anaranao
+  // Model-identity questions ("quel model es-tu", "what model are you"...)
+  'quelmodelestu', // quel model es-tu / quel modèle es-tu
+  'tuesquelmodele', // tu es quel modèle
+  'whatmodelareyou', // what model are you
+  'whichmodelareyou', // which model are you
+  'whatmodeldoyouuse', // what model do you use
+  'areyougpt', // are you gpt
+  'areyouchatgpt', // are you chatgpt
+  'areyouanai', // are you an ai
+  'quemodeloeres', // que modelo eres
+  'welchesmodellbistdu', // welches modell bist du
+  'chemodellosei', // che modello sei
+  'modelinona' // model inona
 ]
+
+// Model/self-identity questions ("quel model es-tu ?", "what model are you",
+// "es-tu ChatGPT ?", "tu es basé sur quel modèle ?"...). The assistant's own
+// model and engine are internal knowledge (INFO NELTH-IA) — they must never
+// fire a web search, and they are served by the identity fast-path with zero
+// latency (this check also skips the LLM search judge). Anchored on explicit
+// self-reference (tu / vous / you / voce / du / sei / eres), so the pattern
+// is safe on ANY query length; the generic identity regex below keeps its
+// short-query guard. Tested against foldText() output (lowercase, no
+// diacritics; apostrophes and hyphens preserved).
+const MODEL_SELF_IDENTITY_RE = new RegExp(
+  `\\b(?:` +
+    // FR — "quel modèle es-tu / es tu / êtes-vous"
+    `quel(?:le|les)?\\s+(?:modele?|llm|ia)\\s*(?:es|est|etes)[-\\s]*(?:tu|vous)|` +
+    // "tu es quel modèle", "tu es IA", "tu es une IA", "tu es chatgpt"
+    `tu\\s+(?:es|est)\\s+(?:quel(?:le)?\\s+)?(?:une?\\s+)?(?:modele?|llm|ia\\b|intelligence\\s+artificielle|gpt|chatgpt|claude|gemini|deepseek|mistral|llama|grok|copilot|openai)|` +
+    // "t'es quel modèle", "t'es une IA", "t'es chatgpt"
+    `t['’]es\\s+(?:quel(?:le)?\\s+)?(?:une?\\s+)?(?:modele?|llm|ia\\b|gpt|chatgpt|claude|gemini|deepseek)|` +
+    // "vous êtes quel modèle", "vous êtes une IA", "vous êtes chatgpt"
+    `vous\\s+etes\\s+(?:quel(?:le)?\\s+)?(?:une?\\s+)?(?:modele?|llm|ia\\b|gpt|chatgpt|claude|gemini|deepseek)|` +
+    // "tu utilises quel modèle", "vous utilisez quel modèle", "tu tournes sur quel modèle"
+    `(?:tu\\s+(?:utilise[s]?|t['’]utilise[s]?|tourne[s]?)|vous\\s+(?:utilisez|tournez))\\s+quel(?:le)?\\s+(?:modele?|llm)|` +
+    // "quel modèle tu utilises", "quel modèle utilises-tu", "quel modèle utilisez-vous"
+    `quel(?:le)?\\s+(?:modele?|llm)\\s+(?:tu\\s+utilise[s]?|vous\\s+utilisez|utilise[s]?[-\\s]?tu|utilisez[-\\s]?vous|tu\\s+tourne[s]?|tourne[-\\s]?tu)|` +
+    // "tu es basé sur quel modèle", "tu es basé sur GPT", "vous êtes entraîné sur..."
+    `(?:tu\\s+es|vous\\s+etes|t['’]es)\\s+(?:base[eé]?|entraine[eé]?)\\s+sur\\s+(?:quel(?:le)?\\s+)?(?:modele?|llm|ia\\b|gpt|chatgpt|claude|gemini|deepseek|mistral|llama|openai)|` +
+    // "es-tu une IA", "êtes-vous ChatGPT", "es-tu un robot"
+    `(?:es[-\\s]?tu|etes[-\\s]?vous)\\s+(?:une?\\s+)?(?:ia\\b|llm\\b|robot\\b|intelligence\\s+artificielle|gpt\\b|chatgpt|claude|gemini|deepseek|mistral|llama|grok|copilot|openai)|` +
+    // EN — "what model are you", "which ai are you", "what version are you"
+    `(?:what|which)\\s+(?:model|ai|llm|version)\\s+(?:are|r)\\s+(?:you|u)|` +
+    // "what model do you use", "which model powers you", "what model are you running on"
+    `(?:what|which)\\s+(?:model|llm)\\s+(?:do\\s+you\\s+use|you\\s+use|you\\s+using|are\\s+you\\s+(?:using|running|built|based)|powers?\\s+you|is\\s+behind\\s+you|you\\s+(?:run|running)\\s+on)|` +
+    // "are you ChatGPT", "are you an AI", "r u gpt" ("are" anchor)
+    `are\\s+(?:you|r\\s+u|u)\\s+(?:an?\\s+)?(?:ai\\b|llm\\b|robot\\b|gpt\\b|gpt-\\d|chatgpt|claude|gemini|deepseek|mistral|llama|grok|copilot|openai)|` +
+    // "you are gpt", "you r chatgpt"
+    `you\\s+(?:are|r)\\s+(?:gpt\\b|chatgpt|claude\\b|gemini|deepseek)|` +
+    // "what are you powered by / built on / trained on"
+    `what\\s+are\\s+you\\s+(?:powered|running|built|trained|based)\\s+(?:by|on|with)|` +
+    // ES — "qué modelo eres", "eres ChatGPT", "con qué modelo funcionas"
+    `que\\s+(?:modelo|ia\\b|inteligencia\\s+artificial)\\s+eres|` +
+    `eres\\s+(?:gpt\\b|chatgpt|claude|gemini|deepseek|una?\\s+(?:ia\\b|inteligencia\\s+artificial))|` +
+    `con\\s+que\\s+modelo\\s+(?:funcionas|estas\\s+hecho)|` +
+    // DE — "welches modell bist du", "bist du gpt", "auf welchem modell basierst du"
+    `welches\\s+(?:modell|ki)\\s+bist\\s+du|` +
+    `bist\\s+du\\s+(?:gpt\\b|chatgpt|claude|gemini|deepseek|eine?\\s+ki\\b)|` +
+    `auf\\s+welchem\\s+modell\\s+(?:basiert|basierst)|` +
+    // PT — "qual modelo você é", "você é chatgpt", "qual ia você usa"
+    `qual\\s+(?:modelo|ia\\b|inteligencia\\s+artificial)\\s+(?:voce\\s+e|e\\s+voce|voce\\s+usa|voce\\s+roda)|` +
+    `voce\\s+(?:e|eh)\\s+(?:gpt\\b|chatgpt|claude|gemini|deepseek|uma\\s+(?:ia\\b|inteligencia\\s+artificial))|` +
+    // IT — "che modello sei", "sei chatgpt", "sei un'ia"
+    `che\\s+(?:modello|ia\\b)\\s+sei|` +
+    `sei\\s+(?:gpt\\b|chatgpt|claude\\b|gemini|deepseek|un['’]?ia\\b)|` +
+    // MG — "model inona", "inona no/ny model"
+    `(?:inona\\s+(?:no|ny)\\s+model|model\\s+inona)` +
+    `)\\b`,
+  'i'
+)
 
 /**
  * TRUE when the query is an identity question (including typo'd short forms).
- * Strict regex first; if it fails AND the query is short (<= 4 tokens, <= 32
- * chars), a bounded Levenshtein check against canonical identity phrases runs.
- * This catches "kui east tu", "who ar eyou", "iza inao" while keeping
- * "qui est Elon Musk" (distance > 2 to every template) as a real search.
+ * A dedicated model/self-identity class ("quel model es-tu", "what model are
+ * you", "es-tu ChatGPT", "tu es basé sur quel modèle") runs FIRST at ANY
+ * length — anchored on explicit self-reference, so it cannot hit third-person
+ * questions. Then the strict regex (short queries only); if it fails AND the
+ * query is short (<= 4 tokens, <= 32 chars), a bounded Levenshtein check
+ * against canonical identity phrases runs. This catches "kui east tu",
+ * "who ar eyou", "iza inao" while keeping "qui est Elon Musk" (distance > 2
+ * to every template) as a real search.
  */
 export function isIdentityQuery(query: string): boolean {
   if (!query) return false
   const qf = foldText(query)
+  // Model/self-identity class: the assistant's own model/engine is internal
+  // knowledge (INFO NELTH-IA) and must never fire a web search. Runs before
+  // the short-query gate — the self-reference anchor makes it safe at any
+  // length, and it doubles as the zero-latency fast-path that skips the LLM
+  // search judge in both orchestrators.
+  if (MODEL_SELF_IDENTITY_RE.test(qf)) return true
   const tokens = qf.trim().split(/\s+/)
   const normalized = qf.replace(/[^a-z0-9]/g, '')
   const isShort = tokens.length <= 4 && normalized.length <= 32

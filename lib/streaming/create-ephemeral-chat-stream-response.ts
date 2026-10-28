@@ -61,6 +61,7 @@ import {
 } from './helpers/convert-data-part'
 import { emptyResponseText } from './helpers/empty-response'
 import { normalizeConversationHistory } from './helpers/normalize-conversation'
+import { runSearchJudge } from './helpers/search-judge'
 import { stripSpecFromMessages } from './helpers/strip-spec-from-messages'
 import { BaseStreamConfig } from './types'
 
@@ -187,16 +188,64 @@ export async function createEphemeralChatStreamResponse(
       // Fact-verification gate (Bug B — same rule as the main chat path):
       // pricing / quota / limit / trial / version / "free" questions are
       // answered from fresh web results, never from weights or old answers.
+      const isIdentityTurn = isIdentityQuery(userQuery ?? '')
       const factVerification =
         !caps.founderPhoto &&
-        !isIdentityQuery(userQuery ?? '') &&
+        !isIdentityTurn &&
         needsFactVerification(userQuery ?? '')
-      const needsSearchEff = caps.needsSearch || factVerification
+
+      // ADAPTIVE (deep research) is an explicit user request for grounding:
+      // always search, skip the judge — same contract as the OpenUI route.
+      const adaptiveSearch = searchMode === 'adaptive'
+
+      // LLM SEARCH JUDGE (same contract as the main chat path): a tiny
+      // classification call reasons about MEANING — volatile data vs stable
+      // knowledge — instead of keyword lists, and reads a short window of
+      // recent turns to resolve pronouns. Replaces the regex keyword path
+      // (CURRENT_INFO_RE) as the search trigger. Identity turns, founder
+      // photos, web image search and the fact-verification gate skip the
+      // judge (zero added latency). On judge failure the turn is answered
+      // from knowledge — never a wildcard search.
+      const judgeEligible =
+        !adaptiveSearch &&
+        !caps.founderPhoto &&
+        !isIdentityTurn &&
+        !factVerification &&
+        !caps.webImageSearch &&
+        !isPureGreeting(userQuery ?? '') &&
+        (userQuery ?? '').trim().length > 0
+      let judgeNeedsSearch = false
+      let judgeSearchQuery: string | undefined
+      if (judgeEligible) {
+        try {
+          const outcome = await runSearchJudge({
+            modelId: `${model.providerId}:${model.id}`,
+            latestUserMessage: userQuery ?? '',
+            history: historyMessages,
+            abortSignal,
+            logPrefix: '[Ephemeral]'
+          })
+          judgeNeedsSearch = outcome.needsSearch
+          judgeSearchQuery = outcome.query
+        } catch (judgeError) {
+          console.warn(
+            '[Ephemeral] Search judge failed — answering from knowledge:',
+            judgeError instanceof Error ? judgeError.message : judgeError
+          )
+        }
+      }
+
+      // Effective search decision: structural gates, the adaptive
+      // deep-research mode, or the LLM judge — the regex keyword detector no
+      // longer triggers searches on its own.
+      const needsSearchEff =
+        factVerification ||
+        caps.webImageSearch ||
+        adaptiveSearch ||
+        judgeNeedsSearch
 
       const shouldPreloadSearch =
-        !caps.founderPhoto &&
-        !isIdentityQuery(userQuery ?? '') &&
-        Boolean(needsSearchEff)
+        !caps.founderPhoto && !isIdentityTurn && Boolean(needsSearchEff)
 
       const trivial =
         !caps.needsSearch &&
@@ -211,10 +260,13 @@ export async function createEphemeralChatStreamResponse(
         | Awaited<ReturnType<typeof runWebSearch>>
         | undefined
       if (shouldPreloadSearch) {
-        const effectiveSearchQuery = resolveContextualSearchQuery(
-          userQuery,
-          historyMessages
-        )
+        // Prefer the judge's rewritten (decontextualized) query when the
+        // judge produced one; deterministic resolver for the fast-path
+        // searches that skipped the judge.
+        const effectiveSearchQuery =
+          judgeSearchQuery && judgeSearchQuery.length > 0
+            ? judgeSearchQuery
+            : resolveContextualSearchQuery(userQuery, historyMessages)
         preloadedSearchQuery = effectiveSearchQuery
         try {
           const searchResult = await Promise.race([
@@ -229,11 +281,18 @@ export async function createEphemeralChatStreamResponse(
               caps.webImageSearch ? ['image', 'web'] : ['web']
             ),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('Preloaded search timeout')), 6000)
+              setTimeout(
+                () => reject(new Error('Preloaded search timeout')),
+                6000
+              )
             )
           ])
 
-          if (searchResult && searchResult.results && searchResult.results.length > 0) {
+          if (
+            searchResult &&
+            searchResult.results &&
+            searchResult.results.length > 0
+          ) {
             preloadedSearchContext = searchResult.results
               .map(
                 (result, i) =>
@@ -242,7 +301,11 @@ export async function createEphemeralChatStreamResponse(
               .join('\n\n')
           }
 
-          if (searchResult && searchResult.images && searchResult.images.length > 0) {
+          if (
+            searchResult &&
+            searchResult.images &&
+            searchResult.images.length > 0
+          ) {
             // Images are numbered (IMG-i) in their OWN space so the model never
             // confuses them with the [n] web-result citations.
             const imageLines = searchResult.images
@@ -262,12 +325,16 @@ export async function createEphemeralChatStreamResponse(
                 return `(IMG-${i + 1}) ${JSON.stringify(imageData)}`
               })
               .join('\n')
-            preloadedSearchContext = (preloadedSearchContext ? preloadedSearchContext + '\n\n' : '') +
+            preloadedSearchContext =
+              (preloadedSearchContext ? preloadedSearchContext + '\n\n' : '') +
               `IMAGES DISPONIBLES (numérotées IMG-1, IMG-2, ... — espace SÉPARÉ des citations [n]):\n${imageLines}\nDIRECTIVE POUR LES RECHERCHES D'IMAGES: affiche au maximum 3 images pertinentes directement avec la syntaxe Markdown ![légende](url) — UNE IMAGE PAR LIGNE, rien d'autre sur la ligne — puis une section « 📋 Sources » façon ChatGPT : liste numérotée de liens cliquables au format EXACT \`1. [Titre court — Nom du site](URL exacte)\` — JAMAIS d'URL brute affichée en texte. RÈGLES STRICTES: (1) Présente les images choisies DANS L'ORDRE CROISSANT des numéros IMG, sans réordonner ni mélanger. (2) Chaque légende reprend EXACTEMENT le titre/description fourni — n'invente aucune légende. (3) Copie chaque URL EXACTEMENT sans la modifier. (4) N'ajoute AUCUN marqueur de citation [n] dans la phrase d'intro, les légendes ou la section « 📋 Sources » des images — les liens sources suffisent. (5) Ne montre JAMAIS les 20 images, n'utilise aucun bloc spec ni grille. (6) N'écris JAMAIS "Image not available" ni aucun texte de remplacement : si une image ne convient pas, ignore-la silencieusement. Ne dis pas que les images sont indisponibles. (7) Les marqueurs [n] sont INTERDITS sauf s'ils correspondent à un résultat web numéroté réellement fourni ci-dessus — ne JAMAIS inventer de numéros de citation ; sans résultats web, aucun [n].`
           }
           searchResultsForCitation = searchResult
         } catch (searchErr) {
-          console.warn('[EphemeralStream] Preloaded search failed or timed out:', searchErr)
+          console.warn(
+            '[EphemeralStream] Preloaded search failed or timed out:',
+            searchErr
+          )
         }
       }
 

@@ -117,6 +117,26 @@ describe('isIdentityQuery', () => {
     'quem é você',
     'iza ianao',
     'ahoana ny anaranao ?',
+    // Model/self-identity ("quel model es-tu" — must be internal knowledge)
+    'quel model es-tu ?',
+    'quel modèle es tu',
+    'tu es quel modèle ?',
+    'tu es basé sur quel modèle ?',
+    'tu utilises quel modèle ?',
+    'quel modèle tu utilises ?',
+    'quel modèle utilises-tu ?',
+    'es-tu ChatGPT ?',
+    'tu es GPT ?',
+    'tu es une IA ?',
+    'es-tu un robot ?',
+    'what model are you',
+    'which model are you?',
+    'what model do you use ?',
+    'are you ChatGPT ?',
+    'are you an AI',
+    'qué modelo eres ?',
+    'welches modell bist du',
+    'che modello sei ?',
     // Fuzzy typo-tolerant (phrase-level bounded edit distance)
     'kui east tu',
     'qui esst tu',
@@ -139,7 +159,11 @@ describe('isIdentityQuery', () => {
     // Negative: third-person questions must NOT be identity
     'why are you sad',
     'qui est elon musk',
-    'what are you doing'
+    'what are you doing',
+    // Negative: model questions about OTHER things are NOT identity
+    'quel modèle de voiture acheter ?',
+    'what model is the iPhone ?',
+    'quel modèle est le meilleur ?'
   ])('does not flag %s as identity', q => {
     expect(isIdentityQuery(q)).toBe(false)
   })

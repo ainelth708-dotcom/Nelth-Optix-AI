@@ -82,6 +82,7 @@ import {
   persistStreamMessages
 } from './helpers/persist-stream-results'
 import { prepareMessages } from './helpers/prepare-messages'
+import { runSearchJudge } from './helpers/search-judge'
 import { stripSpecFromMessages } from './helpers/strip-spec-from-messages'
 import type { StreamContext } from './helpers/types'
 import { BaseStreamConfig } from './types'
@@ -347,7 +348,62 @@ export async function createChatStreamResponse(
         !caps.founderPhoto &&
         !isIdentityTurn &&
         needsFactVerification(userQuery ?? '')
-      const needsSearchEff = caps.needsSearch || factVerification
+
+      // ADAPTIVE (deep research) is an explicit user request for grounding:
+      // always search, skip the judge — same contract as the OpenUI route.
+      const adaptiveSearch = searchMode === 'adaptive'
+
+      // LLM SEARCH JUDGE ("comme ChatGPT"): one tiny classification call reads
+      // the user's message plus a short window of recent turns and decides
+      // whether this turn needs fresh web results — reasoning about MEANING
+      // (volatile data vs stable knowledge) instead of keyword lists, and
+      // resolving pronouns against the conversation ("et lui ?"). This
+      // replaces the old regex keyword path (CURRENT_INFO_RE) as the search
+      // trigger. Deterministic fast-paths stay in charge of the obvious
+      // cases — identity turns, founder photos, connector data, web image
+      // search and the fact-verification gate skip the judge with zero added
+      // latency. On judge failure or timeout the turn is answered from
+      // knowledge — never a wildcard search (same contract as the OpenUI
+      // route, where this judge already runs in production).
+      const judgeEligible =
+        !adaptiveSearch &&
+        !connectorDataIntent &&
+        !caps.founderPhoto &&
+        !isIdentityTurn &&
+        !factVerification &&
+        !caps.webImageSearch &&
+        !isPureGreeting(userQuery ?? '') &&
+        (userQuery ?? '').trim().length > 0
+      let judgeNeedsSearch = false
+      let judgeSearchQuery: string | undefined
+      if (judgeEligible) {
+        try {
+          const outcome = await runSearchJudge({
+            modelId: context.modelId,
+            latestUserMessage: userQuery ?? '',
+            history: messagesToModel,
+            abortSignal
+          })
+          judgeNeedsSearch = outcome.needsSearch
+          judgeSearchQuery = outcome.query
+        } catch (judgeError) {
+          console.warn(
+            '[Stream] Search judge failed — answering from knowledge:',
+            judgeError instanceof Error ? judgeError.message : judgeError
+          )
+        }
+      }
+
+      // Effective search decision: the structural gates (fact verification,
+      // web image search), the adaptive deep-research mode, or the LLM judge.
+      // The regex keyword detector no longer triggers searches on its own —
+      // keyword heuristics remain only inside caps.needsSearch consumers
+      // that are NOT search triggers.
+      const needsSearchEff =
+        factVerification ||
+        caps.webImageSearch ||
+        adaptiveSearch ||
+        judgeNeedsSearch
 
       const shouldPreloadSearch =
         !connectorDataIntent &&
@@ -376,10 +432,15 @@ export async function createChatStreamResponse(
         | Awaited<ReturnType<typeof runWebSearch>>
         | undefined
       if (shouldPreloadSearch) {
-        const effectiveSearchQuery = resolveContextualSearchQuery(
-          userQuery,
-          messagesToModel
-        )
+        // Prefer the judge's rewritten query: it decontextualizes pronouns
+        // and ellipses ("et lui ?" → the entity it designates), which the
+        // regex resolver can only approximate. Falls back to the deterministic
+        // resolver for the fast-path searches (fact verification, web images)
+        // that skipped the judge.
+        const effectiveSearchQuery =
+          judgeSearchQuery && judgeSearchQuery.length > 0
+            ? judgeSearchQuery
+            : resolveContextualSearchQuery(userQuery, messagesToModel)
         preloadedSearchQuery = effectiveSearchQuery
         try {
           const searchResult = await Promise.race([

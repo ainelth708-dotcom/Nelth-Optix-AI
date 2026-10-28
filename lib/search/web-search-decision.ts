@@ -40,6 +40,7 @@ NO SEARCH (needsSearch: false) when the assistant already answers well without i
 4. Creation: writing, rewriting, summarizing or translating text the user supplies, creative names, brainstorming, gift or baby-name ideas, plans (meal, training, trip, learning) when no live availability or price is involved.
 5. Judgment and advice: opinions, "what should I choose" among stable options, recommendations from general knowledge.
 6. Small talk and conversation-internal follow-ups: greetings, thanks, jokes, compliments, "continue", "pourquoi ?", "explique plus" — questions the running conversation itself already answers.
+7. Questions about the assistant itself — its identity, name, underlying model, maker, company, capabilities, or how it works ("who are you", "quel model es-tu", "es-tu ChatGPT", "qui t'a créé", "tu es basé sur quoi", "what can you do") → NO. The assistant answers those from its own internal knowledge, never from the web.
 
 TIE-BREAKERS
 - Resolve pronouns and ellipses with the recent conversation before judging ("et lui ?", "cette version" → the entity or version they designate).
