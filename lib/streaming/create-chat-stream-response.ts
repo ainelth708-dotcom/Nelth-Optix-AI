@@ -60,6 +60,7 @@ import {
   getImageAttachmentUrl,
   getTextFromParts,
   identityFallbackAnswer,
+  isGreetingLike,
   isIdentityQuery,
   isPureGreeting,
   resolveContextualSearchQuery,
@@ -376,6 +377,7 @@ export async function createChatStreamResponse(
         !factVerification &&
         !caps.webImageSearch &&
         !isPureGreeting(userQuery ?? '') &&
+        !isGreetingLike(userQuery ?? '') &&
         (userQuery ?? '').trim().length > 0
       let judgeNeedsSearch = false
       let judgeSearchQuery: string | undefined

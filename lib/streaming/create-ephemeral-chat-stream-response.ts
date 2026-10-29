@@ -41,6 +41,7 @@ import { search as runWebSearch } from '@/lib/tools/search'
 import {
   getImageAttachmentUrl,
   getTextFromParts,
+  isGreetingLike,
   isIdentityQuery,
   isPureGreeting,
   resolveContextualSearchQuery,
@@ -216,6 +217,7 @@ export async function createEphemeralChatStreamResponse(
         !factVerification &&
         !caps.webImageSearch &&
         !isPureGreeting(userQuery ?? '') &&
+        !isGreetingLike(userQuery ?? '') &&
         (userQuery ?? '').trim().length > 0
       let judgeNeedsSearch = false
       let judgeSearchQuery: string | undefined

@@ -282,7 +282,7 @@ export function AnswerSection({
             <MarkdownMessage
               message={content}
               citationMaps={citationMaps}
-              allowOpenUI
+              allowOpenUI={false}
               isStreaming={isStreaming}
             />
           </div>

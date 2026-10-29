@@ -1,4 +1,6 @@
 import {
+  getChatGPTIntelligentUiPrompt,
+  getChatGPTRelatedQuestionsPrompt,
   getGenerativeUiPrompt,
   getImageSpecPrompt,
   getRelatedQuestionsSpecPrompt
@@ -388,8 +390,8 @@ export function getQuickModePrompt(flags?: QuickPromptFlags): string {
   if (f.image) blocks.push(getImagePrompt())
   if (f.code) blocks.push(getCodePrompt())
   if (f.document) blocks.push(getDocumentPrompt())
-  if (f.generativeUI) blocks.push(getGenerativeUiPrompt())
-  if (f.relatedQuestions) blocks.push(getRelatedQuestionsSpecPrompt())
+  if (f.generativeUI) blocks.push(getChatGPTIntelligentUiPrompt())
+  if (f.relatedQuestions) blocks.push(getChatGPTRelatedQuestionsPrompt())
 
   return blocks.join('\n\n')
 }
@@ -596,9 +598,9 @@ Conclude with a brief synthesis that ties together the main insights into a clea
 
 ${getImageSpecPrompt()}
 
-${generativeUI ? getGenerativeUiPrompt() : ''}
+${generativeUI ? getChatGPTIntelligentUiPrompt() : ''}
 
-${getRelatedQuestionsSpecPrompt()}
+${getChatGPTRelatedQuestionsPrompt()}
 `
 }
 

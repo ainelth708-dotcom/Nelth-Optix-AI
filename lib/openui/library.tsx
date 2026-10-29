@@ -11,6 +11,8 @@ import { GenerateMediaCard } from '@/components/openui/generate-media-card'
 
 import { library as baseLibrary } from '@/open-intelligent-ui-main/open-intelligent-ui-main/src/lib/library'
 
+import { compatComponents } from './compat-components'
+
 export const library = baseLibrary.extend({
-  components: { add: [GenerateMediaCard] }
+  components: { add: [GenerateMediaCard, ...compatComponents] }
 })
