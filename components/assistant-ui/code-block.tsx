@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 
 import { SpecFenceBlock } from '@/components/spec-fence-block'
+import { NelthUIView } from '@/components/nelth-ui/nelth-ui-view'
 
 import { SyntaxHighlighter } from './shiki-highlighter'
 
@@ -436,6 +437,27 @@ export function CodeBlock({
   // `spec` fences drive the Generated UI (Related questions / Images).
   if (language === 'spec') {
     return <SpecFenceBlock source={code} />
+  }
+
+  // Nelth Intelligent UI 2026 (NUP v1.0) generative interface blocks
+  if (language === 'nelth-ui' || language === 'nup' || language === 'nelth_ui') {
+    return <NelthUIView raw={code} isStreaming={false} />
+  }
+
+  // Fallback: JSON block containing Nelth UI root specification
+  if (
+    language === 'json' &&
+    code.includes('"version"') &&
+    code.includes('"root"')
+  ) {
+    try {
+      const parsed = JSON.parse(code)
+      if (parsed.root && parsed.root.component) {
+        return <NelthUIView raw={code} spec={parsed} isStreaming={false} />
+      }
+    } catch {
+      // not a valid Nelth UI spec, fall through to StandardCodeBlock
+    }
   }
 
   return <StandardCodeBlock language={language} code={code} meta={meta} />

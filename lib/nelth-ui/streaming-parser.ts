@@ -11,7 +11,7 @@ export type StreamSegment =
   | { type: 'markdown'; content: string }
   | { type: 'nelth-ui'; raw: string; spec: NelthUISpec | null; isComplete: boolean; error?: string }
 
-const CODE_BLOCK_START_RE = /```(?:nelth-ui|nup)\s*\n?/i
+const CODE_BLOCK_START_RE = /```(?:nelth-ui|nup|nelth_ui)\s*\n?/i
 
 /**
  * Attempts to close an unclosed JSON string by balancing quotes, braces and brackets.

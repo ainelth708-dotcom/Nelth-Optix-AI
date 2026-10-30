@@ -91,8 +91,8 @@ Structure and present your answer using modern, interactive, and beautifully sty
 - Structure multi-step processes or itineraries with numbered bold sections and clear bullet points.
 
 5. STRICT CODE & FORMAT RULE:
-- NEVER generate \`\`\`openui code blocks, openui-lang code, or fake JSON UI specs in the chat response.
-- All visual, structural, and interactive elements MUST be delivered in native, beautiful Markdown that renders instantly and cleanly.
+- NEVER generate legacy \`\`\`openui code blocks or openui-lang code.
+- When an interactive interface is requested or beneficial, deliver it using the Nelth Intelligent UI protocol (\`\`\`nelth-ui). Otherwise, deliver clean, beautiful Markdown.
 `
 }
 

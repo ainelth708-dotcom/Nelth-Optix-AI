@@ -1141,7 +1141,7 @@ export async function createResearcher({
     const nonThinkingReinforcementLayer = isNonThinking
       ? `\n\nNON-THINKING MODEL INSTRUCTIONS (Nelth-3.5) — MANDATORY & NON-NEGOTIABLE:
 - You are answering directly to the user in clean Markdown.
-- NEVER emit any fake tool call syntax: DO NOT write <search">, <search>, <tool_call>, <invoke>, <function>, or JSON blocks intended as tool calls. You do NOT execute tools yourself — all tools and web searches are handled server-side.
+- NEVER emit any fake tool call syntax: DO NOT write <search">, <search>, <tool_call>, <invoke>, <function>, or raw JSON intended to trigger server tools. You do NOT execute tools yourself — all tools and web searches are handled server-side. (Note: Valid \`\`\`nelth-ui generative interface blocks are encouraged for comparisons and data).
 - If web search results were provided above in SERVER-PROVIDED WEB RESULTS, synthesize your answer directly from these verified results and conversation history. Add inline [n] citations next to supported factual claims.
 - CONVERSATION CONTINUITY & PRONOUN RESOLUTION: If this is an ongoing discussion (not the first turn), NEVER restart or repeat greetings ("Bonjour ! Je suis Nelth-IA..."). Seamlessly continue the discussion, answer the user's latest query directly, and resolve pronouns ("il", "elle", "son", "sa", "ses", "celui-ci", "ça", "le deuxième", etc.) using the entities discussed in preceding messages.`
       : ''
@@ -1168,6 +1168,23 @@ Requirements for the artifact:
 - ZERO emoji glyphs (🚀 ⭐ 🎨 💡 etc.) anywhere inside the code block. Replace every emoji icon with an inline \`<svg>\` (heroicon, box-icon style, or a simple hand-crafted \`<path>\`) or a CSS-only shape/decoration. Emoji in real prose copy inside \`<p>\`/\`<h*>\` tags are fine.
 - VALID JAVASCRIPT ONLY (the preview executes it): French apostrophes MUST NOT break strings — write "l'utilisateur", "d'aujourd'hui" with DOUBLE quotes (or escape them), NEVER a raw ' inside single-quoted strings; same inside HTML onclick="..." attributes. Close every (, [, {; no stray backticks; never write a literal "</script>" inside a JS string.
 - Provide a full explanation before the code using clear headings when useful. Cover the design direction, structure, key features, technical implementation, responsive behavior, accessibility, and usage/customization notes. Do not reduce this to a short description or a one-paragraph summary. The code block itself stays complete and untouched.`
+    } else if (uiDecision.shouldGenerateUI) {
+      instructions += `\n\n================================================================================
+FINAL OVERRIDE — NELTH INTELLIGENT UI 2026 (MANDATORY & NON-NEGOTIABLE):
+================================================================================
+The user request requires a generated interactive interface (UI Route: ${uiDecision.route}).
+You MUST present your main answer using EXACTLY ONE \`\`\`nelth-ui code block containing a valid Nelth UI Protocol JSON specification.
+- DO NOT format this comparison, analysis, or workflow as a standard Markdown table (| Col 1 | Col 2 |) or plain bullet points.
+- Output a warm, concise intro paragraph in text first.
+- Then output the \`\`\`nelth-ui block:
+\`\`\`nelth-ui
+{
+  "version": "1.0",
+  "root": { ... }
+}
+\`\`\`
+- Finish with a short analytical takeaway sentence.
+The frontend renderer automatically transforms this \`\`\`nelth-ui block into a rich interactive component (${uiDecision.recommendedComponents.join(', ')}).`
     }
 
     if (process.env.SKILL_ROUTER_DEBUG === 'true') {

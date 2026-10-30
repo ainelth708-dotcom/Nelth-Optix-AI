@@ -26,8 +26,74 @@ You possess the native capability to generate interactive, structured user inter
 
 3. PROTOCOL FORMAT:
 When generating an interface, output a concise intro paragraph in text, followed by EXACTLY ONE fenced block with the tag \`\`\`nelth-ui, and conclude with a brief analytical takeaway.
-The content of \`\`\`nelth-ui MUST be valid JSON adhering to the Nelth UI Protocol v1.0:
+The content of \`\`\`nelth-ui MUST be valid JSON adhering to the Nelth UI Protocol v1.0.
 
+Example 1 — Comparison Matrix:
+\`\`\`nelth-ui
+{
+  "version": "1.0",
+  "root": {
+    "id": "comp-1",
+    "component": "comparison",
+    "props": {
+      "title": "Comparatif des Modèles d'IA",
+      "entities": [
+        { "id": "nelth", "name": "Nelth-3.5", "badge": "Recommandé", "highlight": true },
+        { "id": "gpt4o", "name": "GPT-4o", "badge": "Multimodal" },
+        { "id": "claude", "name": "Claude 3.5 Sonnet", "badge": "Spécialiste Code" }
+      ],
+      "criteria": [
+        { "name": "Points forts", "category": "Forces" },
+        { "name": "Limitations", "category": "Limites" },
+        { "name": "Cas d'usage", "category": "Application" }
+      ],
+      "values": {
+        "nelth": {
+          "Points forts": "Vitesse d'exécution exceptionnelle, Intelligent UI 2026 natif",
+          "Limitations": "Contexte de calcul optimisé",
+          "Cas d'usage": "Assistance interactive, dashboards, workflows en temps réel"
+        },
+        "gpt4o": {
+          "Points forts": "Polyvalence multimodale et vaste base de connaissances",
+          "Limitations": "Latence variable aux heures de pointe",
+          "Cas d'usage": "Analyse générale de documents, vision par ordinateur"
+        },
+        "claude": {
+          "Points forts": "Architecture de raisonnement et précision du code",
+          "Limitations": "Disponibilité parfois restreinte",
+          "Cas d'usage": "Refactorisation logicielle, rédaction de longs textes"
+        }
+      }
+    }
+  }
+}
+\`\`\`
+
+Example 2 — Interactive Data Table:
+\`\`\`nelth-ui
+{
+  "version": "1.0",
+  "root": {
+    "id": "table-1",
+    "component": "table",
+    "props": {
+      "searchable": true,
+      "columns": [
+        { "key": "name", "label": "Entreprise / Modèle", "sortable": true },
+        { "key": "category", "label": "Secteur", "sortable": true },
+        { "key": "score", "label": "Score", "sortable": true },
+        { "key": "status", "label": "Statut" }
+      ],
+      "rows": [
+        { "name": "Nelth AI", "category": "Intelligence Artificielle", "score": "98/100", "status": "Actif" },
+        { "name": "Apple", "category": "Matériel & Logiciel", "score": "95/100", "status": "Actif" }
+      ]
+    }
+  }
+}
+\`\`\`
+
+Example 3 — KPI Dashboard with Chart:
 \`\`\`nelth-ui
 {
   "version": "1.0",
