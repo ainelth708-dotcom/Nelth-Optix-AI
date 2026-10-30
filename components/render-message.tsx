@@ -222,10 +222,17 @@ export function RenderMessage({
         buffer.push({ type: 'reasoning', text: reasoning } as any)
       }
 
+      // If the model exhausted tokens during thinking or only emitted reasoning,
+      // present reasoning as the answer upon completion so the bubble is never blank.
+      const displayAnswer =
+        !answer.trim() && reasoning.trim() && isStreamingComplete
+          ? reasoning
+          : answer
+
       elements.push(
         <AnswerSection
           key={`${messageId}-text-${index}`}
-          content={answer}
+          content={displayAnswer}
           isOpen={getIsOpen(
             messageId,
             part.type,
@@ -262,6 +269,36 @@ export function RenderMessage({
   })
   // Flush tail (no subsequent text)
   flushBuffer('tail')
+
+  // Silent-empty client guarantee: if the message completed streaming but no
+  // text AnswerSection was produced (e.g. only search tools or dropped chunks),
+  // inject a fallback AnswerSection so the assistant bubble is never blank.
+  const isStreamingComplete = status !== 'streaming' && status !== 'submitted'
+  const hasTextAnswer = elements.some((el: any) => el?.type === AnswerSection)
+  if (isStreamingComplete && !hasTextAnswer) {
+    elements.push(
+      <AnswerSection
+        key={`${messageId}-fallback-answer`}
+        content="Très bien ! Dis-moi juste ce que tu aimerais savoir ou faire, et je te réponds tout de suite."
+        isOpen={true}
+        onOpenChange={open => onOpenChange(messageId, open)}
+        chatId={chatId}
+        isGuest={isGuest}
+        isCloudDeployment={isCloudDeployment}
+        libraryAvailable={libraryAvailable}
+        showActions={isLatestMessage}
+        messageId={messageId}
+        metadata={message.metadata as UIMessageMetadata | undefined}
+        reload={reload}
+        status={status}
+        isStreaming={false}
+        citationMaps={citationMaps}
+        onQuoteContext={onQuoteContext}
+        searchResults={messageSearchResults}
+        searchTool={messageSearchTool}
+      />
+    )
+  }
 
   return <>{elements}</>
 }

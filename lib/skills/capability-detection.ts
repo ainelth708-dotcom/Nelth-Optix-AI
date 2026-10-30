@@ -4,7 +4,8 @@ import { isAffirmativeContinuation } from '@/lib/conversation/conversation-state
 import {
   getTextFromParts,
   isGreetingLike,
-  isIdentityQuery
+  isIdentityQuery,
+  isPureGreeting
 } from '@/lib/utils/message-utils'
 
 import { getSkillRegistry } from './registry'
@@ -288,17 +289,28 @@ export async function detectRequestCapabilities(
   attachmentFormats: string[] = [],
   history: UIMessage[] = []
 ): Promise<RequestCapabilities> {
-  const registry = await getSkillRegistry()
-  const candidateSkillSlugs = registry.length
-    ? routeSkills(query, registry).map(s => s.slug)
-    : []
-
   // Folded once: every intent regex below is written folded (lowercase, no
   // diacritics) so all languages match identically.
   const qf = foldText(query ?? '')
 
   const isIdentity = isIdentityQuery(query ?? '')
   const isBareFounderRole = BARE_FOUNDER_ROLE_RE.test(qf)
+  const isChitChatOrGreeting =
+    isPureGreeting(query ?? '') ||
+    isGreetingLike(query ?? '') ||
+    CONVERSATIONAL_CHITCHAT_RE.test(qf)
+
+  // Skill routing: skip loading registry for greetings, identity, and casual chit-chat when no file is attached
+  let candidateSkillSlugs: string[] = []
+  if (
+    attachmentFormats.length > 0 ||
+    (!isChitChatOrGreeting && !isIdentity && !isBareFounderRole)
+  ) {
+    const registry = await getSkillRegistry()
+    if (registry.length) {
+      candidateSkillSlugs = routeSkills(query, registry).map(s => s.slug)
+    }
+  }
   // Anaphoric follow-up inside an internal thread ("et l'autre ?" after
   // founder talk): inherit internal status so a decontextualized web
   // search can't inject strangers as our founders. Narrow on purpose —

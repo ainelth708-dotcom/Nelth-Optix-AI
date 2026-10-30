@@ -58,12 +58,14 @@ import {
 } from '../utils/context-window'
 import { isUsageLogging, logUsage } from '../utils/usage-logging'
 
+import { evaluateDeterministicRoute } from '@/lib/search/hybrid-router'
+
 import { compactHistoricalMessages } from './helpers/compact-historical-messages'
 import {
   convertDataPart,
   mapFilePartsToDataParts
 } from './helpers/convert-data-part'
-import { emptyResponseText } from './helpers/empty-response'
+import { emitCompleteText, emptyResponseText } from './helpers/empty-response'
 import { normalizeConversationHistory } from './helpers/normalize-conversation'
 import { runSearchJudge } from './helpers/search-judge'
 import { stripSpecFromMessages } from './helpers/strip-spec-from-messages'
@@ -210,7 +212,16 @@ export async function createEphemeralChatStreamResponse(
       // photos, web image search and the fact-verification gate skip the
       // judge (zero added latency). On judge failure the turn is answered
       // from knowledge — never a wildcard search.
+      const deterministicRoute = evaluateDeterministicRoute({
+        query: userQuery ?? '',
+        needsImage: Boolean(caps.webImageSearch),
+        isIdentityTurn,
+        isFounderPhoto: Boolean(caps.founderPhoto),
+        searchMode: searchMode ?? 'quick'
+      })
+
       const judgeEligible =
+        deterministicRoute.type === 'ambiguous' &&
         !adaptiveSearch &&
         !caps.founderPhoto &&
         !isIdentityTurn &&
@@ -219,8 +230,17 @@ export async function createEphemeralChatStreamResponse(
         !isPureGreeting(userQuery ?? '') &&
         !isGreetingLike(userQuery ?? '') &&
         (userQuery ?? '').trim().length > 0
-      let judgeNeedsSearch = false
-      let judgeSearchQuery: string | undefined
+
+      let judgeNeedsSearch =
+        deterministicRoute.type === 'deterministic'
+          ? deterministicRoute.needsSearch
+          : false
+      let judgeSearchQuery: string | undefined =
+        deterministicRoute.type === 'deterministic' &&
+        deterministicRoute.route === 'search'
+          ? deterministicRoute.query
+          : undefined
+
       if (judgeEligible) {
         try {
           const outcome = await runSearchJudge({
@@ -546,11 +566,7 @@ export async function createEphemeralChatStreamResponse(
               if (done) {
                 const remaining = textSanitizer.flush()
                 if (remaining) {
-                  writer.write({
-                    type: 'text-delta',
-                    id: 'txt-0',
-                    delta: remaining
-                  } as unknown as Parameters<typeof writer.write>[0])
+                  emitCompleteText(writer, 'txt-flush-0', remaining)
                   streamErrorSuppression.wroteContent = true
                 }
                 break
@@ -666,18 +682,21 @@ export async function createEphemeralChatStreamResponse(
             // everything was stripped (fake XML, greeting reset…), never
             // leave a blank bubble — inject the continuation fallback.
             if (!streamErrorSuppression.wroteContent) {
-              try {
-                writer.write({
-                  type: 'text-delta',
-                  // Collision-proof id: agent text parts are `txt-0`, `txt-1`,
-                  // … — a shared id merges into an already-closed part and
-                  // never renders.
-                  id: 'txt-fb-0',
-                  delta: emptyResponseText(conversationLanguage?.lang)
-                } as unknown as Parameters<typeof writer.write>[0])
-              } catch {
-                // Aborted/closed writer — the turn is already over client-side.
+              let fallbackDelta: string | null = null
+              if (
+                searchResultsForCitation &&
+                searchResultsForCitation.results.length > 0
+              ) {
+                const topResults = searchResultsForCitation.results.slice(0, 4)
+                fallbackDelta = topResults
+                  .map((r, i) => `**[${i + 1}] ${r.title}**\n${r.content}`)
+                  .join('\n\n')
               }
+              emitCompleteText(
+                writer,
+                'txt-fb-0',
+                fallbackDelta ?? emptyResponseText(conversationLanguage?.lang)
+              )
               streamErrorSuppression.wroteContent = true
             }
           } catch (streamErr) {
@@ -691,16 +710,12 @@ export async function createEphemeralChatStreamResponse(
               // Never surface an error part on a zero-content turn: deliver
               // the continuation line as real text and swallow the error
               // (parity with the main chat path — "never an empty bubble").
-              try {
-                writer.write({
-                  type: 'text-delta',
-                  id: 'txt-fb-0',
-                  delta: emptyResponseText(conversationLanguage?.lang)
-                } as unknown as Parameters<typeof writer.write>[0])
-                streamErrorSuppression.wroteContent = true
-              } catch {
-                // Writer closed — swallow; onError will not fire.
-              }
+              emitCompleteText(
+                writer,
+                'txt-fb-0',
+                emptyResponseText(conversationLanguage?.lang)
+              )
+              streamErrorSuppression.wroteContent = true
               console.error(
                 '[Ephemeral] zero-content failure — fallback text delivered instead of an error surface'
               )

@@ -254,7 +254,7 @@ const FAKE_TOOL_PATTERNS = [
   // Match a JSON object with "name" + ("parameters"|"input"|"args") keys.
   /\{"name"\s*:\s*"[^"]+"\s*,\s*"(?:parameters|input|args)"\s*:\s*\{[\s\S]*?\}\s*\}/g,
   // Fake search announcement lines: model writes text announcing search instead of calling the tool
-  /^[ \t]*(?:(?:je\s+(?:fais|vais\s+(?:faire|effectuer)|lance|procède\s+[aà])\s+une\s+recherche(?:\s+web)?|recherche\s+(?:web\s+)?en\s+cours|searching\s+the\s+web\s+for|let\s+me\s+search\s+(?:the\s+web\s+)?for|je\s+recherche\s+(?:des\s+informations\s+)?(?:sur|pour)|nous\s+allons\s+(?:rechercher|faire\s+une\s+recherche))[^\n]*)[.:]?[ \t]*$/gim,
+  /^[ \t]*(?:(?:je\s+(?:fais|vais\s+(?:faire|effectuer|chercher)|lance|procède\s+[aà]|cherche)\s+(?:une\s+recherche|les\s+détails|des\s+informations|sur)?(?:\s+web)?|recherche\s+(?:web\s+)?en\s+cours|searching\s+the\s+web\s+for|let\s+me\s+search\s+(?:the\s+web\s+)?for|je\s+recherche\s+(?:des\s+informations\s+)?(?:sur|pour)|nous\s+allons\s+(?:rechercher|faire\s+une\s+recherche))[^\n]*)[.:]?[ \t]*$/gim,
   /^[ \t]*\[\s*(?:recherche(?:\s+web)?|search|searching)\s*:[^\]]*\][ \t]*$/gim,
   /^[ \t]*recherche\s+web\s*:\s*.*$/gim
 ]
@@ -355,7 +355,7 @@ export function extractFakeSearchQuery(text: string): string | null {
   }
   // Match text-based search announcements: "Je fais une recherche sur ...", "Recherche web en cours : ...", "Searching the web for ..."
   const searchAnnounceMatch = text.match(
-    /(?:recherche\s+web\s*(?:en\s+cours\s*)?:\s*|je\s+(?:fais|vais\s+(?:faire|effectuer)|lance)\s+une\s+recherche(?:\s+web)?\s+(?:sur|pour)\s+|je\s+recherche\s+(?:des\s+informations\s+)?(?:sur|pour)\s+|searching\s+the\s+web\s+for\s+|let\s+me\s+search\s+(?:the\s+web\s+)?for\s+)(["'«]?)([^.\n"'»]+)\1/i
+    /(?:recherche\s+web\s*(?:en\s+cours\s*)?:\s*|je\s+(?:fais|vais\s+(?:faire|effectuer|chercher)|lance|cherche)\s+(?:une\s+recherche(?:\s+web)?\s+(?:sur|pour)\s+|les\s+détails\s+de\s+|des\s+informations\s+sur\s+)?|je\s+recherche\s+(?:des\s+informations\s+)?(?:sur|pour)\s+|searching\s+the\s+web\s+for\s+|let\s+me\s+search\s+(?:the\s+web\s+)?for\s+)(["'«]?)([^.\n"'»]+)\1/i
   )
   if (searchAnnounceMatch && searchAnnounceMatch[2]?.trim()) {
     const q = searchAnnounceMatch[2].trim()

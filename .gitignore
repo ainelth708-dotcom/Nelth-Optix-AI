@@ -11,6 +11,7 @@ node_modules/
 /nanoMuse-main/
 /browser-agent-template-main/
 /skills-main/
+/open-intelligent-ui-main/
 
 # testing
 /coverage

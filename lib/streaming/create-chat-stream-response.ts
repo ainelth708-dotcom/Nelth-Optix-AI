@@ -70,12 +70,15 @@ import {
 import { perfLog, perfTime } from '../utils/perf-logging'
 import { isUsageLogging, logUsage } from '../utils/usage-logging'
 
+import { evaluateDeterministicRoute } from '@/lib/search/hybrid-router'
+
 import { compactHistoricalMessages } from './helpers/compact-historical-messages'
 import {
   convertDataPart,
   mapFilePartsToDataParts
 } from './helpers/convert-data-part'
 import {
+  emitCompleteText,
   emptyResponseText,
   shouldInjectEmptyFallback,
   shouldRetryEmptyAttempt
@@ -369,7 +372,19 @@ export async function createChatStreamResponse(
       // latency. On judge failure or timeout the turn is answered from
       // knowledge — never a wildcard search (same contract as the OpenUI
       // route, where this judge already runs in production).
+      const deterministicRoute = evaluateDeterministicRoute({
+        query: userQuery ?? '',
+        hasAttachments: attachmentFormats.length > 0,
+        connectorIntent: Boolean(connectorDataIntent),
+        needsImage: Boolean(caps.needsImage || caps.webImageSearch),
+        needsDocument: Boolean(caps.needsDocument),
+        isIdentityTurn,
+        isFounderPhoto: Boolean(caps.founderPhoto),
+        searchMode: searchMode ?? 'quick'
+      })
+
       const judgeEligible =
+        deterministicRoute.type === 'ambiguous' &&
         !adaptiveSearch &&
         !connectorDataIntent &&
         !caps.founderPhoto &&
@@ -379,8 +394,17 @@ export async function createChatStreamResponse(
         !isPureGreeting(userQuery ?? '') &&
         !isGreetingLike(userQuery ?? '') &&
         (userQuery ?? '').trim().length > 0
-      let judgeNeedsSearch = false
-      let judgeSearchQuery: string | undefined
+
+      let judgeNeedsSearch =
+        deterministicRoute.type === 'deterministic'
+          ? deterministicRoute.needsSearch
+          : false
+      let judgeSearchQuery: string | undefined =
+        deterministicRoute.type === 'deterministic' &&
+        deterministicRoute.route === 'search'
+          ? deterministicRoute.query
+          : undefined
+
       if (judgeEligible) {
         try {
           const outcome = await runSearchJudge({
@@ -851,13 +875,13 @@ export async function createChatStreamResponse(
               attempt: number
             ): Promise<{ content: boolean; tools: boolean }> => {
               let attemptContent = false
-              let attemptTools = false
+              let attemptExecutedDynamicTools = false
               const markContent = () => {
                 attemptContent = true
                 wroteContent = true
               }
-              const markTools = () => {
-                attemptTools = true
+              const markDynamicTools = () => {
+                attemptExecutedDynamicTools = true
                 wroteToolPart = true
               }
 
@@ -884,22 +908,28 @@ export async function createChatStreamResponse(
                       `[Stream] SDK empty-output error caught in pumpAttempt (attempt ${attempt}) — treating as silent-empty:`,
                       msg
                     )
-                    return { content: attemptContent, tools: attemptTools }
+                    return {
+                      content: attemptContent,
+                      tools: attemptExecutedDynamicTools
+                    }
                   }
                   throw readErr
                 }
                 if (done) {
                   const remaining = sanitizer.flush()
                   if (remaining) {
-                    writer.write({
-                      type: 'text-delta',
-                      id: 'txt-0',
-                      delta: remaining
-                    } as unknown as Parameters<typeof writer.write>[0])
+                    emitCompleteText(
+                      writer,
+                      `txt-flush-${writtenPartCount}`,
+                      remaining
+                    )
                     markContent()
                     writtenPartCount++
                   }
-                  return { content: attemptContent, tools: attemptTools }
+                  return {
+                    content: attemptContent,
+                    tools: attemptExecutedDynamicTools
+                  }
                 }
                 const part = value as
                   | { type?: string; delta?: string; id?: string }
@@ -942,7 +972,7 @@ export async function createChatStreamResponse(
                       >[0]
                     )
                     writtenPartCount += 2
-                    markTools()
+                    wroteToolPart = true
                   }
                   // Same treatment for preloaded connector calls: emit the
                   // synthetic tool-gmail / tool-drive / … parts first so the
@@ -958,7 +988,7 @@ export async function createChatStreamResponse(
                       )
                       writtenPartCount++
                     }
-                    markTools()
+                    wroteToolPart = true
                   }
                   continue
                 }
@@ -1045,7 +1075,7 @@ export async function createChatStreamResponse(
                   typeof part.type === 'string' &&
                   part.type.startsWith('tool-')
                 ) {
-                  markTools()
+                  markDynamicTools()
                 }
               }
             }
@@ -1151,11 +1181,10 @@ export async function createChatStreamResponse(
             )
 
             const isSearchAnnouncement =
-              !wroteToolPart &&
-              /^\s*(?:je\s+(?:fais|vais\s+(?:faire|effectuer)|lance|procède\s+[aà])\s+une\s+recherche|recherche\s+(?:web\s+)?en\s+cours|searching\s+the\s+web|let\s+me\s+search|je\s+recherche\s+(?:des\s+informations\s+)?(?:sur|pour)|recherche\s+web\s*:)/i.test(
+              /^\s*(?:je\s+(?:fais|vais\s+(?:faire|effectuer|chercher)|lance|procède\s+[aà]|cherche)\s+.*|recherche\s+(?:web\s+)?en\s+cours.*|searching\s+the\s+web.*|let\s+me\s+search.*|je\s+recherche\s+.*|nous\s+allons\s+(?:rechercher|faire\s+une\s+recherche).*|recherche\s+web\s*:.*)/i.test(
                 accumulatedCleanText.trim()
               ) &&
-              accumulatedCleanText.trim().length <= 160
+              accumulatedCleanText.trim().length <= 220
 
             if (
               shouldInjectEmptyFallback({
@@ -1166,7 +1195,10 @@ export async function createChatStreamResponse(
               (isEchoOrTitle &&
                 Boolean(fakeSearchQuery) &&
                 (isIdentityTurn || searchRepairWorthy)) ||
-              (isSearchAnnouncement && (isIdentityTurn || searchRepairWorthy))
+              (isSearchAnnouncement &&
+                (isIdentityTurn ||
+                  searchRepairWorthy ||
+                  Boolean(searchResultsForCitation)))
             ) {
               console.error(
                 '[Stream] silent-empty response or title-echo/announcement fake search — injecting fallback text',
@@ -1410,25 +1442,15 @@ export async function createChatStreamResponse(
               }
 
               const deltaPrefix = wroteContent && fallbackDelta ? '\n\n' : ''
-              try {
-                writer.write({
-                  type: 'text-delta',
-                  // Collision-proof id: the agent stream names its own text
-                  // parts `txt-0`, `txt-1`, … — a fallback delta sharing one of
-                  // those ids merges into an ALREADY-CLOSED part client-side
-                  // and silently never renders (a logged "fallback injected"
-                  // with a blank bubble). The `txt-fb-` family can never be
-                  // produced by the agent stream.
-                  id: `txt-fb-${writtenPartCount}`,
-                  delta: `${deltaPrefix}${
-                    fallbackDelta ??
-                    emptyResponseText(conversationLanguage?.lang)
-                  }`
-                } as unknown as Parameters<typeof writer.write>[0])
-              } catch {
-                // An aborted/closed writer rejects late writes — the turn is
-                // already over client-side; nothing more can be delivered.
-              }
+              const finalFallbackText = `${deltaPrefix}${
+                fallbackDelta ??
+                emptyResponseText(conversationLanguage?.lang)
+              }`
+              emitCompleteText(
+                writer,
+                `txt-fb-${writtenPartCount}`,
+                finalFallbackText
+              )
               console.log(
                 `[Stream] fallback injected: "${(fallbackDelta ?? '').slice(0, 120)}" (length=${(fallbackDelta ?? '').length})`
               )
@@ -1450,29 +1472,20 @@ export async function createChatStreamResponse(
                 // User-initiated abort: never paint an error on top of a
                 // deliberate stop; attempt the line only if the writer still
                 // accepts writes.
-                try {
-                  writer.write({
-                    type: 'text-delta',
-                    id: `txt-fb-${writtenPartCount}`,
-                    delta: emptyResponseText(conversationLanguage?.lang)
-                  } as unknown as Parameters<typeof writer.write>[0])
-                  wroteContent = true
-                } catch {
-                  // Writer closed with the abort — nothing deliverable.
-                }
+                emitCompleteText(
+                  writer,
+                  `txt-fb-${writtenPartCount}`,
+                  emptyResponseText(conversationLanguage?.lang)
+                )
+                wroteContent = true
                 return
               }
-              try {
-                writer.write({
-                  type: 'text-delta',
-                  id: `txt-fb-${writtenPartCount}`,
-                  delta: emptyResponseText(conversationLanguage?.lang)
-                } as unknown as Parameters<typeof writer.write>[0])
-                wroteContent = true
-              } catch {
-                // Writer already closed — swallow; onError will not fire
-                // because we do not rethrow below.
-              }
+              emitCompleteText(
+                writer,
+                `txt-fb-${writtenPartCount}`,
+                emptyResponseText(conversationLanguage?.lang)
+              )
+              wroteContent = true
               console.error(
                 '[Stream] zero-content failure — fallback text delivered instead of an error surface'
               )

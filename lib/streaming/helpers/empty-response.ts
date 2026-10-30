@@ -52,3 +52,24 @@ export function emptyResponseText(lang: string | null | undefined): string {
     ? 'Sure! Tell me a bit more about what you would like to know or do, and I will answer right away.'
     : 'Très bien ! Dis-moi juste ce que tu aimerais savoir ou faire, et je te réponds tout de suite.'
 }
+
+/**
+ * Emits a complete text part complying with the AI SDK UIMessageStream protocol.
+ * The AI SDK requires a "text-start" chunk before any "text-delta" chunk for
+ * that ID, and cleanly closes it with "text-end".
+ */
+export function emitCompleteText(
+  writer: { write: (chunk: any) => void },
+  id: string,
+  text: string
+): void {
+  if (!text) return
+  try {
+    writer.write({ type: 'text-start', id } as any)
+    writer.write({ type: 'text-delta', id, delta: text } as any)
+    writer.write({ type: 'text-end', id } as any)
+  } catch (err) {
+    console.warn(`[Stream] emitCompleteText error for id ${id}:`, err)
+  }
+}
+

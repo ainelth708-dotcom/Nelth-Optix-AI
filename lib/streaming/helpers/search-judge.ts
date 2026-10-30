@@ -43,7 +43,7 @@ export interface SearchJudgeOutcome {
 // answered from knowledge (the old 8 s module timeout + 4 s race buffer
 // left up to 12 s of total silence, long enough for clients to give up on
 // the turn).
-const JUDGE_HARD_BUDGET_MS = 6_000
+const JUDGE_HARD_BUDGET_MS = 3_500
 
 /**
  * One LLM search-judge call with a hard wall-clock guard. Throws only when
@@ -83,7 +83,7 @@ export async function runSearchJudge(params: {
     // Belt-and-suspenders: even if the model call itself hangs past its
     // internal timeout, the stream must keep moving.
     new Promise<null>(resolve =>
-      setTimeout(() => resolve(null), JUDGE_HARD_BUDGET_MS + 1000)
+      setTimeout(() => resolve(null), JUDGE_HARD_BUDGET_MS + 500)
     )
   ])
   if (!decision) {

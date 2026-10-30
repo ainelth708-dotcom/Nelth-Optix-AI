@@ -147,42 +147,44 @@ function applyRoutingOverrides(meta: SkillMeta): SkillMeta {
  * only). `applyOverrides` merges routing metadata for Anthropic skills.
  */
 async function scanRoot(root: string): Promise<SkillMeta[]> {
-  const entries = await fs.readdir(root, { withFileTypes: true })
-  const skills: SkillMeta[] = []
+  try {
+    const entries = await fs.readdir(root, { withFileTypes: true })
+    const skillDirs = entries.filter(
+      entry => entry.isDirectory() && entry.name !== 'template'
+    )
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    // Skip the doc/example template shipped inside skills-main.
-    if (entry.name === 'template') continue
+    const skillPromises = skillDirs.map(async entry => {
+      const skillDir = path.join(root, entry.name)
+      const skillFile = path.join(skillDir, 'SKILL.md')
 
-    const skillDir = path.join(root, entry.name)
-    const skillFile = path.join(skillDir, 'SKILL.md')
+      try {
+        const content = await fs.readFile(skillFile, 'utf8')
+        const fm = parseFrontmatter(content)
+        if (!fm.name) return null
 
-    try {
-      const content = await fs.readFile(skillFile, 'utf8')
-      const fm = parseFrontmatter(content)
-      if (!fm.name) continue
+        const references = await collectReferences(skillDir)
 
-      const references = await collectReferences(skillDir)
-
-      const meta: SkillMeta = {
-        slug: entry.name,
-        name: fm.name,
-        description: fm.description,
-        domain: fm.domain,
-        triggers: splitList(fm.triggers),
-        relatedSkills: splitList(fm.relatedSkills),
-        skillDir,
-        references
+        const meta: SkillMeta = {
+          slug: entry.name,
+          name: fm.name,
+          description: fm.description,
+          domain: fm.domain,
+          triggers: splitList(fm.triggers),
+          relatedSkills: splitList(fm.relatedSkills),
+          skillDir,
+          references
+        }
+        return applyRoutingOverrides(meta)
+      } catch {
+        return null
       }
-      skills.push(applyRoutingOverrides(meta))
-    } catch {
-      // Skip any skill that cannot be read without breaking the index.
-      continue
-    }
-  }
+    })
 
-  return skills
+    const results = await Promise.all(skillPromises)
+    return results.filter((s): s is SkillMeta => s !== null)
+  } catch {
+    return []
+  }
 }
 
 /**
@@ -200,12 +202,13 @@ export async function getSkillRegistry(): Promise<SkillMeta[]> {
   if (registryUnavailable) return []
 
   try {
-    const skills = await scanRoot(CLAUDE_SKILLS_ROOT)
     const skillsMainRoot = resolveSkillsMainRoot()
-    if (skillsMainRoot) {
-      skills.push(...(await scanRoot(skillsMainRoot)))
-    }
+    const [claudeSkills, mainSkills] = await Promise.all([
+      scanRoot(CLAUDE_SKILLS_ROOT),
+      skillsMainRoot ? scanRoot(skillsMainRoot) : Promise.resolve([])
+    ])
 
+    const skills = [...claudeSkills, ...mainSkills]
     registryCache = skills
     return skills
   } catch {

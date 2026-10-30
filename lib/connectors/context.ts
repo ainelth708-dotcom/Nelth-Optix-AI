@@ -284,8 +284,19 @@ function authRequiredOutput(provider: string) {
   }
 }
 
+const CONNECTOR_TIMEOUT_MS = 5000
+
+function withConnectorTimeout<T>(promise: Promise<T>, timeoutMs = CONNECTOR_TIMEOUT_MS): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Connector timeout')), timeoutMs)
+    )
+  ])
+}
+
 /**
- * Best-effort fetch across every connected provider for models that cannot
+ * Best-effort fetch across connected providers for models that cannot
  * call tools. Returns BOTH:
  * - `layer`: text injected like the preloaded web-search layer so the model
  *   answers from real data instead of denying access;
@@ -306,16 +317,45 @@ export async function runConnectorPreloadStructured(
   const calls: ConnectorPreloadCall[] = []
   const sections: string[] = []
 
+  const qFolded = foldText(query ?? '')
+  const isGmailSpecific =
+    /gmail|google\s?mail|courriel|courriers?|e-?mails?|messages?\s?(?:recus?|envoyes?)|boite(\s+de)?\s+(mail|reception)|inbox|qui\s+m['’]a\s+(?:ecrit|envoye)|dernier\s+(?:mail|message)|lire\s+(?:mon|mes|le)\s+(?:mail|message|courriel)|m(?:es|on)\s+(?:mails?|e-?mails?|courriels?|messages?)|my\s+(?:mails?|e-?mails?|messages?)/i.test(
+      qFolded
+    )
+  const isDriveSpecific =
+    /drive|google\s?(?:doc|sheet|slide|disque)|fichier\s?(?:drive|partage|recent)|m(?:es|on)\s+(?:fichiers?|documents?|docs?|drive)|my\s+(?:files?|documents?|docs?|drive)/i.test(
+      qFolded
+    )
+  const isCalendarSpecific =
+    /calendar|agenda|calendrier|planning|emploi\s+du\s+temps|programme|rendez-?vous|rdv|reunions?|(?:quoi|qu['’]est-?ce\s+que\s+j['’]ai)\s+(?:aujourd['’]hui|demain|cette\s+semaine|prevu)|prochain\s+(?:evenement|rdv|rendez-?vous|meeting)|m(?:es|on)\s+(?:evenements?|reunions?|rdv|rendez-?vous|agenda|calendrier|planning|programme)|my\s+(?:events?|meetings?|agenda|calendar|schedule|planning)/i.test(
+      qFolded
+    )
+  const isGithubSpecific =
+    /github|depots?|repos?|repositories|pull\s?requests?|prs?|commits?|issues?|tickets?|m(?:es|on)\s+(?:github|repos?|depots?|commits?|prs?|tickets?)|my\s+(?:github|repos?|commits?|prs?|tickets?)/i.test(
+      qFolded
+    )
+  const isNotionSpecific =
+    /notion|pages?\s+notion|base\s+(?:de\s+donnees\s+)?notion|notes?\s+notion|espace\s+notion|m(?:es|on|a)\s+(?:notion|notes?)|my\s+(?:notion|notes?)/i.test(
+      qFolded
+    )
+
+  const hasSpecificService =
+    isGmailSpecific ||
+    isDriveSpecific ||
+    isCalendarSpecific ||
+    isGithubSpecific ||
+    isNotionSpecific
+
   type TaskResult = {
     call: ConnectorPreloadCall | null
     section: string | null
   }
   const tasks: Array<() => Promise<TaskResult>> = []
 
-  if (status.google) {
+  if (status.google && (!hasSpecificService || isGmailSpecific)) {
     tasks.push(async () => {
       const input = { action: 'search', query: keywords, maxResults: 3 }
-      const r = await settle(gmailSearch(userId, keywords, 3))
+      const r = await settle(withConnectorTimeout(gmailSearch(userId, keywords, 3)))
       if (!r.ok) {
         if (r.error instanceof ConnectorAuthError) {
           await markConnectorAuthFailure(userId, 'google')
@@ -371,71 +411,77 @@ export async function runConnectorPreloadStructured(
         )
       }
     })
-    tasks.push(async () => {
-      // Empty keywords = "my recent stuff": list latest instead of matching.
-      const input = { action: 'search', query: keywords || '(récents)' }
-      const r = await settle(
-        keywords ? driveSearch(userId, keywords, 5) : driveRecent(userId, 5)
-      )
-      if (!r.ok) {
-        if (r.error instanceof ConnectorAuthError) {
-          await markConnectorAuthFailure(userId, 'google')
-          return {
-            call: {
-              service: 'drive' as const,
-              input,
-              output: authRequiredOutput('Google')
-            },
-            section: 'DRIVE: reconnexion requise (connector card).'
-          }
-        }
-        return { call: null, section: null }
-      }
-      if (r.value.items.length === 0) return { call: null, section: null }
-      return {
-        call: {
-          service: 'drive' as const,
-          input,
-          output: { state: 'complete' as const, items: r.value.items }
-        },
-        section: clipSection(
-          'DRIVE RESULTS:',
-          r.value.items.map(i => `- "${i.name}" (${i.mimeType})`).join('\n')
+    if (!hasSpecificService || isDriveSpecific) {
+      tasks.push(async () => {
+        // Empty keywords = "my recent stuff": list latest instead of matching.
+        const input = { action: 'search', query: keywords || '(récents)' }
+        const r = await settle(
+          withConnectorTimeout(
+            keywords ? driveSearch(userId, keywords, 5) : driveRecent(userId, 5)
+          )
         )
-      }
-    })
-    tasks.push(async () => {
-      const input: Record<string, unknown> = {}
-      const r = await settle(calendarList(userId))
-      if (!r.ok) {
-        if (r.error instanceof ConnectorAuthError) {
-          await markConnectorAuthFailure(userId, 'google')
-          return {
-            call: {
-              service: 'calendar' as const,
-              input,
-              output: authRequiredOutput('Google')
-            },
-            section: 'CALENDAR: reconnexion requise (connector card).'
+        if (!r.ok) {
+          if (r.error instanceof ConnectorAuthError) {
+            await markConnectorAuthFailure(userId, 'google')
+            return {
+              call: {
+                service: 'drive' as const,
+                input,
+                output: authRequiredOutput('Google')
+              },
+              section: 'DRIVE: reconnexion requise (connector card).'
+            }
           }
+          return { call: null, section: null }
         }
-        return { call: null, section: null }
-      }
-      if (r.value.items.length === 0) return { call: null, section: null }
-      return {
-        call: {
-          service: 'calendar' as const,
-          input,
-          output: { state: 'complete' as const, items: r.value.items }
-        },
-        section: clipSection(
-          'CALENDAR (next 7 days):',
-          r.value.items.map(i => `- "${i.summary}" — ${i.start}`).join('\n')
-        )
-      }
-    })
+        if (r.value.items.length === 0) return { call: null, section: null }
+        return {
+          call: {
+            service: 'drive' as const,
+            input,
+            output: { state: 'complete' as const, items: r.value.items }
+          },
+          section: clipSection(
+            'DRIVE RESULTS:',
+            r.value.items.map(i => `- "${i.name}" (${i.mimeType})`).join('\n')
+          )
+        }
+      })
+    }
+    if (!hasSpecificService || isCalendarSpecific) {
+      tasks.push(async () => {
+        const input: Record<string, unknown> = {}
+        const r = await settle(withConnectorTimeout(calendarList(userId)))
+        if (!r.ok) {
+          if (r.error instanceof ConnectorAuthError) {
+            await markConnectorAuthFailure(userId, 'google')
+            return {
+              call: {
+                service: 'calendar' as const,
+                input,
+                output: authRequiredOutput('Google')
+              },
+              section: 'CALENDAR: reconnexion requise (connector card).'
+            }
+          }
+          return { call: null, section: null }
+        }
+        if (r.value.items.length === 0) return { call: null, section: null }
+        return {
+          call: {
+            service: 'calendar' as const,
+            input,
+            output: { state: 'complete' as const, items: r.value.items }
+          },
+          section: clipSection(
+            'CALENDAR (next 7 days):',
+            r.value.items.map(i => `- "${i.summary}" — ${i.start}`).join('\n')
+          )
+        }
+      })
+    }
   }
-  if (status.github) {
+  if (status.github && (!hasSpecificService || isGithubSpecific)) {
     tasks.push(async () => {
       const input = {
         action: 'search',
@@ -443,9 +489,11 @@ export async function runConnectorPreloadStructured(
         kind: 'repositories'
       }
       const r = await settle(
-        keywords
-          ? githubSearch(userId, keywords, 'repositories')
-          : githubRecentRepos(userId)
+        withConnectorTimeout(
+          keywords
+            ? githubSearch(userId, keywords, 'repositories')
+            : githubRecentRepos(userId)
+        )
       )
       if (!r.ok) {
         if (r.error instanceof ConnectorAuthError) {
@@ -475,10 +523,10 @@ export async function runConnectorPreloadStructured(
       }
     })
   }
-  if (status.notion) {
+  if (status.notion && (!hasSpecificService || isNotionSpecific)) {
     tasks.push(async () => {
       const input = { action: 'search', query: keywords || '(récents)' }
-      const r = await settle(notionSearch(userId, keywords))
+      const r = await settle(withConnectorTimeout(notionSearch(userId, keywords)))
       if (!r.ok) {
         if (r.error instanceof ConnectorAuthError) {
           await markConnectorAuthFailure(userId, 'notion')

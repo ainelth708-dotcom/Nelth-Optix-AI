@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { emptyResponseText, shouldInjectEmptyFallback } from '../empty-response'
+import {
+  emitCompleteText,
+  emptyResponseText,
+  shouldInjectEmptyFallback
+} from '../empty-response'
 
 /**
  * Guards the silent-empty case: the weak model sometimes answers with ONLY
@@ -66,4 +70,20 @@ describe('empty response guard', () => {
     expect(emptyResponseText('fr')).not.toContain('Désolé')
     expect(emptyResponseText('en')).not.toContain('Sorry')
   })
+
+  it('emits AI SDK compliant text parts with text-start, text-delta, and text-end', () => {
+    const chunks: any[] = []
+    const writer = {
+      write: (chunk: unknown) => chunks.push(chunk)
+    }
+
+    emitCompleteText(writer, 'txt-test-1', 'Hello world')
+
+    expect(chunks).toEqual([
+      { type: 'text-start', id: 'txt-test-1' },
+      { type: 'text-delta', id: 'txt-test-1', delta: 'Hello world' },
+      { type: 'text-end', id: 'txt-test-1' }
+    ])
+  })
 })
+
