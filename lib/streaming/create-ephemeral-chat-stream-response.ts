@@ -679,9 +679,17 @@ export async function createEphemeralChatStreamResponse(
             }
 
             // Silent-empty guard (parity with the main chat path): when
-            // everything was stripped (fake XML, greeting reset…), never
-            // leave a blank bubble — inject the continuation fallback.
-            if (!streamErrorSuppression.wroteContent) {
+            // everything was stripped (fake XML, greeting reset…) or the model stalled
+            // on an announced search, never leave a blank bubble — inject the continuation fallback.
+            const isSearchAnnouncement =
+              /^\s*(?:je\s+(?:fais|vais\s+(?:faire|effectuer|chercher)|lance|procède\s+[aà]|cherche)\s+.*|recherche\s+(?:web\s+)?en\s+cours.*|searching\s+the\s+web.*|let\s+me\s+search.*|je\s+recherche\s+.*|nous\s+allons\s+(?:rechercher|faire\s+une\s+recherche).*|recherche\s+web\s*:.*)/i.test(
+                ephemeralCleanText.trim()
+              ) && ephemeralCleanText.trim().length <= 220
+
+            if (
+              !streamErrorSuppression.wroteContent ||
+              (isSearchAnnouncement && Boolean(searchResultsForCitation))
+            ) {
               let fallbackDelta: string | null = null
               if (
                 searchResultsForCitation &&
@@ -692,10 +700,12 @@ export async function createEphemeralChatStreamResponse(
                   .map((r, i) => `**[${i + 1}] ${r.title}**\n${r.content}`)
                   .join('\n\n')
               }
+              const prefix =
+                streamErrorSuppression.wroteContent && fallbackDelta ? '\n\n' : ''
               emitCompleteText(
                 writer,
                 'txt-fb-0',
-                fallbackDelta ?? emptyResponseText(conversationLanguage?.lang)
+                `${prefix}${fallbackDelta ?? emptyResponseText(conversationLanguage?.lang)}`
               )
               streamErrorSuppression.wroteContent = true
             }

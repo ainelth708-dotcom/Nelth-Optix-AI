@@ -42,6 +42,8 @@ import {
   type QuickPromptFlags
 } from './prompts/search-mode-prompts'
 import { classifyVisualIntent } from './visual-intent'
+import { evaluateUIDecision } from '../nelth-ui/decision'
+import { getNelthIntelligentUIPrompt } from '../nelth-ui/prompt'
 
 /**
  * Injected HIGH in the system instructions so the model never leaks the
@@ -1143,7 +1145,14 @@ export async function createResearcher({
 - If web search results were provided above in SERVER-PROVIDED WEB RESULTS, synthesize your answer directly from these verified results and conversation history. Add inline [n] citations next to supported factual claims.
 - CONVERSATION CONTINUITY & PRONOUN RESOLUTION: If this is an ongoing discussion (not the first turn), NEVER restart or repeat greetings ("Bonjour ! Je suis Nelth-IA..."). Seamlessly continue the discussion, answer the user's latest query directly, and resolve pronouns ("il", "elle", "son", "sa", "ses", "celui-ci", "ça", "le deuxième", etc.) using the entities discussed in preceding messages.`
       : ''
-    let instructions = `${CORE_DIRECTIVE}${identityLayer}${affirmativeLayer}${preloadedSearchLayer}\n\n${continuityLayer}${nonThinkingReinforcementLayer}\n\n${buildLanguageLayer(conversationLanguage ?? null)}${toolCallProtocol}\n\n${ARTIFACT_OUTPUT_RULE}\n\n${skillLayer ? skillLayer + '\n\n' : ''}${connectorLayer ? connectorLayer + '\n\n' : ''}${systemPrompt}\n\n${INTERNAL_SYSTEMS_DIRECTIVE}\nCurrent date and time: ${currentDate}${continuityTrailer}`
+    const uiDecision = evaluateUIDecision({
+      query: userQuery ?? '',
+      hasStructuredData: Boolean(preloadedSearchContext)
+    })
+    const intelligentUILayer = uiDecision.shouldGenerateUI
+      ? `\n\n${getNelthIntelligentUIPrompt()}`
+      : ''
+    let instructions = `${CORE_DIRECTIVE}${identityLayer}${affirmativeLayer}${preloadedSearchLayer}\n\n${continuityLayer}${nonThinkingReinforcementLayer}\n\n${buildLanguageLayer(conversationLanguage ?? null)}${toolCallProtocol}\n\n${ARTIFACT_OUTPUT_RULE}\n\n${skillLayer ? skillLayer + '\n\n' : ''}${connectorLayer ? connectorLayer + '\n\n' : ''}${systemPrompt}${intelligentUILayer}\n\n${INTERNAL_SYSTEMS_DIRECTIVE}\nCurrent date and time: ${currentDate}${continuityTrailer}`
 
     // Trailing override for code/artifact requests. The QUICK/ADAPTIVE prompts
     // contain a generic "OUTPUT FORMAT (MANDATORY)" + "Emoji usage" section that

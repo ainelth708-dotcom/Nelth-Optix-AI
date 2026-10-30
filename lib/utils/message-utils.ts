@@ -386,7 +386,10 @@ export function stripFakeToolCallXmlFromMessage(message: {
  * (Word boundaries matter: "hi" must not match "histoire".)
  */
 const INTRO_START_RE =
-  /^\s*(?:(?:bonjour|bonsoir|salut|coucou|hello|hey|hi)\b|👋|je suis nelth|qui suis-je|salama|manao ahoana|ravi\s+de|content\s+de|enchanté)/i
+  /^\s*(?:(?:bonjour|bonsoir|salut|coucou|hello|hey|hi)\b|👋|je suis nelth|qui suis-je|salama|manao ahoana|ravi\s+de|content\s+de|enchanté|je\s+vais\s+chercher|je\s+fais\s+une\s+recherche|recherche\s+(?:web\s+)?en\s+cours|searching\s+the\s+web|let\s+me\s+search)/i
+
+export const SEARCH_ANNOUNCEMENT_PARAGRAPH_RE =
+  /^\s*(?:je\s+(?:fais|vais\s+(?:faire|effectuer|chercher)|lance|procède\s+[aà]|cherche)\s+.*|recherche\s+(?:web\s+)?en\s+cours.*|searching\s+the\s+web.*|let\s+me\s+search.*|je\s+recherche\s+.*|nous\s+allons\s+(?:rechercher|faire\s+une\s+recherche).*|recherche\s+web\s*:.*)/i
 
 /**
  * Greeting/hook-led intro paragraph ("Salut ! 👋 Ravi de vous revoir.") —
@@ -660,13 +663,22 @@ export function stripLeadingIntroReset(
     // are legit) but dropped when dropPureGreeting is set — mid-conversation
     // with a non-greeting user message, showing it IS the reset bug, so the
     // empty-fallback/retry machinery takes over instead.
+    // A search announcement (e.g. "Je vais chercher les détails...") by itself is ALWAYS dropped
+    // so the retry or search summary fallback delivers the real answer.
     if (rest.trim().length === 0) {
+      if (para.length <= 300 && SEARCH_ANNOUNCEMENT_PARAGRAPH_RE.test(para)) {
+        return ''
+      }
       const isFluff =
         para.length <= 600 &&
         (GREETING_HOOK_PARAGRAPH_RE.test(para) ||
           (!keepSelfIntro && SELF_INTRO_PARAGRAPH_RE.test(para)))
       if (!isFluff || !dropPureGreeting) break
       return ''
+    }
+    if (para.length <= 300 && SEARCH_ANNOUNCEMENT_PARAGRAPH_RE.test(para)) {
+      out = rest.replace(/^\s+/, '')
+      continue
     }
     if (para.length > 600) break
     if (GREETING_HOOK_PARAGRAPH_RE.test(para)) {
@@ -812,12 +824,20 @@ export class StreamTextSanitizer {
    * safe to immediately stream to the client.
    */
   process(delta: string): string {
-    // Greeting-reset enforcement: hold the very start of the stream until we
-    // can decide whether it opens with intro fluff.
-    if (this.stripIntro && !this.introChecked) {
+    // Greeting-reset & search announcement enforcement: hold the very start of the stream
+    // until we can decide whether it opens with intro fluff or search announcements.
+    const isSearchAnnouncement =
+      SEARCH_ANNOUNCEMENT_PARAGRAPH_RE.test(this.head + delta) ||
+      SEARCH_ANNOUNCEMENT_PARAGRAPH_RE.test(delta)
+
+    if ((this.stripIntro || isSearchAnnouncement) && !this.introChecked) {
       this.head += delta
-      // Fast path: enough text and clearly not an intro reset → stream now.
-      if (this.head.length >= 30 && !INTRO_START_RE.test(this.head)) {
+      // Fast path: enough text and clearly neither an intro reset nor a search announcement → stream now.
+      if (
+        this.head.length >= 30 &&
+        !INTRO_START_RE.test(this.head) &&
+        !SEARCH_ANNOUNCEMENT_PARAGRAPH_RE.test(this.head)
+      ) {
         const incoming = this.head
         this.head = ''
         this.introChecked = true
@@ -831,12 +851,12 @@ export class StreamTextSanitizer {
         })
         if (
           stripped === this.head &&
-          INTRO_START_RE.test(this.head) &&
+          (INTRO_START_RE.test(this.head) ||
+            SEARCH_ANNOUNCEMENT_PARAGRAPH_RE.test(this.head)) &&
           this.head.length < 1200
         ) {
-          // Opening is intro fluff but real content hasn't arrived yet —
-          // keep holding so the greeting never flashes on screen. flush()
-          // will release it if nothing else ever comes.
+          // Opening is intro fluff or search announcement but real content hasn't arrived yet —
+          // keep holding so it never flashes on screen. flush() will handle it if nothing else comes.
           return ''
         }
         this.head = ''
@@ -1078,7 +1098,7 @@ export class StreamTextSanitizer {
     }
     const tail = this.buffer
     this.buffer = ''
-    if (this.stripIntro && !this.introChecked) {
+    if ((this.stripIntro || Boolean(this.head)) && !this.introChecked) {
       const stripped = stripLeadingIntroReset(this.head + tail, {
         keepSelfIntro: this.keepSelfIntro,
         dropPureGreeting: this.dropPureGreeting

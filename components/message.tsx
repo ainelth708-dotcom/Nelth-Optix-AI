@@ -12,6 +12,8 @@ import {
 } from 'streamdown'
 
 import { splitOpenUIResponses } from '@/lib/openui/response'
+import { parseNelthUISegments } from '@/lib/nelth-ui/streaming-parser'
+import { NelthUIView } from './nelth-ui/nelth-ui-view'
 import { groupMarkdownImages } from '@/lib/render/group-markdown-images'
 import { mergeStreamdownSpecRenderer } from '@/lib/render/streamdown-spec'
 import { wrapBareOpenUIBlocks } from '@/lib/render/wrap-bare-openui'
@@ -88,9 +90,17 @@ export function MarkdownMessage({
         )
       )
     : wrapBareSpecBlocks(processCitations(message || '', citationMaps || {}))
-  const segments = allowOpenUI
-    ? splitOpenUIResponses(processedMessage)
-    : [{ type: 'markdown' as const, content: processedMessage }]
+  const segments = useMemo(() => {
+    if (allowOpenUI) {
+      return splitOpenUIResponses(processedMessage).map(s => ({
+        type: s.type,
+        content: s.content,
+        raw: s.content,
+        spec: null
+      }))
+    }
+    return parseNelthUISegments(processedMessage)
+  }, [processedMessage, allowOpenUI])
 
   return (
     <CitationProvider citationMaps={citationMaps}>
@@ -100,15 +110,30 @@ export function MarkdownMessage({
           className
         )}
       >
-        {segments.map((segment, index) =>
-          segment.type === 'openui' ? (
-            <div className="openui-answer" key={`openui-${index}`}>
-              <OpenUIResponse
-                response={segment.content}
+        {segments.map((segment, index) => {
+          if (segment.type === 'openui') {
+            return (
+              <div className="openui-answer" key={`openui-${index}`}>
+                <OpenUIResponse
+                  response={segment.content}
+                  isStreaming={isStreaming}
+                />
+              </div>
+            )
+          }
+
+          if (segment.type === 'nelth-ui') {
+            return (
+              <NelthUIView
+                key={`nelth-ui-${index}`}
+                spec={(segment as any).spec}
+                raw={(segment as any).raw}
                 isStreaming={isStreaming}
               />
-            </div>
-          ) : (
+            )
+          }
+
+          return (
             <Streamdown
               key={`markdown-${index}`}
               {...streamdownProps}
@@ -124,7 +149,7 @@ export function MarkdownMessage({
               {segment.content}
             </Streamdown>
           )
-        )}
+        })}
       </div>
     </CitationProvider>
   )
